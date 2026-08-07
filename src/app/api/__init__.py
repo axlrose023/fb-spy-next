@@ -2,8 +2,8 @@ from fastapi import APIRouter
 
 
 def register_routers(router: APIRouter) -> None:
+    from app.accounts.auth.router import router as auth_router
     from app.api.modules.ads.routes import router as ads_router
-    from app.api.modules.auth.routes import router as auth_router
     from app.api.modules.media.routes import router as media_router
     from app.api.modules.runs.routes import router as runs_router
     from app.api.modules.stats.routes import router as stats_router

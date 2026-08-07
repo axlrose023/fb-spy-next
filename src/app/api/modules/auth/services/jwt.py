@@ -1,10 +1,21 @@
-from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from datetime import timedelta
 
-import jwt
 from fastapi import HTTPException, status
-from jwt import ExpiredSignatureError, InvalidTokenError
 
+from app.accounts.auth.adapters import (
+    BcryptPasswordVerifier,
+    JwtTokenCodec,
+    LegacyUserReader,
+)
+from app.accounts.auth.exceptions import (
+    InvalidRefreshToken,
+    InvalidRefreshTokenPayload,
+    InvalidRefreshTokenType,
+    RefreshTokenExpired,
+    UserNotAllowed,
+)
+from app.accounts.auth.models import TokenPair
+from app.accounts.auth.service import AuthService
 from app.api.modules.auth.schema import TokenPairResponse
 from app.api.modules.users.models import User
 from app.database.uow import UnitOfWork
@@ -12,87 +23,67 @@ from app.settings import Config
 
 
 class JwtService:
-    def __init__(self, config: Config):
-        self._config = config
-        self._access_expires_delta = timedelta(
-            minutes=config.jwt.access_token_expires_in_minutes
-        )
-        self._refresh_expires_delta = timedelta(
-            minutes=config.jwt.refresh_expires_in_minutes
+    """Deprecated compatibility facade for the former auth module path."""
+
+    def __init__(self, config: Config) -> None:
+        self._codec = JwtTokenCodec(
+            secret_key=config.jwt.secret_key,
+            algorithm=config.jwt.algorithm,
+            access_ttl=timedelta(
+                minutes=config.jwt.access_token_expires_in_minutes
+            ),
+            refresh_ttl=timedelta(minutes=config.jwt.refresh_expires_in_minutes),
         )
 
     def create_token_pair(self, user: User) -> TokenPairResponse:
-        access_token, access_expires = self._create_access_token(user)
-        refresh_token, refresh_expires = self._create_refresh_token(user)
-        return TokenPairResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=access_expires,
-            refresh_expires_in=refresh_expires,
-        )
+        return self._response(self._codec.create_pair(user.id))
 
     def validate_refresh_token(self, refresh_token: str) -> dict:
         try:
-            payload = jwt.decode(
-                refresh_token,
-                self._config.jwt.secret_key,
-                algorithms=[self._config.jwt.algorithm],
-            )
-        except ExpiredSignatureError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired"
-            ) from exc
-        except InvalidTokenError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-            ) from exc
+            return self._codec.decode_refresh_payload(refresh_token)
+        except RefreshTokenExpired as exc:
+            raise self._error("Refresh token expired") from exc
+        except InvalidRefreshTokenType as exc:
+            raise self._error("Invalid refresh token type") from exc
+        except InvalidRefreshToken as exc:
+            raise self._error("Invalid refresh token") from exc
 
-        if payload.get("type") != "refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token type",
-            )
-
-        return payload
-
-    async def refresh(self, refresh_token: str, uow: UnitOfWork) -> TokenPairResponse:
-        payload = self.validate_refresh_token(refresh_token)
-
+    async def refresh(
+        self,
+        refresh_token: str,
+        uow: UnitOfWork,
+    ) -> TokenPairResponse:
+        service = AuthService(
+            LegacyUserReader(uow.users),
+            self._codec,
+            BcryptPasswordVerifier(),
+        )
         try:
-            user_id = UUID(payload["sub"])
-        except (KeyError, ValueError) as exc:
+            return self._response(await service.refresh(refresh_token))
+        except RefreshTokenExpired as exc:
+            raise self._error("Refresh token expired") from exc
+        except InvalidRefreshTokenType as exc:
+            raise self._error("Invalid refresh token type") from exc
+        except InvalidRefreshTokenPayload as exc:
+            raise self._error("Invalid refresh token payload") from exc
+        except InvalidRefreshToken as exc:
+            raise self._error("Invalid refresh token") from exc
+        except UserNotAllowed as exc:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token payload",
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not allowed",
             ) from exc
 
-        user = await uow.users.get_by_id(user_id)
-        if user is None or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="User is not allowed"
-            )
-
-        return self.create_token_pair(user)
-
-    def _create_access_token(self, user: User) -> tuple[str, int]:
-        return self._create_token(
-            {"sub": str(user.id), "type": "access"}, self._access_expires_delta
+    @staticmethod
+    def _response(pair: TokenPair) -> TokenPairResponse:
+        return TokenPairResponse(
+            access_token=pair.access_token,
+            refresh_token=pair.refresh_token,
+            token_type=pair.token_type,
+            expires_in=pair.expires_in,
+            refresh_expires_in=pair.refresh_expires_in,
         )
 
-    def _create_refresh_token(self, user: User) -> tuple[str, int]:
-        return self._create_token(
-            {"sub": str(user.id), "type": "refresh"}, self._refresh_expires_delta
-        )
-
-    def _create_token(self, payload: dict, expires_delta: timedelta) -> tuple[str, int]:
-        expire_time = datetime.now(UTC) + expires_delta
-        complete_payload = {
-            **payload,
-            "exp": int(expire_time.timestamp()),
-        }
-        token = jwt.encode(
-            complete_payload,
-            self._config.jwt.secret_key,
-            algorithm=self._config.jwt.algorithm,
-        )
-        return token, int(expires_delta.total_seconds())
+    @staticmethod
+    def _error(detail: str) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)

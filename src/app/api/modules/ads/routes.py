@@ -5,13 +5,13 @@ from dishka.integrations.fastapi import DishkaRoute
 from fastapi import APIRouter, Depends, Path
 from fastapi.params import Query
 
+from app.accounts.auth import AuthenticateUser
 from app.api.modules.ads.schema import (
     AdResponse,
     AdsPaginationParams,
     AdsPaginationResponse,
 )
 from app.api.modules.ads.service import FacebookAdService
-from app.api.modules.auth.services import AuthenticateUser
 from app.api.modules.users.models import User
 
 router = APIRouter(route_class=DishkaRoute)

@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 
+from app.accounts.auth import AuthService
 from app.api.common.utils import build_filters
-from app.api.modules.auth.service import AuthService
 from app.api.modules.users.models import User
 from app.api.modules.users.schema import (
     CreateUserRequest,

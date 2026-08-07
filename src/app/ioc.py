@@ -1,11 +1,16 @@
 from collections.abc import AsyncIterator
+from datetime import timedelta
 
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.accounts.auth import AuthService
+from app.accounts.auth.adapters import (
+    BcryptPasswordVerifier,
+    JwtTokenCodec,
+    LegacyUserReader,
+)
 from app.api.modules.ads.service import FacebookAdService
-from app.api.modules.auth.service import AuthService
-from app.api.modules.auth.services import JwtService
 from app.api.modules.runs.service import FacebookRunService
 from app.api.modules.stats.service import StatsService
 from app.api.modules.users.service import UserService
@@ -50,14 +55,32 @@ class ServicesProvider(Provider):
         return MediaStorage(config)
 
     @provide(scope=Scope.APP)
-    def get_jwt_service(self, config: Config) -> JwtService:
-        return JwtService(config)
+    def get_jwt_token_codec(self, config: Config) -> JwtTokenCodec:
+        return JwtTokenCodec(
+            secret_key=config.jwt.secret_key,
+            algorithm=config.jwt.algorithm,
+            access_ttl=timedelta(
+                minutes=config.jwt.access_token_expires_in_minutes
+            ),
+            refresh_ttl=timedelta(minutes=config.jwt.refresh_expires_in_minutes),
+        )
+
+    @provide(scope=Scope.APP)
+    def get_password_verifier(self) -> BcryptPasswordVerifier:
+        return BcryptPasswordVerifier()
 
     @provide(scope=Scope.REQUEST)
-    async def get_auth_service(
-        self, uow: UnitOfWork, jwt_service: JwtService
+    def get_auth_service(
+        self,
+        uow: UnitOfWork,
+        token_codec: JwtTokenCodec,
+        password_verifier: BcryptPasswordVerifier,
     ) -> AuthService:
-        return AuthService(uow, jwt_service)
+        return AuthService(
+            LegacyUserReader(uow.users),
+            token_codec,
+            password_verifier,
+        )
 
     @provide(scope=Scope.REQUEST)
     async def get_user_service(

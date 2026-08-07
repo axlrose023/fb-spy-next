@@ -5,7 +5,7 @@ from dishka.integrations.fastapi import DishkaRoute
 from fastapi import APIRouter, Depends, Path
 from fastapi.params import Query
 
-from app.api.modules.auth.services.auth import AuthenticateUser
+from app.accounts.auth import AuthenticateUser
 from app.api.modules.users.models import User
 from app.api.modules.users.schema import (
     CreateUserRequest,

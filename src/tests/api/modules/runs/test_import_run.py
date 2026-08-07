@@ -1,9 +1,10 @@
 import json
+from datetime import timedelta
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.modules.auth.services import JwtService
+from app.accounts.auth.adapters import JwtTokenCodec
 from app.api.modules.users.models import User, UserRole
 from app.settings import get_config
 
@@ -70,7 +71,13 @@ async def test_import_run_and_list_ads(
     )
     session.add(user)
     await session.commit()
-    tokens = JwtService(get_config()).create_token_pair(user)
+    config = get_config()
+    tokens = JwtTokenCodec(
+        secret_key=config.jwt.secret_key,
+        algorithm=config.jwt.algorithm,
+        access_ttl=timedelta(minutes=config.jwt.access_token_expires_in_minutes),
+        refresh_ttl=timedelta(minutes=config.jwt.refresh_expires_in_minutes),
+    ).create_pair(user.id)
     auth_headers = {"Authorization": f"Bearer {tokens.access_token}"}
 
     assert (

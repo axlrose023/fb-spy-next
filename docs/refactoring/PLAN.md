@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 0 завершен
+Статус: `IN_PROGRESS` — этап 1 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -736,7 +736,7 @@ Production-код и business policy не менялись. Старый реп�
 
 ### Этап 1. `accounts/auth`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-07
 
 Источники:
 
@@ -756,9 +756,11 @@ accounts/auth/
   exceptions.py
   router.py
   schemas.py
+  dependencies.py
   adapters/
     jwt.py
     passwords.py
+    users.py
 ```
 
 Порядок:
@@ -780,6 +782,46 @@ accounts/auth/
 - password mismatch;
 - user not found/disabled;
 - API status codes и response shape.
+
+Результат:
+
+- создан публичный модуль `accounts/auth` с чистыми моделями, исключениями,
+  consumer-owned Protocol и application service;
+- `AuthService` зависит только от `UserReader`, `TokenCodec` и
+  `PasswordVerifier`, не импортирует FastAPI, SQLAlchemy, settings или
+  `UnitOfWork`;
+- JWT, bcrypt и преобразование legacy `User` вынесены в отдельные adapters;
+- защищенные routes используют неизменяемый `CurrentUser` без ORM-модели и
+  password hash;
+- login и refresh переведены на один `AuthService`, а Dishka собирает его в
+  composition root из узких зависимостей;
+- рабочие imports переведены на публичный `app.accounts.auth`; старые auth paths
+  оставлены как migration wrappers и не содержат второй реализации JWT;
+- API routes, request/response schemas, status codes, token claims и TTL
+  сохранены; OpenAPI contract hash не изменился;
+- добавлено 29 unit/integration tests для login, refresh, access dependency,
+  expiration, signature, token type, payload и disabled/missing users;
+- подписанный access token с невалидным UUID теперь корректно возвращает `401`
+  вместо необработанного `ValueError`/`500`; это единственная намеренная
+  security-коррекция поведения;
+- новый auth core и adapters имеют 100% branch coverage, router покрыт всеми
+  публичными ветками, общий branch coverage вырос с 59.90% до 60.80%;
+- полный suite, architecture/contract checks, strict mypy, Ruff, pre-commit,
+  frontend build и gitleaks проходят.
+
+Database schema, frontend и production runtime не менялись. Старый репозиторий
+и server не использовались. Rollback выполняется revert одного коммита этапа 1.
+
+Audit observations, намеренно не смешанные с refactor-only этапом:
+
+- `LegacyUserReader` и compatibility wrappers удаляются после переноса
+  `accounts/users`, когда исчезнет зависимость от legacy ORM/gateway;
+- refresh tokens остаются повторно используемыми до истечения TTL: rotation,
+  revocation и `jti` требуют отдельного изменения auth policy;
+- rate limiting login endpoint отсутствует и должен проектироваться вместе с
+  доверенной proxy/IP boundary, а не добавляться локально в router;
+- уникальность username пока не закреплена database constraint и относится к
+  этапу 2, где переносится users persistence.
 
 ### Этап 2. `accounts/users`
 
