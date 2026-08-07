@@ -5,7 +5,8 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts.auth.adapters import JwtTokenCodec
-from app.api.modules.users.models import User, UserRole
+from app.accounts.users import UserRole
+from app.accounts.users.adapters.persistence import UserRecord
 from app.settings import get_config
 
 
@@ -63,7 +64,7 @@ async def test_import_run_and_list_ads(
         encoding="utf-8",
     )
 
-    user = User(
+    user = UserRecord(
         username="media-test-admin",
         password="unused-test-password-hash",
         role=UserRole.ADMIN.value,

@@ -10,14 +10,15 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.modules.users.models import User, UserRole
+from app.accounts.users import UserRole
+from app.accounts.users.adapters.persistence import UserRecord
 from app.settings import Config, get_config
 
 pytestmark = pytest.mark.integration
 
 
 def password_hash(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4)).decode()
+    return bytes(bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4))).decode()
 
 
 async def persist_user(
@@ -26,8 +27,8 @@ async def persist_user(
     username: str,
     password: str,
     active: bool = True,
-) -> User:
-    user = User(
+) -> UserRecord:
+    user = UserRecord(
         username=username,
         password=password_hash(password),
         role=UserRole.USER.value,
@@ -124,10 +125,12 @@ async def test_protected_route_rejects_refresh_token(
 def encode_token(
     config: Config, payload: dict[str, Any], *, secret: str | None = None
 ) -> str:
-    return jwt.encode(
-        payload,
-        secret or config.jwt.secret_key,
-        algorithm=config.jwt.algorithm,
+    return str(
+        jwt.encode(
+            payload,
+            secret or config.jwt.secret_key,
+            algorithm=config.jwt.algorithm,
+        )
     )
 
 

@@ -6,10 +6,12 @@ class BcryptPasswordVerifier:
         self._rounds = rounds
 
     def verify(self, password: str, password_hash: str) -> bool:
-        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+        return bool(
+            bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+        )
 
     def hash(self, password: str) -> str:
-        return bcrypt.hashpw(
-            password.encode("utf-8"),
-            bcrypt.gensalt(rounds=self._rounds),
-        ).decode("utf-8")
+        hashed = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt(rounds=self._rounds)
+        )
+        return bytes(hashed).decode("utf-8")

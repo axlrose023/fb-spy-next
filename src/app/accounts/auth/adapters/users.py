@@ -1,29 +1,28 @@
 from uuid import UUID
 
-from app.api.modules.users.gateway import UserGateway
-from app.api.modules.users.models import User
+from app.accounts.users import UserAccount, UserRepository
 
 from ..models import AuthUser
 
 
-class LegacyUserReader:
-    def __init__(self, gateway: UserGateway) -> None:
-        self._gateway = gateway
+class AccountUserReader:
+    def __init__(self, users: UserRepository) -> None:
+        self._users = users
 
     async def get_by_username(self, username: str) -> AuthUser | None:
-        return self._to_auth_user(await self._gateway.get_by_username(username))
+        return self._to_auth_user(await self._users.get_by_username(username))
 
     async def get_by_id(self, user_id: UUID) -> AuthUser | None:
-        return self._to_auth_user(await self._gateway.get_by_id(user_id))
+        return self._to_auth_user(await self._users.get_by_id(user_id))
 
     @staticmethod
-    def _to_auth_user(user: User | None) -> AuthUser | None:
+    def _to_auth_user(user: UserAccount | None) -> AuthUser | None:
         if user is None:
             return None
         return AuthUser(
             id=user.id,
             username=user.username,
-            password_hash=user.password,
-            role=user.role,
+            password_hash=user.password_hash,
+            role=user.role.value,
             is_active=user.is_active,
         )

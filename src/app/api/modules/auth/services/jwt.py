@@ -1,11 +1,11 @@
 from datetime import timedelta
+from uuid import UUID
 
 from fastapi import HTTPException, status
 
 from app.accounts.auth.adapters import (
     BcryptPasswordVerifier,
     JwtTokenCodec,
-    LegacyUserReader,
 )
 from app.accounts.auth.exceptions import (
     InvalidRefreshToken,
@@ -14,12 +14,36 @@ from app.accounts.auth.exceptions import (
     RefreshTokenExpired,
     UserNotAllowed,
 )
-from app.accounts.auth.models import TokenPair
+from app.accounts.auth.models import AuthUser, TokenPair
 from app.accounts.auth.service import AuthService
 from app.api.modules.auth.schema import TokenPairResponse
+from app.api.modules.users.gateway import UserGateway
 from app.api.modules.users.models import User
 from app.database.uow import UnitOfWork
 from app.settings import Config
+
+
+class _LegacyUserReader:
+    def __init__(self, users: UserGateway) -> None:
+        self._users = users
+
+    async def get_by_username(self, username: str) -> AuthUser | None:
+        return self._auth_user(await self._users.get_by_username(username))
+
+    async def get_by_id(self, user_id: UUID) -> AuthUser | None:
+        return self._auth_user(await self._users.get_by_id(user_id))
+
+    @staticmethod
+    def _auth_user(user: User | None) -> AuthUser | None:
+        if user is None:
+            return None
+        return AuthUser(
+            id=user.id,
+            username=user.username,
+            password_hash=user.password,
+            role=user.role,
+            is_active=user.is_active,
+        )
 
 
 class JwtService:
@@ -54,7 +78,7 @@ class JwtService:
         uow: UnitOfWork,
     ) -> TokenPairResponse:
         service = AuthService(
-            LegacyUserReader(uow.users),
+            _LegacyUserReader(uow.users),
             self._codec,
             BcryptPasswordVerifier(),
         )

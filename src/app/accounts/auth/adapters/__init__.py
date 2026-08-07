@@ -1,5 +1,5 @@
 from .jwt import JwtTokenCodec
 from .passwords import BcryptPasswordVerifier
-from .users import LegacyUserReader
+from .users import AccountUserReader
 
-__all__ = ["BcryptPasswordVerifier", "JwtTokenCodec", "LegacyUserReader"]
+__all__ = ["AccountUserReader", "BcryptPasswordVerifier", "JwtTokenCodec"]

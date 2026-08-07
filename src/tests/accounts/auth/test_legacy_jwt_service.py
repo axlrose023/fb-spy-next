@@ -40,10 +40,12 @@ def build_user(*, active: bool = True) -> User:
 
 
 def encode(config: Config, payload: dict[str, Any]) -> str:
-    return jwt.encode(
-        payload,
-        config.jwt.secret_key,
-        algorithm=config.jwt.algorithm,
+    return str(
+        jwt.encode(
+            payload,
+            config.jwt.secret_key,
+            algorithm=config.jwt.algorithm,
+        )
     )
 
 

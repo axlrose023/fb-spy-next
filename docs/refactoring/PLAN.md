@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 1 завершен
+Статус: `IN_PROGRESS` — этап 2 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -825,7 +825,7 @@ Audit observations, намеренно не смешанные с refactor-only 
 
 ### Этап 2. `accounts/users`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-07
 
 Источники: `api/modules/users/`.
 
@@ -852,6 +852,45 @@ accounts/users/
 - authorization границы admin/user;
 - schema и table parity;
 - существующие строки читаются после переноса без migration.
+
+Результат:
+
+- создан модуль `accounts/users` с чистыми `User`, `UserAccount`, command/query
+  models, module exceptions и consumer-owned contracts;
+- `UserService` зависит только от `UserRepository` и `PasswordHasher`, не
+  импортирует FastAPI, Pydantic, SQLAlchemy, settings или `UnitOfWork`;
+- правила create/update, admin-only полей, self-update и username availability
+  перенесены в application service с сохранением порядка проверок;
+- SQLAlchemy-модель и repository вынесены в `adapters/persistence`; универсальный
+  `build_filters` заменен явными users-фильтрами;
+- repository возвращает domain objects, а password hash не входит в публичный
+  `User`, API schemas или `CurrentUser`;
+- auth читает учетные записи через публичный users contract и новый repository;
+  рабочие routes и Dishka больше не зависят от legacy user service/gateway;
+- старые `api/modules/users` paths оставлены тонкими migration wrappers; старый
+  gateway используется только compatibility `UnitOfWork/JwtService` facade;
+- OpenAPI contract и SQLAlchemy metadata hash не изменились, migration не нужна,
+  существующая таблица `users` читается прежним форматом;
+- добавлено 12 users unit/integration tests: CRUD, pagination/filters, role
+  boundaries, self-update, duplicate username, missing/disabled users и
+  repository round trip;
+- полный suite: 392 теста; users service/repository имеют 100% branch coverage,
+  focused module coverage — 95%, общий combined coverage — 61.84%;
+- Ruff, strict mypy и architecture/contract checks проходят.
+
+Audit observations, не измененные в refactor-only этапе:
+
+- username availability проверяется application service, но database unique
+  constraint отсутствует; конкурентные create требуют отдельной migration;
+- любой авторизованный пользователь по текущему API может получать список и
+  карточки других пользователей; ужесточение является изменением access policy;
+- минимальная длина пароля по прежнему равна одному символу; password policy и
+  принудительная смена пароля требуют отдельного security-этапа;
+- compatibility `UserGateway`, `UnitOfWork.users` и legacy JWT facade удаляются
+  вместе с остальными legacy consumers на этапе 14.
+
+Frontend, server и production runtime не менялись. Старый репозиторий не
+использовался. Rollback выполняется revert одного коммита этапа 2.
 
 ### Этап 3. `ad_library/media`
 

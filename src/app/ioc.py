@@ -6,14 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts.auth import AuthService
 from app.accounts.auth.adapters import (
+    AccountUserReader,
     BcryptPasswordVerifier,
     JwtTokenCodec,
-    LegacyUserReader,
 )
+from app.accounts.users import UserService
+from app.accounts.users.adapters.persistence import SqlAlchemyUserRepository
 from app.api.modules.ads.service import FacebookAdService
 from app.api.modules.runs.service import FacebookRunService
 from app.api.modules.stats.service import StatsService
-from app.api.modules.users.service import UserService
 from app.clients.providers import HttpClientsProvider
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
@@ -70,23 +71,32 @@ class ServicesProvider(Provider):
         return BcryptPasswordVerifier()
 
     @provide(scope=Scope.REQUEST)
+    def get_user_repository(
+        self,
+        session: AsyncSession,
+    ) -> SqlAlchemyUserRepository:
+        return SqlAlchemyUserRepository(session)
+
+    @provide(scope=Scope.REQUEST)
     def get_auth_service(
         self,
-        uow: UnitOfWork,
+        users: SqlAlchemyUserRepository,
         token_codec: JwtTokenCodec,
         password_verifier: BcryptPasswordVerifier,
     ) -> AuthService:
         return AuthService(
-            LegacyUserReader(uow.users),
+            AccountUserReader(users),
             token_codec,
             password_verifier,
         )
 
     @provide(scope=Scope.REQUEST)
-    async def get_user_service(
-        self, uow: UnitOfWork, auth_service: AuthService
+    def get_user_service(
+        self,
+        users: SqlAlchemyUserRepository,
+        password_verifier: BcryptPasswordVerifier,
     ) -> UserService:
-        return UserService(uow, auth_service)
+        return UserService(users, password_verifier)
 
     @provide(scope=Scope.APP)
     def get_facebook_ads_importer(

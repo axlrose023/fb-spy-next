@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import jwt
@@ -86,13 +86,16 @@ class JwtTokenCodec:
             "type": kind.value,
             "exp": int((self._clock() + ttl).timestamp()),
         }
-        return jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
+        return str(jwt.encode(payload, self._secret_key, algorithm=self._algorithm))
 
     def _decode(self, token: str) -> dict[str, Any]:
-        return jwt.decode(
-            token,
-            self._secret_key,
-            algorithms=[self._algorithm],
+        return cast(
+            dict[str, Any],
+            jwt.decode(
+                token,
+                self._secret_key,
+                algorithms=[self._algorithm],
+            ),
         )
 
     @staticmethod
