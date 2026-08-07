@@ -1,0 +1,14 @@
+http://localhost {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+example.com {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+http://api.example.com {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

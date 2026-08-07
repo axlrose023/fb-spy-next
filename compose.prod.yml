@@ -1,0 +1,252 @@
+name: fb-spy
+
+x-app-common: &app-common
+  image: fb-spy-app:latest
+  build: .
+  restart: unless-stopped
+  env_file:
+    - .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - ./storage:/app/storage
+  environment:
+    APP__ENV: prod
+    APP__POSTGRES__HOST: db
+    APP__POSTGRES__PORT: "5432"
+    APP__REDIS__HOST: cache
+    APP__GEMINI__API_KEY: ${APP__GEMINI__API_KEY:-}
+    APP__GEMINI__MODEL: ${APP__GEMINI__MODEL:-gemini-2.5-flash}
+    APP__FACEBOOK__OCTO_HOST: ${APP__FACEBOOK__OCTO_HOST:-host.docker.internal}
+    APP__FACEBOOK__OCTO_PROFILE_UUID: ${APP__FACEBOOK__OCTO_PROFILE_UUID:-replace-with-octo-profile-uuid}
+    APP__FACEBOOK__RELEVANCE_FILTER_ENABLED: ${APP__FACEBOOK__RELEVANCE_FILTER_ENABLED:-false}
+    APP__FACEBOOK__RELEVANCE_FILTER_TASKIQ_ENABLED: ${APP__FACEBOOK__RELEVANCE_FILTER_TASKIQ_ENABLED:-true}
+    APP__FACEBOOK__RELEVANCE_FILTER_TASK_TIMEOUT_SECONDS: ${APP__FACEBOOK__RELEVANCE_FILTER_TASK_TIMEOUT_SECONDS:-180}
+    APP__FACEBOOK__RELEVANCE_FILTER_TASK_RETRIES: ${APP__FACEBOOK__RELEVANCE_FILTER_TASK_RETRIES:-1}
+    APP__FACEBOOK__LANDING_ARCHIVE_ENABLED: ${APP__FACEBOOK__LANDING_ARCHIVE_ENABLED:-true}
+    APP__FACEBOOK__LANDING_ARCHIVE_TIMEOUT_SECONDS: ${APP__FACEBOOK__LANDING_ARCHIVE_TIMEOUT_SECONDS:-20}
+    APP__FACEBOOK__LANDING_ARCHIVE_MAX_RESOURCES: ${APP__FACEBOOK__LANDING_ARCHIVE_MAX_RESOURCES:-120}
+    APP__FACEBOOK__VIDEO_RECORDING_ENABLED: ${APP__FACEBOOK__VIDEO_RECORDING_ENABLED:-true}
+    APP__FACEBOOK__VIDEO_RECORDING_MAX_SECONDS: ${APP__FACEBOOK__VIDEO_RECORDING_MAX_SECONDS:-30}
+    APP__FACEBOOK__VIDEO_RECORDING_FPS: ${APP__FACEBOOK__VIDEO_RECORDING_FPS:-8}
+
+services:
+  proxy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+
+  app:
+    <<: *app-common
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://localhost:8000/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      cache:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      app:
+        condition: service_healthy
+
+  migrator:
+    <<: *app-common
+    command: [cli, upgrade]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app-common
+    command: [taskiq, scheduler, "app.tiq:scheduler", "app.tasks"]
+    depends_on:
+      app:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+
+  tasks:
+    <<: *app-common
+    command: [taskiq, worker, "app.tiq:broker", -w, "4", "--max-async-tasks", "1", "--max-prefetch", "1", "--ack-type", "when_executed", "--wait-tasks-timeout", "180", "app.tasks"]
+    depends_on:
+      app:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+
+  facebook-orchestrator:
+    <<: *app-common
+    profiles: ["facebook-orchestrator"]
+    stop_grace_period: 45s
+    command:
+      - python
+      - -m
+      - app.services.facebook_orchestrator
+      - run
+      - --profiles-json
+      - storage/facebook/orchestrator/profiles.json
+      - --discover-octo-profiles
+      - --enable-discovered
+      - --max-parallel
+      - "${FACEBOOK_ORCHESTRATOR_MAX_PARALLEL:-5}"
+      - --collect-minutes
+      - "${FACEBOOK_ORCHESTRATOR_COLLECT_MINUTES:-15}"
+      - --interest-safe-collection
+      - --isolated-hold-resolution
+      - --relevant-enrichment
+      - --isolated-resolution-timeout
+      - "${FACEBOOK_ISOLATED_RESOLUTION_TIMEOUT_SECONDS:-900}"
+      - --enrichment-timeout
+      - "${FACEBOOK_ENRICHMENT_TIMEOUT_SECONDS:-1200}"
+      - --calibration-target-goal
+      - "${FACEBOOK_CALIBRATION_TARGET_GOAL:-10}"
+      - --calibration-low-relevance-target-goal
+      - "${FACEBOOK_CALIBRATION_LOW_RELEVANCE_TARGET_GOAL:-30}"
+      - --calibration-recovery-target-goal
+      - "${FACEBOOK_CALIBRATION_RECOVERY_TARGET_GOAL:-40}"
+      - --calibration-recovery-target-limit
+      - "${FACEBOOK_CALIBRATION_RECOVERY_TARGET_LIMIT:-50}"
+      - --calibration-page-timeout
+      - "${FACEBOOK_CALIBRATION_PAGE_TIMEOUT_SECONDS:-45}"
+      - --calibration-visit-landing
+      - --calibration-landing-view-seconds
+      - "${FACEBOOK_CALIBRATION_LANDING_VIEW_SECONDS:-45}"
+      - --calibration-landing-timeout
+      - "${FACEBOOK_CALIBRATION_LANDING_TIMEOUT_SECONDS:-20}"
+      - --calibration-offer-funnel
+      - --calibration-direct-offer-fallback
+      - --calibration-session-minutes
+      - "${FACEBOOK_CALIBRATION_SESSION_MINUTES:-15}"
+      - --calibration-repeat-targets-until-deadline
+      - --calibration-funnel-target-goal
+      - "${FACEBOOK_CALIBRATION_FUNNEL_TARGET_GOAL:-3}"
+      - --calibration-prelander-max-scrolls
+      - "${FACEBOOK_CALIBRATION_PRELANDER_MAX_SCROLLS:-12}"
+      - --calibration-quiz-max-questions
+      - "${FACEBOOK_CALIBRATION_QUIZ_MAX_QUESTIONS:-10}"
+      - --calibration-offer-submit-mode
+      - "${FACEBOOK_CALIBRATION_OFFER_SUBMIT_MODE:-disabled}"
+      - --calibration-offer-success-wait-seconds
+      - "${FACEBOOK_CALIBRATION_OFFER_SUCCESS_WAIT_SECONDS:-20}"
+      - --calibration-max-retained-offer-tabs
+      - "${FACEBOOK_CALIBRATION_MAX_RETAINED_OFFER_TABS:-6}"
+      - --min-calibration-targets
+      - "${FACEBOOK_CALIBRATION_MIN_TARGETS:-2}"
+      - --profile-rest-minutes
+      - "${FACEBOOK_ORCHESTRATOR_PROFILE_REST_MINUTES:-45}"
+      - --recovery-burst-cycles
+      - "${FACEBOOK_ORCHESTRATOR_RECOVERY_BURST_CYCLES:-3}"
+      - --recovery-burst-rest-minutes
+      - "${FACEBOOK_ORCHESTRATOR_RECOVERY_BURST_REST_MINUTES:-0}"
+      - --infrastructure-retry-minutes
+      - "${FACEBOOK_ORCHESTRATOR_INFRASTRUCTURE_RETRY_MINUTES:-5}"
+      - --calibration-cooldown-hours
+      - "${FACEBOOK_CALIBRATION_COOLDOWN_HOURS:-1}"
+      - --soft-drop-calibration-windows
+      - "${FACEBOOK_SOFT_DROP_CALIBRATION_WINDOWS:-2}"
+      - --watch-drop-ratio
+      - "${FACEBOOK_WATCH_DROP_RATIO:-0.95}"
+      - --immediate-drop-ratio
+      - "${FACEBOOK_IMMEDIATE_DROP_RATIO:-0.70}"
+      - --minimum-healthy-relevant-rate
+      - "${FACEBOOK_MINIMUM_HEALTHY_RELEVANT_RATE:-0.75}"
+      - --minimum-healthy-relevant-ads
+      - "${FACEBOOK_MINIMUM_HEALTHY_RELEVANT_ADS:-15}"
+      - --zero-ads-windows
+      - "${FACEBOOK_ZERO_ADS_WINDOWS:-1}"
+      - --absolute-low-ads-windows
+      - "${FACEBOOK_ABSOLUTE_LOW_ADS_WINDOWS:-2}"
+      - --absolute-low-ads-per-hour
+      - "${FACEBOOK_ABSOLUTE_LOW_ADS_PER_HOUR:-12}"
+      - --zero-ads-calibration-cooldown-minutes
+      - "${FACEBOOK_ZERO_ADS_CALIBRATION_COOLDOWN_MINUTES:-30}"
+      - --zero-ads-calibration-burst-limit
+      - "${FACEBOOK_ZERO_ADS_CALIBRATION_BURST_LIMIT:-8}"
+      - --zero-ads-calibration-backoff-hours
+      - "${FACEBOOK_ZERO_ADS_CALIBRATION_BACKOFF_HOURS:-2}"
+      - --calibration-retry-cooldown-hours
+      - "${FACEBOOK_CALIBRATION_RETRY_COOLDOWN_HOURS:-0.5}"
+      - --maintenance-calibration-hours
+      - "${FACEBOOK_MAINTENANCE_CALIBRATION_HOURS:-3}"
+      - --maintenance-min-valid-windows
+      - "${FACEBOOK_MAINTENANCE_MIN_VALID_WINDOWS:-2}"
+      - --max-calibrations-per-24h
+      - "${FACEBOOK_CALIBRATION_MAX_PER_24H:-36}"
+      - --calibration-reaction-rate
+      - "${FACEBOOK_CALIBRATION_REACTION_RATE:-0.65}"
+      - --calibration-follow-rate
+      - "${FACEBOOK_CALIBRATION_FOLLOW_RATE:-0.20}"
+      - --calibration-comment-every
+      - "${FACEBOOK_CALIBRATION_COMMENT_EVERY:-0}"
+      - --calibration-max-reactions
+      - "${FACEBOOK_CALIBRATION_MAX_REACTIONS:-6}"
+      - --calibration-max-follows
+      - "${FACEBOOK_CALIBRATION_MAX_FOLLOWS:-2}"
+      - --calibration-max-comments
+      - "${FACEBOOK_CALIBRATION_MAX_COMMENTS:-0}"
+      - --calibration-min-interactions
+      - "${FACEBOOK_CALIBRATION_MIN_INTERACTIONS:-1}"
+      - --calibration-comment-template
+      - "${FACEBOOK_CALIBRATION_COMMENT_TEMPLATE:-👍}"
+      - --import-backend
+      - --loop
+    healthcheck:
+      disable: true
+
+  cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${APP__POSTGRES__USER}
+      POSTGRES_PASSWORD: ${APP__POSTGRES__PASSWORD}
+      POSTGRES_DB: ${APP__POSTGRES__DB}
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP__POSTGRES__USER}"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  caddy_data:
+  caddy_config:
+  db_data:

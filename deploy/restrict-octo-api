@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+configure_chain() {
+  chain="$1"
+  iptables -N "$chain" 2>/dev/null || true
+  iptables -F "$chain"
+  iptables -A "$chain" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -A "$chain" -i lo -j ACCEPT
+  iptables -A "$chain" -i docker0 -j ACCEPT
+  iptables -A "$chain" -i br+ -j ACCEPT
+  iptables -A "$chain" -j DROP
+}
+
+configure_chain OCTO_API
+iptables -C INPUT -p tcp --dport 58888 -j OCTO_API 2>/dev/null \
+  || iptables -I INPUT 1 -p tcp --dport 58888 -j OCTO_API
+
+# Octo exposes a random CDP port for every active profile. Containers need
+# those ports through the Docker bridge, but they must never be public.
+configure_chain OCTO_CDP
+iptables -C INPUT -p tcp --dport 30000:65535 -j OCTO_CDP 2>/dev/null \
+  || iptables -I INPUT 1 -p tcp --dport 30000:65535 -j OCTO_CDP

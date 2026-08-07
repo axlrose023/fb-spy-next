@@ -1,0 +1,51 @@
+/* Global resets + animations + scrollbar — ported verbatim from the mockup's <helmet> styles. */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #F5F7F6;
+  font-family: "Inter", system-ui, sans-serif;
+  color: #28312E;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: #CDEFE4; color: #182628; }
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+a { color: inherit; }
+
+.fbspy-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.fbspy-scroll::-webkit-scrollbar-thumb {
+  background: #D2DAD6;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.fbspy-scroll::-webkit-scrollbar-thumb:hover { background: #B6C1BC; background-clip: content-box; }
+
+@keyframes fbspySpin { to { transform: rotate(360deg); } }
+@keyframes fbspyShimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+@keyframes fbspyToastIn { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fbspyFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fbspyDrawer { from { transform: translateX(40px); opacity: .4; } to { transform: translateX(0); opacity: 1; } }
+
+.fbspy-card { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.fbspy-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 2px 4px rgba(16,40,30,.05), 0 14px 32px rgba(16,40,30,.10);
+  border-color: #CDE6DD !important;
+}
+.fbspy-card:hover .fbspy-quick { opacity: 1 !important; transform: translateY(0) !important; }
+.fbspy-row:hover { background: #F7FAF9 !important; }
+
+@media (max-width: 760px) {
+  .fbspy-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .fbspy-card:hover {
+    transform: none;
+    box-shadow: 0 1px 2px rgba(16,40,30,.04), 0 8px 22px rgba(16,40,30,.08);
+  }
+  .fbspy-quick {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+  }
+}

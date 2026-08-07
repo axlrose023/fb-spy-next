@@ -1,0 +1,12 @@
+[Unit]
+Description=Restrict Octo Browser local API and CDP ports to host and Docker networks
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/restrict-octo-api
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
