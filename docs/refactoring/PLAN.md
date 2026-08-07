@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `PLANNED`
+Статус: `IN_PROGRESS` — этап 0 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -685,7 +685,7 @@ business modules.
 
 ### Этап 0. Guardrails и инструменты
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-07
 
 Изменения:
 
@@ -708,6 +708,31 @@ business modules.
 - никакое production-поведение не изменено.
 
 Rollback: удаление только tooling/config commit.
+
+Результат:
+
+- `mypy 1.20.2` закреплен в dev dependencies и `uv.lock`;
+- pre-commit версии Ruff/mypy синхронизированы с локальным toolchain;
+- strict pytest markers зарегистрированы, а будущие module tests обязаны явно
+  указывать свой test kind;
+- AST architecture checks контролируют новые `accounts`, `ad_library` и
+  `facebook`, не применяя новые границы к legacy paths;
+- inner layers не могут импортировать frameworks, SDK, legacy infrastructure
+  или concrete adapters;
+- cross-module imports разрешены только через публичный package API;
+- generic `common/shared/helpers/services/utils` запрещены в новых модулях;
+- новые production-файлы ограничены 250 строками, adapters — 300, tests — 450;
+- зафиксированы 15 API paths и полный canonical OpenAPI contract;
+- зафиксированы 20 CLI help contracts и SQLAlchemy metadata contract;
+- baseline: 317 исходных тестов и branch coverage 59.90%;
+- итоговый suite: 351 тест, включая 34 architecture/contract checks;
+- `ruff`, strict mypy для новых checks, pre-commit и frontend build проходят;
+- GitHub Actions workflow отложен: OAuth token пока не имеет scope `workflow`;
+- 5 существующих frontend dependency findings записаны в
+  `docs/refactoring/BASELINES.md` и не смешаны с backend refactor.
+
+Production-код и business policy не менялись. Старый репозиторий и server не
+использовались. Rollback выполняется revert одного tooling-коммита этапа 0.
 
 ### Этап 1. `accounts/auth`
 

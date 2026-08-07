@@ -1,6 +1,8 @@
 import pkgutil
 from pathlib import Path
 
+import pytest
+
 import app.settings
 from app.settings import (
     APIConfig,
@@ -45,3 +47,25 @@ for mod in pkgutil.walk_packages([_FIXTURES_ROOT.as_posix()], prefix="tests.fixt
         fixture_modules.append(mod.name)
 
 pytest_plugins = fixture_modules
+
+_REFACTORED_TEST_ROOTS = {"accounts", "ad_library", "facebook"}
+_TEST_KINDS = {"unit", "contract", "integration", "browser", "smoke"}
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    missing: list[str] = []
+    for item in items:
+        path = Path(str(item.path))
+        try:
+            relative = path.relative_to(Path(__file__).parent)
+        except ValueError:
+            continue
+        if not relative.parts or relative.parts[0] not in _REFACTORED_TEST_ROOTS:
+            continue
+        if not any(item.get_closest_marker(name) for name in _TEST_KINDS):
+            missing.append(item.nodeid)
+    if missing:
+        raise pytest.UsageError(
+            "Refactored module tests require an explicit test-kind marker:\n"
+            + "\n".join(missing)
+        )

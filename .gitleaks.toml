@@ -1,0 +1,14 @@
+title = "FB Spy secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known fake media signing secret used by the storage test fixture"
+regexTarget = "secret"
+regexes = [
+  '''^independent-test-signing-secret-at-least-32-characters$''',
+]
+paths = [
+  '''^src/tests/services/test_media_storage\.py$''',
+]
