@@ -1,21 +1,34 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
 import hashlib
 import json
 import logging
 import math
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.ad_library.ads import (
+    Ad,
+    AdIngestionRequest,
+    AdIngestionService,
+    AdMapper,
+    AdMappingPolicy,
+    AdSource,
+)
+from app.ad_library.ads.adapters.persistence import SqlAlchemyAdRepository
+from app.ad_library.ads.ingestion.deduplication import explicitly_relevant
+from app.ad_library.ads.ingestion.mapping import (
+    clean_value,
+    parse_datetime,
+    source_key,
+)
 from app.ad_library.media import MediaStorage
 from app.ad_library.media.configuration import configured_storage
-from app.api.modules.ads.models import FacebookAd
 from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
-from app.services.facebook.language import language_from_raw_ad
 from app.services.facebook.relevance import FacebookAdRelevanceFilter
 from app.settings import Config
 
@@ -266,7 +279,6 @@ class FacebookAdsStreamingImportSession:
         self.importer._write_json_atomic(self.rejected_path, rejected)
 
         if replace:
-            await uow.facebook_ads.delete_by_run_id(run.id)
             self._inserted.clear()
             keys_to_insert = [
                 key for key in self._source_order if key in self._accepted
@@ -278,44 +290,48 @@ class FacebookAdsStreamingImportSession:
                 if key in self._accepted and key not in self._inserted
             ]
 
-        candidates = [
-            (
-                key,
-                self.importer._build_ad(
-                    run.id,
-                    self._source_indexes[key],
-                    self._accepted[key],
-                    self.run_dir,
-                    country_fallback=run.profile_country,
-                ),
+        sources = [
+            AdSource(
+                token=key,
+                index=self._source_indexes[key],
+                raw=self._accepted[key],
             )
             for key in keys_to_insert
         ]
-        candidates = await self.importer._new_ad_candidates(uow, candidates)
-        ads_to_insert = [ad for _, ad in candidates]
-        if ads_to_insert:
-            await uow.facebook_ads.create_many(ads_to_insert)
-            if replace:
-                raw_to_insert = [self._accepted[key] for key, _ in candidates]
-                await self.importer.media_storage.upload_ads(
-                    ads_to_insert,
-                    relevance_verified=self.importer.raw_ads_explicitly_relevant(
-                        raw_to_insert
-                    ),
-                )
+        result = await self.importer.ingestion_service(uow).ingest(
+            AdIngestionRequest(
+                run_id=run.id,
+                run_dir=self.run_dir,
+                sources=sources,
+                country_fallback=run.profile_country,
+                replace_existing=replace,
+                upload_media=replace,
+            )
+        )
+        self.importer.log_skipped_ads(result.skipped_count)
+        if result.inserted:
             self._inserted.update(keys_to_insert)
 
-        stats_ads = [
-            self.importer._build_ad(
+        if replace:
+            stats_ads = result.observed
+        else:
+            stats_sources = [
+                AdSource(
+                    token=key,
+                    index=self._source_indexes[key],
+                    raw=self._accepted[key],
+                )
+                for key in self._source_order
+                if key in self._accepted
+            ]
+            mapped_stats = await asyncio.to_thread(
+                self.importer.ad_mapper.map_sources,
                 run.id,
-                self._source_indexes[key],
-                self._accepted[key],
+                stats_sources,
                 self.run_dir,
-                country_fallback=run.profile_country,
+                run.profile_country,
             )
-            for key in self._source_order
-            if key in self._accepted
-        ]
+            stats_ads = [ad for _, ad in mapped_stats]
         self.importer._apply_run_stats(
             run,
             run_dir=self.run_dir,
@@ -355,6 +371,19 @@ class FacebookAdsImporter:
         self.config = config
         self.relevance_filter = FacebookAdRelevanceFilter.from_config(config)
         self.media_storage = media_storage or configured_storage(config)
+        self.ad_mapper = AdMapper(
+            AdMappingPolicy(
+                data_dir=config.facebook.data_dir,
+                default_country=config.facebook.default_country,
+            )
+        )
+
+    def ingestion_service(self, uow: UnitOfWork) -> AdIngestionService:
+        return AdIngestionService(
+            SqlAlchemyAdRepository(uow.session),
+            self.media_storage,
+            self.ad_mapper,
+        )
 
     def create_streaming_session(
         self,
@@ -419,41 +448,27 @@ class FacebookAdsImporter:
         if apply_relevance and self.relevance_filter.enabled:
             self._write_filter_outputs(ads_json_path, raw_ads, rejected_ads, raw_total)
 
-        await uow.facebook_ads.delete_by_run_id(run.id)
-        observed_ads = [
-            (
-                str(index),
-                raw,
-                self._build_ad(
-                    run.id,
-                    index,
-                    raw,
-                    run_dir,
-                    country_fallback=run.profile_country,
-                ),
-            )
+        sources = [
+            AdSource(token=str(index), index=index, raw=raw)
             for index, raw in enumerate(raw_ads, start=1)
         ]
-        candidates = await self._new_ad_candidates(
-            uow,
-            [(key, ad) for key, _, ad in observed_ads],
+        result = await self.ingestion_service(uow).ingest(
+            AdIngestionRequest(
+                run_id=run.id,
+                run_dir=run_dir,
+                sources=sources,
+                country_fallback=run.profile_country,
+                replace_existing=True,
+                upload_media=True,
+            )
         )
-        new_keys = {key for key, _ in candidates}
-        ads = [ad for _, ad in candidates]
-        await uow.facebook_ads.create_many(ads)
-        raw_ads_to_upload = [
-            raw for key, raw, _ in observed_ads if key in new_keys
-        ]
-        await self.media_storage.upload_ads(
-            ads,
-            relevance_verified=self.raw_ads_explicitly_relevant(raw_ads_to_upload),
-        )
+        self.log_skipped_ads(result.skipped_count)
 
         self._apply_run_stats(
             run,
             run_dir=run_dir,
             ads_json_path=ads_json_path,
-            ads=[ad for _, _, ad in observed_ads],
+            ads=result.observed,
         )
         await uow.flush()
         return run
@@ -573,11 +588,17 @@ class FacebookAdsImporter:
 
     @staticmethod
     def raw_ads_explicitly_relevant(raw_ads: list[dict[str, Any]]) -> bool:
-        return all(
-            isinstance(raw.get("relevance"), dict)
-            and raw["relevance"].get("result") == "relevant"
-            for raw in raw_ads
+        return explicitly_relevant(
+            [
+                AdSource(token=str(index), index=index, raw=raw)
+                for index, raw in enumerate(raw_ads, start=1)
+            ]
         )
+
+    @staticmethod
+    def log_skipped_ads(skipped_count: int) -> None:
+        if skipped_count:
+            logger.info("Skipped %s already imported Facebook ad(s)", skipped_count)
 
     @staticmethod
     def _write_filter_outputs(
@@ -610,7 +631,7 @@ class FacebookAdsImporter:
         *,
         run_dir: Path,
         ads_json_path: Path,
-        ads: list[FacebookAd],
+        ads: list[Ad],
     ) -> None:
         run.ads_json_path = str(ads_json_path)
         run.runner_run_dir = str(run_dir)
@@ -629,67 +650,17 @@ class FacebookAdsImporter:
         run_dir: Path,
         *,
         country_fallback: str | None = None,
-    ) -> FacebookAd:
-        return FacebookAd(
-            run_id=run_id,
-            source_index=source_index,
-            source_key=self._source_key(raw, source_index),
-            advertiser=raw.get("advertiser") or "",
-            ad_type=raw.get("ad_type") or "unknown",
-            format="video" if raw.get("has_video") else "image",
-            vertical=None,
-            country=(
-                self._clean_meta_value(
-                    raw.get("country")
-                    or country_fallback
-                    or self.config.facebook.default_country
-                )
-                or self.config.facebook.default_country
-            ),
-            language=language_from_raw_ad(raw),
-            platform="facebook",
-            placement="feed",
-            cloaking=None,
-            has_video=bool(raw.get("has_video")),
-            displayed_domain=raw.get("displayed_domain") or "",
-            headline=raw.get("headline") or "",
-            ad_text=raw.get("ad_text") or "",
-            cta=raw.get("cta") or "",
-            creative_img=raw.get("creative_img") or "",
-            video_path=self._runner_media_path(
-                run_dir,
-                raw.get("video") or raw.get("video_path"),
-            ),
-            screenshot_path=self._runner_media_path(run_dir, raw.get("screenshot")),
-            screenshot_ok=raw.get("screenshot_ok"),
-            screenshot_issue=raw.get("screenshot_issue"),
-            landing_full=raw.get("landing_full"),
-            landing_clean=raw.get("landing_clean"),
-            landing_screenshot_path=self._runner_media_path(
-                run_dir, raw.get("landing_screenshot")
-            ),
-            landing_archive_path=self._runner_media_path(
-                run_dir, raw.get("landing_archive") or raw.get("landing_archive_path")
-            ),
-            fb_ad_id=self._clean_meta_value(raw.get("fb_ad_id")),
-            utm=raw.get("utm") or {},
-            captured_at=self._parse_datetime(raw.get("captured_at")),
+    ) -> Ad:
+        return self.ad_mapper.map(
+            run_id,
+            source_index,
+            raw,
+            run_dir,
+            country_fallback=country_fallback,
         )
 
     def _runner_media_path(self, run_dir: Path, value: str | None) -> str:
-        if not value:
-            return ""
-        path = Path(value)
-        if not path.is_absolute():
-            path = run_dir / path
-        try:
-            return (
-                path.resolve()
-                .relative_to(self.config.facebook.data_dir.resolve())
-                .as_posix()
-            )
-        except ValueError:
-            return str(path)
+        return self.ad_mapper.media_path(run_dir, value)
 
     @staticmethod
     def _load_run_meta(run_dir: Path) -> dict[str, Any]:
@@ -708,62 +679,12 @@ class FacebookAdsImporter:
 
     @staticmethod
     def _clean_meta_value(value: Any) -> str | None:
-        if value is None:
-            return None
-        cleaned = str(value).strip()
-        return cleaned or None
+        return clean_value(value)
 
     @staticmethod
     def _source_key(raw: dict[str, Any], source_index: int) -> str:
-        if raw.get("fb_ad_id"):
-            return f"fb_ad_id:{raw['fb_ad_id']}"
-        parts = [
-            raw.get("advertiser") or "",
-            raw.get("displayed_domain") or "",
-            raw.get("headline") or "",
-            raw.get("ad_text") or "",
-            raw.get("creative_img") or "",
-        ]
-        value = "|".join(parts).strip("|")
-        return value or f"source_index:{source_index}"
-
-    async def _new_ad_candidates(
-        self,
-        uow: UnitOfWork,
-        candidates: list[tuple[str, FacebookAd]],
-    ) -> list[tuple[str, FacebookAd]]:
-        identities = {
-            identity
-            for _, ad in candidates
-            if (identity := self._ad_identity(ad)) is not None
-        }
-        seen = await uow.facebook_ads.existing_fb_ad_keys(identities)
-        result: list[tuple[str, FacebookAd]] = []
-        for key, ad in candidates:
-            identity = self._ad_identity(ad)
-            if identity is not None and identity in seen:
-                continue
-            result.append((key, ad))
-            if identity is not None:
-                seen.add(identity)
-        skipped = len(candidates) - len(result)
-        if skipped:
-            logger.info("Skipped %s already imported Facebook ad(s)", skipped)
-        return result
+        return source_key(raw, source_index)
 
     @staticmethod
-    def _ad_identity(ad: FacebookAd) -> tuple[str, str] | None:
-        country = (ad.country or "").strip().lower()
-        fb_ad_id = (ad.fb_ad_id or "").strip()
-        if not country or not fb_ad_id:
-            return None
-        return country, fb_ad_id
-
-    @staticmethod
-    def _parse_datetime(value: str | None) -> datetime.datetime | None:
-        if not value:
-            return None
-        try:
-            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
+    def _parse_datetime(value: str | None) -> datetime | None:
+        return parse_datetime(value)

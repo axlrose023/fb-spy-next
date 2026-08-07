@@ -993,7 +993,7 @@ Server, Octo и production runtime не менялись. Старый репо�
 
 ### Этап 4. `ad_library/ads`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-07
 
 Источники:
 
@@ -1035,6 +1035,51 @@ ad_library/ads/
 - media references;
 - повторный import идемпотентен;
 - rollback транзакции при partial media failure.
+
+Результат:
+
+- каталог объявлений, query model, response mapping и persistence перенесены в
+  `ad_library/ads`; HTTP router зависит от `AdService`, а application layer —
+  только от `AdReader`/`MediaLinkBuilder` contracts;
+- SQLAlchemy model и repository находятся во внешнем persistence adapter;
+  фильтры geo/language/search, pagination и ordering сохранены, `order_by`
+  ограничен явным whitelist и не попадает в SQL как произвольное имя;
+- importer делегирует mapping, language normalization, deduplication, media
+  upload и запись в БД в `AdIngestionService`; синхронная нормализация путей
+  выполняется вне event loop;
+- identity объявления сохранена как нормализованная пара `(country, fb_ad_id)`;
+  batch dedup и повторный import одного run идемпотентны;
+- media загружаются только после relevance gate и до записи строк объявления;
+  ошибка upload не оставляет новые ad rows, а транзакционный integration test
+  подтверждает rollback run и ads;
+- country, language, source identity, timestamps и media paths сохраняют legacy
+  mapping; OpenAPI и SQLAlchemy metadata contracts не изменились;
+- API формирует только подписанные backend media URLs через `MediaLinkBuilder`;
+  raw local/S3 paths, bucket и endpoint не входят в API response;
+- старые `api/modules/ads/*` и `services/facebook/language.py` стали тонкими
+  compatibility facades; production router, IoC, UoW и media reader переключены
+  на новый модуль;
+- добавлено 12 ads unit/integration tests; focused coverage модуля — 97%, полный
+  suite — 443 теста, общий branch coverage — 63.45%; Ruff, strict mypy, полный
+  pre-commit, architecture/contract checks, frontend build и gitleaks проходят.
+
+Audit observations, не измененные в refactor-only этапе:
+
+- dedup защищает последовательные и batch imports, но database unique constraint
+  для `(country, fb_ad_id)` отсутствует; два конкурентных transaction всё ещё
+  могут создать одинаковые строки, поэтому constraint требует отдельной
+  миграции и согласованной политики обработки конфликтов;
+- при partial S3 batch failure транзакция БД откатывается, но уже загруженные до
+  ошибки remote objects не удаляются автоматически; compensation относится к
+  отдельному transactional media изменению;
+- streaming relevance coordination и run lifecycle пока остаются в legacy
+  importer и будут вынесены на этапах `facebook/relevance` и `facebook/runs`;
+- `npm audit` по неизмененному frontend dependency tree сообщает те же 5 findings
+  (3 moderate, 2 high); обновление Vite/React Router не смешивалось с backend
+  refactor.
+
+Server, Octo и production runtime не менялись. Старый репозиторий не
+использовался. Rollback выполняется revert одного коммита этапа 4.
 
 ### Этап 5. `ad_library/statistics`
 

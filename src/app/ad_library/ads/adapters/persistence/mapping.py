@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from ...models import Ad
+from .models import FacebookAd
+
+
+def to_domain(record: FacebookAd) -> Ad:
+    return Ad(
+        id=record.id,
+        run_id=record.run_id,
+        source_index=record.source_index,
+        source_key=record.source_key,
+        advertiser=record.advertiser,
+        ad_type=record.ad_type,
+        format=record.format,
+        vertical=record.vertical,
+        country=record.country,
+        language=record.language,
+        platform=record.platform,
+        placement=record.placement,
+        cloaking=record.cloaking,
+        has_video=record.has_video,
+        displayed_domain=record.displayed_domain,
+        headline=record.headline,
+        ad_text=record.ad_text,
+        cta=record.cta,
+        creative_img=record.creative_img,
+        video_path=record.video_path,
+        screenshot_path=record.screenshot_path,
+        screenshot_ok=record.screenshot_ok,
+        screenshot_issue=record.screenshot_issue,
+        landing_full=record.landing_full,
+        landing_clean=record.landing_clean,
+        landing_screenshot_path=record.landing_screenshot_path,
+        landing_archive_path=record.landing_archive_path,
+        fb_ad_id=record.fb_ad_id,
+        utm=dict(record.utm or {}),
+        captured_at=record.captured_at,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+def to_record(ad: Ad) -> FacebookAd:
+    return FacebookAd(
+        id=ad.id,
+        run_id=ad.run_id,
+        source_index=ad.source_index,
+        source_key=ad.source_key,
+        advertiser=ad.advertiser,
+        ad_type=ad.ad_type,
+        format=ad.format,
+        vertical=ad.vertical,
+        country=ad.country,
+        language=ad.language,
+        platform=ad.platform,
+        placement=ad.placement,
+        cloaking=ad.cloaking,
+        has_video=ad.has_video,
+        displayed_domain=ad.displayed_domain,
+        headline=ad.headline,
+        ad_text=ad.ad_text,
+        cta=ad.cta,
+        creative_img=ad.creative_img,
+        video_path=ad.video_path or "",
+        screenshot_path=ad.screenshot_path or "",
+        screenshot_ok=ad.screenshot_ok,
+        screenshot_issue=ad.screenshot_issue,
+        landing_full=ad.landing_full,
+        landing_clean=ad.landing_clean,
+        landing_screenshot_path=ad.landing_screenshot_path,
+        landing_archive_path=ad.landing_archive_path,
+        fb_ad_id=ad.fb_ad_id,
+        utm=ad.utm,
+        captured_at=ad.captured_at,
+    )

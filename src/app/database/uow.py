@@ -2,7 +2,7 @@ from typing import Self
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.modules.ads.gateway import FacebookAdGateway
+from app.ad_library.ads.adapters.persistence import SqlAlchemyAdRepository
 from app.api.modules.runs.gateway import FacebookRunGateway
 from app.api.modules.users.gateway import UserGateway
 
@@ -10,13 +10,13 @@ from app.api.modules.users.gateway import UserGateway
 class UnitOfWork:
     users: UserGateway
     facebook_runs: FacebookRunGateway
-    facebook_ads: FacebookAdGateway
+    facebook_ads: SqlAlchemyAdRepository
 
     def __init__(self, session: AsyncSession):
         self.session = session
         self.users = UserGateway(session)
         self.facebook_runs = FacebookRunGateway(session)
-        self.facebook_ads = FacebookAdGateway(session)
+        self.facebook_ads = SqlAlchemyAdRepository(session)
 
     async def __aenter__(self):
         return self

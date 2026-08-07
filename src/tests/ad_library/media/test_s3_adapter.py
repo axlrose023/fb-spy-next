@@ -88,9 +88,7 @@ async def test_s3_open_translates_provider_errors(
     expected: type[Exception],
 ) -> None:
     ad_id = uuid4()
-    adapter = storage(
-        FailingClient(read_error=client_error(status, code, "GetObject"))
-    )
+    adapter = storage(FailingClient(read_error=client_error(status, code, "GetObject")))
 
     with pytest.raises(expected):
         await adapter.open(reference(ad_id), MediaKind.VIDEO, ad_id, "bytes=0-1")
@@ -120,9 +118,7 @@ async def test_s3_head_translates_provider_errors(
 async def test_s3_delete_translates_provider_error() -> None:
     ad_id = uuid4()
     adapter = storage(
-        FailingClient(
-            delete_error=client_error(403, "AccessDenied", "DeleteObject")
-        )
+        FailingClient(delete_error=client_error(403, "AccessDenied", "DeleteObject"))
     )
 
     with pytest.raises(MediaStorageError, match="delete"):
