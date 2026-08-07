@@ -129,9 +129,7 @@ async def test_repeated_run_import_is_idempotent_and_preserves_mapped_fields(
     await importer.import_ads_json(uow, run, ads_json, apply_relevance=False)
 
     rows = (
-        await uow.session.scalars(
-            select(FacebookAd).where(FacebookAd.run_id == run.id)
-        )
+        await uow.session.scalars(select(FacebookAd).where(FacebookAd.run_id == run.id))
     ).all()
     assert len(rows) == 1
     assert rows[0].country == "Canada"

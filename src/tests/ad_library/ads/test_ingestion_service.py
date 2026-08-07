@@ -126,7 +126,9 @@ async def test_ingestion_does_not_write_database_after_media_failure(
     assert repository.added == []
 
 
-def test_mapper_preserves_geo_language_media_and_source_identity(tmp_path: Path) -> None:
+def test_mapper_preserves_geo_language_media_and_source_identity(
+    tmp_path: Path,
+) -> None:
     run_dir = tmp_path / "run"
     raw = {
         "advertiser": "Mapped",

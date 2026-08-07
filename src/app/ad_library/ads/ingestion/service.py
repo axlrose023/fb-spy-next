@@ -30,9 +30,7 @@ class AdIngestionService:
             request.country_fallback,
         )
         identities = {
-            identity
-            for _, ad in mapped
-            if (identity := ad_identity(ad)) is not None
+            identity for _, ad in mapped if (identity := ad_identity(ad)) is not None
         }
         existing = await self._ads.existing_identities(identities)
         selected = new_sources(mapped, existing)

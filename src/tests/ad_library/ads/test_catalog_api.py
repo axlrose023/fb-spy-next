@@ -24,9 +24,7 @@ async def cleanup_catalog_records(session: AsyncSession) -> AsyncIterator[None]:
     yield
     await session.rollback()
     await session.execute(
-        delete(FacebookAd).where(
-            FacebookAd.country.in_(("Catalogland", "Searchland"))
-        )
+        delete(FacebookAd).where(FacebookAd.country.in_(("Catalogland", "Searchland")))
     )
     await session.execute(
         delete(FacebookRun).where(FacebookRun.title == "ads catalog contract")
@@ -134,9 +132,7 @@ async def test_catalog_preserves_filters_pagination_order_and_media_proxy(
         params={"country": "Catalogland", "page": 2, "page_size": 2},
         headers=headers,
     )
-    assert [item["advertiser"] for item in second.json()["items"]] == [
-        "Catalog Gamma"
-    ]
+    assert [item["advertiser"] for item in second.json()["items"]] == ["Catalog Gamma"]
 
     english = await client.get(
         "/ads",
@@ -178,9 +174,7 @@ async def test_catalog_preserves_search_multi_type_and_detail_errors(
     )
 
     assert response.status_code == 200
-    assert [item["advertiser"] for item in response.json()["items"]] == [
-        "Catalog Beta"
-    ]
+    assert [item["advertiser"] for item in response.json()["items"]] == ["Catalog Beta"]
     detail = await client.get(f"/ads/{ads[0].id}", headers=headers)
     assert detail.status_code == 200
     assert detail.json()["advertiser"] == "Catalog Alpha"

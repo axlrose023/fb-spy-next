@@ -31,9 +31,10 @@ class AdMapper:
         *,
         country_fallback: str | None = None,
     ) -> Ad:
-        country = clean_value(
-            raw.get("country") or country_fallback or self._default_country
-        ) or self._default_country
+        country = (
+            clean_value(raw.get("country") or country_fallback or self._default_country)
+            or self._default_country
+        )
         return Ad(
             id=uuid4(),
             run_id=run_id,

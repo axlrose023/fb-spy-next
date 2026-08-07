@@ -13,12 +13,13 @@ from app.accounts.auth.adapters import (
 from app.accounts.users import UserService
 from app.accounts.users.adapters.persistence import SqlAlchemyUserRepository
 from app.ad_library.ads import AdService
-from app.ad_library.ads.adapters.persistence import SqlAlchemyAdRepository
+from app.ad_library.ads.adapters.persistence import FacebookAd, SqlAlchemyAdRepository
 from app.ad_library.media import MediaService, MediaStorage, MediaURLSigner
 from app.ad_library.media.adapters.ads import AdMediaReader
 from app.ad_library.media.configuration import configured_signer, configured_storage
+from app.ad_library.statistics import StatisticsService
+from app.ad_library.statistics.adapters import SqlAlchemyAdStatisticsReader
 from app.api.modules.runs.service import FacebookRunService
-from app.api.modules.stats.service import StatsService
 from app.clients.providers import HttpClientsProvider
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
@@ -156,8 +157,18 @@ class ServicesProvider(Provider):
         return FacebookRunService(uow, config, importer, runner_registry)
 
     @provide(scope=Scope.REQUEST)
-    async def get_stats_service(self, uow: UnitOfWork) -> StatsService:
-        return StatsService(uow)
+    def get_statistics_reader(
+        self,
+        session: AsyncSession,
+    ) -> SqlAlchemyAdStatisticsReader:
+        return SqlAlchemyAdStatisticsReader(session, FacebookAd)
+
+    @provide(scope=Scope.REQUEST)
+    def get_stats_service(
+        self,
+        reader: SqlAlchemyAdStatisticsReader,
+    ) -> StatisticsService:
+        return StatisticsService(reader)
 
 
 if _BROWSER_PROVIDER_ENABLED:

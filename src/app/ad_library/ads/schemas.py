@@ -97,8 +97,8 @@ def to_query(params: AdsPaginationParams) -> AdQuery:
 
 
 def to_response(item: CatalogAd) -> AdResponse:
-    response = AdResponse.model_validate(item.ad)
-    return response.model_copy(
+    response: AdResponse = AdResponse.model_validate(item.ad)
+    updated: AdResponse = response.model_copy(
         update={
             "screenshot_url": item.media.screenshot_url,
             "video_url": item.media.video_url,
@@ -106,6 +106,7 @@ def to_response(item: CatalogAd) -> AdResponse:
             "landing_archive_url": item.media.landing_archive_url,
         }
     )
+    return updated
 
 
 def to_page_response(page: AdCatalogPage) -> AdsPaginationResponse:

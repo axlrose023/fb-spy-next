@@ -93,16 +93,16 @@ class SqlAlchemyAdRepository:
             (FacebookAd.screenshot_ok, query.screenshot_ok),
             (FacebookAd.fb_ad_id, query.fb_ad_id),
         )
-        filters.extend(column == value for column, value in equality if value is not None)
+        filters.extend(
+            column == value for column, value in equality if value is not None
+        )
         if query.ad_types:
             filters.append(FacebookAd.ad_type.in_(query.ad_types))
         if query.advertiser_search is not None:
             filters.append(FacebookAd.advertiser.ilike(f"%{query.advertiser_search}%"))
         if query.displayed_domain_search is not None:
             filters.append(
-                FacebookAd.displayed_domain.ilike(
-                    f"%{query.displayed_domain_search}%"
-                )
+                FacebookAd.displayed_domain.ilike(f"%{query.displayed_domain_search}%")
             )
         if query.search:
             pattern = f"%{query.search}%"

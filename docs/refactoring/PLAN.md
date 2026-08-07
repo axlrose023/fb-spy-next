@@ -1083,7 +1083,7 @@ Server, Octo и production runtime не менялись. Старый репо�
 
 ### Этап 5. `ad_library/statistics`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-07
 
 Источники: `api/modules/stats/`.
 
@@ -1106,6 +1106,44 @@ ad_library/statistics/
 - пустая база;
 - API schema не меняется;
 - queries не зависят от HTTP schemas.
+
+Результат:
+
+- immutable `AdStatistics`/`Facet`, reader contract и application service
+  вынесены в `ad_library/statistics`; inner layer не импортирует FastAPI,
+  Pydantic, SQLAlchemy, UoW или соседние adapters;
+- SQLAlchemy reader подключается в composition root с read model таблицы ads,
+  поэтому statistics не зависит от внутреннего persistence path модуля ads и
+  ORM-модель не выставляется в его публичный domain API;
+- пять summary counts объединены в один conditional aggregate query, десять
+  facets — в один ограниченный `UNION ALL` query; `/stats/ads` выполняет два
+  `SELECT` вместо пятнадцати, что закреплено integration test;
+- сохранены legacy semantics для link/resolved/video/bad-screenshot counts,
+  facet limit 30, descending count order и исключение `NULL`/пустых значений;
+- router возвращает прежнюю Pydantic schema через явный domain-to-response
+  mapper; authentication, route и точный OpenAPI digest не изменились;
+- старые `api/modules/stats/*` стали тонкими compatibility facades, production
+  router и Dishka provider используют новый модуль;
+- добавлено 4 unit/integration tests; focused branch coverage модуля — 100%,
+  полный suite — 447 тестов, общий branch coverage — 63.66%; strict mypy, Ruff,
+  полный pre-commit, architecture/OpenAPI/database contracts, frontend build и
+  gitleaks проходят.
+
+Audit observations, не измененные в refactor-only этапе:
+
+- статистика остаётся глобальным live snapshot по всей таблице без geo/time
+  scope, как и существующий API contract;
+- два SQL-запроса устраняют лишние round trips, но high-cardinality facets
+  `domain`/`advertiser` всё равно выполняют полный aggregate scan; cache,
+  materialized view или отдельные counters следует добавлять только после
+  production measurements и определения допустимой freshness;
+- порядок facet values с одинаковым count остаётся неопределённым, как в legacy
+  query; добавление tie-breaker было бы отдельным изменением API behavior;
+- frontend dependency tree не менялся и сохраняет ранее зафиксированные 5 npm
+  audit findings (3 moderate, 2 high).
+
+Server, Octo и production runtime не менялись. Старый репозиторий не
+использовался. Rollback выполняется revert одного коммита этапа 5.
 
 ### Этап 6. `facebook/runs`
 
