@@ -12,6 +12,9 @@ from alembic.config import Config
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ad_library.media import MEDIA_SPECS
+from app.ad_library.media.configuration import configured_storage
+from app.ad_library.media.paths.object_keys import S3_REFERENCE_PREFIX
 from app.api.modules.ads.models import FacebookAd
 from app.api.modules.runs.models import FacebookRun
 from app.api.modules.users.models import User
@@ -22,7 +25,6 @@ from app.services.facebook.importer import FacebookAdsImporter
 from app.services.facebook.landing_archive import archive_filename, archive_landing_http
 from app.services.facebook.language import language_from_raw_ad
 from app.services.facebook.relevance import FacebookAdRelevanceFilter
-from app.services.media_storage import MEDIA_SPECS, S3_REFERENCE_PREFIX, MediaStorage
 from app.settings import get_config
 
 app = typer.Typer()
@@ -292,7 +294,7 @@ def sync_facebook_media(
         if not 1 <= batch_size <= 500:
             raise typer.BadParameter("batch-size must be between 1 and 500")
 
-        storage = MediaStorage(config)
+        storage = configured_storage(config)
         media_columns = [
             getattr(FacebookAd, spec.model_attribute) for spec in MEDIA_SPECS.values()
         ]

@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.ad_library.media import MediaStorage
+from app.ad_library.media.configuration import configured_storage
 from app.api.modules.ads.models import FacebookAd
 from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
 from app.services.facebook.language import language_from_raw_ad
 from app.services.facebook.relevance import FacebookAdRelevanceFilter
-from app.services.media_storage import MediaStorage
 from app.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,7 @@ class FacebookAdsImporter:
     def __init__(self, config: Config, media_storage: MediaStorage | None = None):
         self.config = config
         self.relevance_filter = FacebookAdRelevanceFilter.from_config(config)
-        self.media_storage = media_storage or MediaStorage(config)
+        self.media_storage = media_storage or configured_storage(config)
 
     def create_streaming_session(
         self,

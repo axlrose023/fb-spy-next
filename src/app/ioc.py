@@ -12,6 +12,9 @@ from app.accounts.auth.adapters import (
 )
 from app.accounts.users import UserService
 from app.accounts.users.adapters.persistence import SqlAlchemyUserRepository
+from app.ad_library.media import MediaService, MediaStorage, MediaURLSigner
+from app.ad_library.media.adapters.ads import LegacyAdMediaReader
+from app.ad_library.media.configuration import configured_signer, configured_storage
 from app.api.modules.ads.service import FacebookAdService
 from app.api.modules.runs.service import FacebookRunService
 from app.api.modules.stats.service import StatsService
@@ -19,7 +22,6 @@ from app.clients.providers import HttpClientsProvider
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
 from app.services.facebook import FacebookAdsImporter, FacebookRunnerRegistry
-from app.services.media_storage import MediaStorage, MediaURLSigner
 from app.settings import Config, get_config
 
 try:
@@ -49,11 +51,11 @@ class AppProvider(Provider):
 class ServicesProvider(Provider):
     @provide(scope=Scope.APP)
     def get_media_signer(self, config: Config) -> MediaURLSigner:
-        return MediaURLSigner(config)
+        return configured_signer(config)
 
     @provide(scope=Scope.APP)
     def get_media_storage(self, config: Config) -> MediaStorage:
-        return MediaStorage(config)
+        return configured_storage(config)
 
     @provide(scope=Scope.APP)
     def get_jwt_token_codec(self, config: Config) -> JwtTokenCodec:
@@ -98,6 +100,19 @@ class ServicesProvider(Provider):
     ) -> UserService:
         return UserService(users, password_verifier)
 
+    @provide(scope=Scope.REQUEST)
+    def get_media_service(
+        self,
+        uow: UnitOfWork,
+        media_storage: MediaStorage,
+        media_signer: MediaURLSigner,
+    ) -> MediaService:
+        return MediaService(
+            LegacyAdMediaReader(uow.facebook_ads),
+            media_storage,
+            media_signer,
+        )
+
     @provide(scope=Scope.APP)
     def get_facebook_ads_importer(
         self,
@@ -119,9 +134,8 @@ class ServicesProvider(Provider):
         self,
         uow: UnitOfWork,
         media_signer: MediaURLSigner,
-        media_storage: MediaStorage,
     ) -> FacebookAdService:
-        return FacebookAdService(uow, media_signer, media_storage)
+        return FacebookAdService(uow, media_signer)
 
     @provide(scope=Scope.REQUEST)
     async def get_facebook_run_service(

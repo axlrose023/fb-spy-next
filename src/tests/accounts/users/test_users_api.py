@@ -14,9 +14,7 @@ pytestmark = pytest.mark.integration
 
 
 def password_hash(password: str) -> str:
-    return bytes(
-        bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4))
-    ).decode()
+    return bytes(bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4))).decode()
 
 
 async def persist_user(

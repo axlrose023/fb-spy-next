@@ -1,0 +1,1 @@
+"""Advertisement library application."""

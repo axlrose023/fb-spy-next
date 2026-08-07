@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from dishka import FromDishka
@@ -68,7 +68,7 @@ async def get_users(
 async def get_current_user(
     current_user: CurrentUser = Depends(AuthenticateUser()),
 ) -> UserResponse:
-    return UserResponse.model_validate(current_user)
+    return cast(UserResponse, UserResponse.model_validate(current_user))
 
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -108,7 +108,7 @@ async def update_user(
 
 
 def _user_response(user: User) -> UserResponse:
-    return UserResponse.model_validate(user)
+    return cast(UserResponse, UserResponse.model_validate(user))
 
 
 def _page_response(page: UserPage) -> UsersPaginationResponse:

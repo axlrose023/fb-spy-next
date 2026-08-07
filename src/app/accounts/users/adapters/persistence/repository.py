@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -67,7 +68,7 @@ class SqlAlchemyUserRepository:
     async def _record_by_id(self, user_id: UUID) -> UserRecord | None:
         statement = select(UserRecord).where(UserRecord.id == user_id)
         result = await self._session.execute(statement)
-        return result.scalar_one_or_none()
+        return cast(UserRecord | None, result.scalar_one_or_none())
 
     @staticmethod
     def _filters(query: UserQuery) -> list[ColumnElement[bool]]:

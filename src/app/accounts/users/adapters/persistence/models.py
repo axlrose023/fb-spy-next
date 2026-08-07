@@ -20,4 +20,4 @@ class UserRecord(Base, UUID7IDMixin, DateTimeMixin):
 
     @property
     def is_admin(self) -> bool:
-        return self.role == UserRole.ADMIN.value
+        return bool(self.role == UserRole.ADMIN.value)

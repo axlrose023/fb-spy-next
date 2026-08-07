@@ -894,7 +894,7 @@ Frontend, server и production runtime не менялись. Старый ре�
 
 ### Этап 3. `ad_library/media`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-07
 
 Источники:
 
@@ -932,7 +932,8 @@ ad_library/media/
 4. MediaService.
 5. Backend proxy router.
 6. IoC switch.
-7. Удаление `media_storage.py` wrapper.
+7. Замена `media_storage.py` на тонкий compatibility facade; окончательное
+   удаление import path выполняется на этапе 14.
 
 Критические тесты:
 
@@ -943,6 +944,52 @@ ad_library/media/
 - независимость write/read-only/signing secrets;
 - local/S3 contract parity;
 - missing object и range/content headers.
+
+Результат:
+
+- signing, path/object-key validation, byte ranges и streaming вынесены в pure
+  module code; FastAPI, settings, boto3 и legacy gateway остаются только во
+  внешних router/configuration/adapters;
+- local filesystem и S3 реализованы раздельными adapters, синхронные boto3 и
+  filesystem операции не блокируют event loop, а provider errors переводятся в
+  module exceptions;
+- `MediaService` проверяет подписанный token до чтения ссылки объявления и
+  отдает только backend proxy payload; S3 reference, bucket и endpoint не входят
+  в URL или response headers;
+- S3 object key привязан к UUID объявления, media kind и разрешенному suffix;
+  local paths защищены от parent traversal и symlink escape;
+- сохранена обязательная relevance gate перед S3 upload, раздельные write,
+  read-only и signing credentials, multipart settings и прежняя object layout;
+- API router и Dishka переключены на новый модуль; OpenAPI и SQLAlchemy metadata
+  contracts не изменились, frontend-код не менялся;
+- legacy `services/media_storage.py` сокращен с 641 до 144 строк и содержит
+  только constructor-compatible delegation/re-exports; production consumers
+  больше не импортируют этот path;
+- добавлено 39 media unit tests, включая token binding/expiry, unsafe paths,
+  S3 `404/416/5xx`, GET/HEAD proxy headers, stream cleanup и error mapping;
+- focused media branch coverage — 94%, S3 adapter — 92.56%, proxy router —
+  97.62%; полный suite — 431 тест, общий branch coverage — 62.82%;
+- Ruff, strict mypy, полный pre-commit, architecture/contract checks, frontend
+  build и gitleaks проходят;
+- pre-commit Python hooks явно закреплены на project runtime Python 3.13;
+  isolated mypy return types предыдущего users-модуля сделаны явными без
+  изменения runtime behavior.
+
+Audit observations, не измененные в refactor-only этапе:
+
+- batch upload сохраняет legacy partial-failure semantics: если один объект
+  падает после успешных upload, уже созданные remote objects автоматически не
+  удаляются; transactional cleanup/idempotency требует отдельного изменения;
+- `LegacyAdMediaReader` зависит от legacy `FacebookAdGateway` до переноса
+  `ad_library/ads` на этапе 4;
+- compatibility facade остается только для legacy tests/external import path и
+  удаляется на этапе 14 после проверки отсутствия внешних consumers;
+- `npm audit` по неизмененному frontend dependency tree по-прежнему сообщает 5
+  ранее зафиксированных findings (3 moderate, 2 high); auto-fix с breaking
+  dependency updates в media-refactor не выполнялся.
+
+Server, Octo и production runtime не менялись. Старый репозиторий не
+использовался. Rollback выполняется revert одного коммита этапа 3.
 
 ### Этап 4. `ad_library/ads`
 
