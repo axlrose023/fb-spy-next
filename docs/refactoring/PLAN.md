@@ -1,0 +1,1353 @@
+# FB Spy: пошаговый план модульного рефакторинга
+
+Статус: `PLANNED`
+
+Этот документ является рабочим контрактом рефакторинга. После начала работ
+статус каждого этапа обновляется здесь же. Одновременно выполняется только один
+этап. Новый этап не начинается, пока предыдущий не прошел все свои проверки.
+
+## 1. Цель
+
+Перевести текущий backend в модульный монолит с понятной feature-first
+структурой, соблюдая:
+
+- SOLID;
+- onion architecture и dependency inversion;
+- DRY на уровне всего проекта;
+- KISS внутри каждого отдельного сценария;
+- неизменность текущего пользовательского и production-поведения;
+- небольшие файлы и ограниченную сложность;
+- возможность откатить каждый этап независимо.
+
+Рефакторинг не должен одновременно менять бизнес-логику. Если во время
+переноса обнаруживается баг, сначала добавляется тест, воспроизводящий текущее
+поведение. Исправление бага выполняется отдельным изменением после переноса
+модуля либо отдельным явно обозначенным коммитом.
+
+## 2. Исходная точка
+
+Baseline публичного snapshot: `c6b179b`.
+
+Baseline приватной production-версии: `b1e7dce`.
+
+Текущее состояние:
+
+- 21 541 строка Python в `src/app`;
+- 317 pytest-тестов;
+- `ruff check src` проходит;
+- mypy настроен, но еще не добавлен в dev dependencies;
+- frontend имеет обязательную проверку `npm run build`;
+- production entrypoints используют FastAPI, Taskiq, CLI и отдельные subprocess;
+- браузерный runtime зависит от Octo Browser и Playwright;
+- объявления и запуски хранятся через SQLAlchemy/PostgreSQL;
+- media поддерживает local storage и защищенный S3 backend.
+
+Основные зоны риска:
+
+| Текущий файл | LOC | Основные смешанные ответственности |
+|---|---:|---|
+| `facebook_runner.py` | 3025 | Octo, Playwright, feed, parsing, screenshots, video, landing, CLI |
+| `facebook_orchestrator.py` | 2893 | discovery, scheduling, health, subprocess, state, calibration |
+| `facebook/health.py` | 1535 | metrics, baseline, statistics, calibration decision |
+| `facebook_calibrator.py` | 1207 | CLI, target loop, navigation, engagement, funnel |
+| `facebook/offer_funnel.py` | 1186 | policy, browser navigation, quiz, forms, submit, redaction |
+| `facebook/relevance.py` | 1147 | prompt, parsing, rules, guards, classifier orchestration |
+| `facebook/engagement.py` | 1068 | policy, selectors, Playwright actions, diagnostics |
+
+## 3. Что не входит в рефакторинг
+
+Пока явно не согласовано обратное, не выполняются:
+
+- изменение UI или API response shapes;
+- изменение таблиц, колонок или существующих данных;
+- изменение relevance prompt и критериев релевантности;
+- изменение calibration thresholds и scheduling policy;
+- изменение формата JSON-артефактов и имен файлов;
+- изменение CLI-флагов и команд запуска на сервере;
+- замена FastAPI, Dishka, Taskiq, SQLAlchemy, Playwright или boto3;
+- оптимизация производительности, не требуемая для разделения модулей;
+- одновременный rewrite frontend и backend.
+
+## 4. Целевая структура
+
+```text
+src/app/
+  application.py
+  settings.py
+  ioc.py
+  api.py
+  worker.py
+  log_config.py
+
+  database/
+    base.py
+    session.py
+    migrations/
+
+  accounts/
+    auth/
+    users/
+
+  ad_library/
+    ads/
+    media/
+    statistics/
+
+  facebook/
+    models.py
+    profiles/
+    runs/
+    collection/
+    relevance/
+    enrichment/
+    calibration/
+    orchestration/
+
+    adapters/
+      octo/
+      playwright/
+
+    commands.py
+    tasks.py
+```
+
+`accounts`, `ad_library` и `facebook` являются приложениями или bounded
+contexts. Внутри них находятся бизнес-модули. Внутри бизнес-модуля находятся
+функциональные подмодули.
+
+Новые пустые каталоги заранее не создаются. Каждый пакет появляется только в
+том PR, в котором в него переносится реальная ответственность.
+
+## 5. Onion architecture
+
+Луковая архитектура определяется импортами, а не названиями директорий.
+
+Направление зависимостей:
+
+```text
+domain models / policies
+          ^
+        contracts
+          ^
+ application service / functional services
+          ^
+ adapters / router / tasks / commands
+          ^
+        ioc.py
+```
+
+### 5.1. Внутреннее ядро
+
+К ядру относятся:
+
+- `models.py`;
+- `policies.py`;
+- чистые parser/normalization/deduplication функции;
+- state machine и decision rules;
+- module-specific exceptions.
+
+Ядро не импортирует:
+
+- FastAPI и Pydantic HTTP schemas;
+- SQLAlchemy;
+- Playwright;
+- boto3;
+- Google/Gemini SDK;
+- httpx;
+- subprocess;
+- filesystem persistence;
+- конкретные реализации соседних модулей.
+
+### 5.2. Контракты
+
+`contracts.py` содержит небольшие consumer-owned `Protocol`.
+
+Примеры отдельных контрактов:
+
+- `FeedReader`;
+- `CandidateClassifier`;
+- `RelevantAdEnricher`;
+- `AdWriter`;
+- `ProfileRegistry`;
+- `ProfileSession`;
+- `RunHistory`;
+- `CalibrationExecutor`;
+- `StateStore`;
+- `ProcessRunner`.
+
+Не создается один большой `BrowserGateway` или `FacebookGateway`. Интерфейс
+содержит только методы, необходимые конкретному потребителю.
+
+### 5.3. Application service
+
+Корневой `service.py` является публичным координатором модуля. Он:
+
+- принимает зависимости через конструктор;
+- зависит от `Protocol`, а не от SDK;
+- координирует один бизнес-сценарий;
+- не содержит Playwright selectors, SQL queries или S3 key construction;
+- не повторяет внутреннюю реализацию функциональных подмодулей.
+
+### 5.4. Адаптеры
+
+Конкретные технологии реализуют контракты во внешнем кольце:
+
+```text
+relevance/adapters/gemini.py
+media/adapters/s3.py
+media/adapters/local.py
+ads/adapters/persistence/repository.py
+facebook/adapters/octo/client.py
+facebook/adapters/playwright/feed_reader.py
+calibration/adapters/playwright/engagement.py
+orchestration/adapters/subprocess_runner.py
+```
+
+Адаптер может импортировать модели и контракты внутреннего слоя. Обратный
+импорт запрещен.
+
+### 5.5. Delivery layer
+
+К delivery относятся:
+
+- `router.py`;
+- `schemas.py`;
+- `tasks.py`;
+- `commands.py`.
+
+Они валидируют вход, вызывают публичный service и преобразуют результат. В них
+не размещается бизнес-логика.
+
+## 6. Стандарт бизнес-модуля
+
+```text
+<module>/
+  __init__.py
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+
+  policies.py             # только при наличии чистых правил
+
+  <capability>/           # функциональный подмодуль
+
+  adapters/               # реализации внешних контрактов
+    <technology>/
+
+  router.py               # только при наличии HTTP API
+  schemas.py              # только при наличии HTTP API
+  tasks.py                # только при наличии Taskiq entrypoint
+  commands.py             # только при наличии CLI
+```
+
+Обязательны только `__init__.py` и `service.py`. Остальные файлы создаются,
+если соответствующая ответственность существует.
+
+### 6.1. Три типа пакетов
+
+1. Бизнес-модуль имеет публичный `service.py`.
+2. Функциональный подмодуль именуется по выполняемой функции и не обязан иметь
+   искусственный service.
+3. Adapter package именуется по технологии или внешней границе и реализует
+   контракт.
+
+Например, `candidates/normalization.py` не получает пустой `service.py`, но
+`feed/service.py` получает его, если feed scan является самостоятельным use
+case.
+
+### 6.2. Публичный API
+
+`__init__.py` экспортирует только стабильный внешний API модуля:
+
+```python
+from .models import CollectionRequest, CollectionResult
+from .service import CollectionService
+```
+
+Другие модули не импортируют внутренние файлы вида
+`collection.feed.navigator`. Они используют публичный API либо собственный
+consumer-owned Protocol.
+
+## 7. Ограничения размера и сложности
+
+Для production-кода действуют следующие ориентиры:
+
+- обычный Python-файл: целевой размер до 250 строк;
+- adapter с линейной integration-логикой: до 300 строк;
+- файл свыше 350 строк блокирует merge, пока не разделен либо не описано
+  конкретное исключение;
+- `service.py`: целевой размер 100–250 строк;
+- функция или метод: обычно до 50 строк;
+- orchestration-функция может быть длиннее только при сохранении линейного
+  сценария и отсутствии вложенной бизнес-логики;
+- цикломатическая сложность новых функций не должна скрываться через общий
+  `# noqa: C901`;
+- generated files и Alembic migrations исключаются из size gate;
+- тестовый файл свыше 450 строк разделяется по поведению или сценарию.
+
+Число строк является сигналом, а не единственным критерием. Файл разделяется
+раньше, если в нем появились две независимые причины для изменения.
+
+## 8. DRY и KISS
+
+### 8.1. Куда переносить повторяющуюся логику
+
+- повтор внутри одного функционального подмодуля остается в нем;
+- повтор между подмодулями одного business module поднимается в корень этого
+  модуля;
+- повтор между Facebook-модулями переносится в конкретно названный пакет внутри
+  `facebook`, например `facebook/adapters/playwright`;
+- повтор между приложениями выносится только при доказанной нейтральности и
+  получает предметное имя;
+- папки `common`, `shared`, `helpers` и общий `utils.py` не создаются.
+
+Используется rule of three: общий abstraction обычно создается после третьего
+реального повторения. Исключение — security-critical normalization, signing,
+redaction или locking, где два разных варианта уже создают риск.
+
+### 8.2. Что не считается DRY
+
+Не объединяются только потому, что выглядят похоже:
+
+- transport schema и domain model;
+- SQLAlchemy model и immutable domain model;
+- collection navigation и calibration navigation с разными инвариантами;
+- разные policy, случайно имеющие одинаковые условия сейчас.
+
+### 8.3. KISS
+
+- Protocol создается только на реальной границе или в точке вариативности;
+- не создаются `BaseService`, `BaseRepository` и abstract factory без нескольких
+  реализаций;
+- pure function предпочтительнее class без состояния;
+- dataclass предпочтительнее словаря с неявными ключами;
+- composition предпочтительнее наследования;
+- feature flags не используются для постоянного существования old/new версий.
+
+## 9. Неприкосновенные поведенческие инварианты
+
+Рефакторинг обязан сохранять:
+
+1. Каждый Octo-профиль работает независимо.
+2. Один профиль не запускает collection и calibration одновременно.
+3. Максимальный параллелизм соблюдается глобально.
+4. Geo определяется из Octo-профиля и сохраняется в run/ad.
+5. До подтверждения relevance не выполняются активные переходы по CTA и
+   landing URL в профильном браузере.
+6. Нерелевантные объявления не открывают landing и не попадают в ad library.
+7. Enrichment принимает только подтвержденный `RelevantAd`.
+8. Calibration использует только проверенный relevant target pool.
+9. Calibration не импортирует рекламу как новый collection result.
+10. Комментарии остаются отключенными, пока настройка явно не изменена.
+11. Offer submit остается выключенным без allowlist и явного режима.
+12. S3 credentials и реальные object URLs не возвращаются frontend.
+13. Media URL остается backend-signed/backend-proxied.
+14. Deduplication не создает вторую запись одной рекламы в одном geo.
+15. Текущие CLI-флаги, JSON-файлы и API routes сохраняются до финального
+    cutover.
+
+## 10. Целевая цепочка обычного запуска
+
+```text
+FeedReader
+  -> AdCandidate
+  -> RelevanceService
+  -> RelevanceDecision
+  -> RelevantAd
+  -> EnrichmentService
+  -> EnrichedAd
+  -> AdLibrary writer
+```
+
+Cross-stage value objects размещаются в `facebook/models.py`. Этот файл содержит
+только небольшие immutable типы, используемые несколькими Facebook-модулями.
+Если он приближается к 250 строкам, типы разделяются по lifecycle-стадиям.
+
+Collection service зависит от небольших контрактов classifier/enricher/writer.
+Конкретные `RelevanceService`, `EnrichmentService` и ad repository связываются
+в `ioc.py`.
+
+## 11. Общая стратегия тестирования
+
+### 11.1. Пирамида
+
+1. Pure unit tests для policies, parsing, normalization и state transitions.
+2. Contract tests для всех реализаций Protocol.
+3. Integration tests для SQLAlchemy, filesystem, S3 client wrappers и API.
+4. Component tests для полного бизнес-модуля с fake adapters.
+5. Process/CLI tests для entrypoints и subprocess command construction.
+6. Browser fixture tests без реального Facebook.
+7. Ограниченные manual smoke tests на выделенном Octo-профиле.
+
+Реальный Facebook, production S3 и реальные offer submit не используются в CI.
+
+### 11.2. Characterization before migration
+
+Перед переносом каждого модуля сначала добавляются тесты на текущую реализацию:
+
+- успешный сценарий;
+- пустой результат;
+- ошибка внешнего сервиса;
+- timeout/cancellation;
+- повторный запуск/idempotency;
+- поврежденное или частичное состояние;
+- security и redaction;
+- восстановление после процесса, завершенного посередине.
+
+После этого те же fixtures используются против новой реализации.
+
+### 11.3. Differential testing
+
+Для чистой логики old и new implementation временно запускаются на одинаковом
+fixture. Сравниваются:
+
+- decision;
+- normalized data;
+- dedup keys;
+- generated subprocess arguments;
+- metrics;
+- state transitions;
+- serialized JSON без нестабильных timestamp/paths.
+
+Old и new реализации никогда не запускаются параллельно против одного реального
+Facebook-профиля, потому что это создало бы двойные side effects.
+
+### 11.4. Детерминированность
+
+Clock, random, process runner и browser boundary передаются через небольшие
+контракты там, где они влияют на решение. Тесты не используют настоящий sleep.
+
+Проверяются:
+
+- точные deadline;
+- cooldown;
+- burst cycles;
+- retry/backoff;
+- cancellation;
+- restart после сохраненного state;
+- параллельные профили при фиксированном capacity.
+
+### 11.5. Database
+
+При простом переносе файлов database migration не создается.
+
+До и после каждого persistence-модуля сравниваются:
+
+- table names;
+- columns и types;
+- indexes;
+- foreign keys;
+- unique constraints;
+- cascade behavior;
+- Alembic head;
+- импорт существующей production-like строки.
+
+ORM models находятся во внешнем persistence adapter. Domain models не являются
+SQLAlchemy entities.
+
+### 11.6. API
+
+Для каждого HTTP-модуля фиксируются:
+
+- route и HTTP method;
+- auth requirements;
+- request schema;
+- response fields;
+- status codes;
+- pagination/filter semantics;
+- error response;
+- OpenAPI contract.
+
+Перенос router считается корректным только при сохранении API-контракта.
+
+### 11.7. Frontend
+
+Если backend API shape не менялся, frontend-код не редактируется. При переносе
+ads/media/stats/runs обязательно выполняется:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+Отдельно проверяются media proxy URLs, geo/language filters и detail page.
+
+### 11.8. Browser automation
+
+Автоматические тесты используют:
+
+- сохраненные HTML fixtures;
+- fake Page/Context boundary;
+- fake Octo API;
+- временную файловую систему;
+- заранее определенные navigation outcomes.
+
+Manual smoke проводится только после зеленых unit/component tests и включает:
+
+- старт/стоп одного тестового профиля;
+- passive feed scan;
+- отсутствие открытия нерелевантного landing;
+- enrichment одного relevant ad;
+- calibration на ограниченном target pool;
+- корректное закрытие вкладок и профиля.
+
+### 11.9. Security
+
+Перед каждым публичным push:
+
+- secret scan;
+- проверка отсутствия `.env`;
+- проверка отсутствия реальных profile UUID/IP/credentials;
+- тесты path traversal и signed media URLs;
+- проверка redaction URL/query/form data в логах.
+
+## 12. Quality gates каждого PR
+
+Минимальные команды:
+
+```bash
+uv run ruff check src
+uv run pytest -q <tests текущего модуля>
+uv run pytest -q
+```
+
+После добавления mypy:
+
+```bash
+uv run mypy src/app/<измененный пакет>
+```
+
+Если затронут frontend/API contract:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+Merge запрещен, если:
+
+- упал хотя бы один baseline test;
+- изменился API/CLI/JSON contract без отдельного согласования;
+- новый inner module импортирует concrete adapter;
+- старый и новый файлы содержат две копии одной бизнес-логики;
+- появился production-файл больше установленного size gate;
+- compatibility wrapper содержит новую логику;
+- не описан rollback текущего этапа.
+
+## 13. Универсальный playbook переноса одного модуля
+
+Каждый модуль проходит одинаковые шаги.
+
+### Шаг A. Inventory
+
+- перечислить старые файлы и публичные symbols;
+- найти все imports и entrypoints;
+- перечислить side effects;
+- определить владельца данных;
+- зафиксировать входы, выходы и ошибки;
+- найти дубли и dead code;
+- записать текущие размеры файлов.
+
+### Шаг B. Characterization tests
+
+- дополнить тесты текущей реализации;
+- создать reusable fixtures;
+- зафиксировать serialized output;
+- зафиксировать timeout/error behavior;
+- запустить весь baseline suite.
+
+### Шаг C. Public contract
+
+- определить module models;
+- определить consumer-owned Protocol;
+- определить module exceptions;
+- определить единственный публичный service;
+- описать разрешенные зависимости.
+
+### Шаг D. Pure core
+
+- сначала перенести pure models/rules/policies;
+- выполнить differential tests old/new;
+- удалить старую копию pure logic;
+- оставить re-export только при необходимости совместимости.
+
+### Шаг E. Adapters
+
+- реализовать каждый внешний контракт отдельно;
+- добавить contract tests;
+- преобразовать SDK exceptions в module exceptions;
+- проверить timeout, cancellation и redaction.
+
+### Шаг F. Application service
+
+- собрать сценарий через dependency injection;
+- не переносить CLI/API parsing внутрь service;
+- проверить happy path и partial failure;
+- проверить idempotency и cleanup.
+
+### Шаг G. Compatibility switch
+
+- старый import path становится тонким wrapper/re-export;
+- entrypoint продолжает принимать старые аргументы;
+- `ioc.py` переключается на новый service;
+- выполняется полный suite;
+- выполняется component smoke.
+
+### Шаг H. Cleanup
+
+- обновить все внутренние imports;
+- удалить compatibility wrapper после отсутствия consumers;
+- удалить dead code и повторяющиеся helpers;
+- обновить этот документ;
+- зафиксировать rollback commit.
+
+Один PR не должен одновременно проходить этот playbook для двух независимых
+business modules.
+
+## 14. Пошаговая последовательность
+
+### Этап 0. Guardrails и инструменты
+
+Статус: `PENDING`
+
+Изменения:
+
+- добавить mypy в dev dependencies;
+- добавить import-linter или эквивалентные architecture tests;
+- добавить CI workflow после выдачи OAuth `workflow` scope;
+- разделить pytest markers: unit, contract, integration, browser, smoke;
+- зафиксировать API routes/OpenAPI baseline;
+- зафиксировать CLI `--help` baseline;
+- зафиксировать database metadata baseline;
+- добавить file-size/forbidden-import check для новых пакетов;
+- записать текущий coverage baseline без искусственного повышения порога.
+
+Проверки:
+
+- 317 baseline tests проходят;
+- ruff проходит;
+- frontend build проходит;
+- architecture checks не применяются к legacy paths, но обязательны для новых;
+- никакое production-поведение не изменено.
+
+Rollback: удаление только tooling/config commit.
+
+### Этап 1. `accounts/auth`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+api/modules/auth/
+api/modules/auth/services/auth.py
+api/modules/auth/services/jwt.py
+```
+
+Цель:
+
+```text
+accounts/auth/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  router.py
+  schemas.py
+  adapters/
+    jwt.py
+    passwords.py
+```
+
+Порядок:
+
+1. Добавить characterization tests login/refresh/invalid token/disabled user.
+2. Выделить `TokenCodec`, `PasswordVerifier` и минимальный user reader contract.
+3. Перенести JWT и password hashing в adapters.
+4. Перенести AuthService без зависимости от UnitOfWork mega-object.
+5. Перенести router/schemas с неизменными routes.
+6. Оставить временные re-export старых imports.
+7. Переключить Dishka provider.
+8. Удалить старые файлы после проверки consumers.
+
+Критические тесты:
+
+- access/refresh expiration;
+- wrong token type;
+- invalid signature;
+- password mismatch;
+- user not found/disabled;
+- API status codes и response shape.
+
+### Этап 2. `accounts/users`
+
+Статус: `PENDING`
+
+Источники: `api/modules/users/`.
+
+Цель:
+
+```text
+accounts/users/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  router.py
+  schemas.py
+  adapters/persistence/
+    models.py
+    repository.py
+```
+
+Проверки:
+
+- CRUD и роли;
+- username uniqueness;
+- password не возвращается наружу;
+- authorization границы admin/user;
+- schema и table parity;
+- существующие строки читаются после переноса без migration.
+
+### Этап 3. `ad_library/media`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+services/media_storage.py
+api/modules/media/
+```
+
+Цель:
+
+```text
+ad_library/media/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  router.py
+  schemas.py
+  signing/
+    policy.py
+    tokens.py
+  paths/
+    validation.py
+    object_keys.py
+  adapters/
+    local.py
+    s3.py
+```
+
+Порядок переноса:
+
+1. Signing и path validation как pure core.
+2. Local adapter и contract tests.
+3. S3 adapter и fake boto client tests.
+4. MediaService.
+5. Backend proxy router.
+6. IoC switch.
+7. Удаление `media_storage.py` wrapper.
+
+Критические тесты:
+
+- path traversal;
+- подпись и expiration;
+- привязка object key к ad UUID и media kind;
+- отсутствие bucket endpoint в API;
+- независимость write/read-only/signing secrets;
+- local/S3 contract parity;
+- missing object и range/content headers.
+
+### Этап 4. `ad_library/ads`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+api/modules/ads/
+services/facebook/importer.py
+services/facebook_db_importer.py
+```
+
+Цель:
+
+```text
+ad_library/ads/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  router.py
+  schemas.py
+  catalog/
+    queries.py
+    filters.py
+  ingestion/
+    service.py
+    mapping.py
+    deduplication.py
+  adapters/persistence/
+    models.py
+    repository.py
+```
+
+Критические тесты:
+
+- импорт только relevant/enriched ads;
+- dedup одного объявления;
+- сохранение country/language;
+- фильтры geo/language;
+- pagination и ordering;
+- media references;
+- повторный import идемпотентен;
+- rollback транзакции при partial media failure.
+
+### Этап 5. `ad_library/statistics`
+
+Статус: `PENDING`
+
+Источники: `api/modules/stats/`.
+
+Цель:
+
+```text
+ad_library/statistics/
+  service.py
+  models.py
+  contracts.py
+  router.py
+  schemas.py
+  adapters/persistence.py
+```
+
+Проверки:
+
+- total/facet counts совпадают с legacy;
+- country/language/domain null handling;
+- пустая база;
+- API schema не меняется;
+- queries не зависят от HTTP schemas.
+
+### Этап 6. `facebook/runs`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+api/modules/runs/
+services/facebook/runner_process.py
+services/facebook_db_importer.py
+часть services/facebook/health.py
+```
+
+Цель:
+
+```text
+facebook/runs/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  router.py
+  schemas.py
+  metrics/
+    models.py
+    collector.py
+    normalization.py
+  adapters/
+    persistence/
+      models.py
+      repository.py
+    process_runner.py
+```
+
+На этом этапе из `health.py` переносятся только факты RunMetrics и их сбор.
+Calibration decisions остаются до своего этапа.
+
+Проверки:
+
+- create/start/finish/fail lifecycle;
+- process PID/return code;
+- import run result;
+- metrics parity на существующих JSON fixtures;
+- process cancellation и timeout;
+- таблица и relationship с ads не меняются.
+
+### Этап 7. `facebook/profiles` и Octo boundary
+
+Статус: `PENDING`
+
+Источники:
+
+- Octo функции из runner/orchestrator;
+- profile discovery из orchestrator;
+- geo normalization;
+- baseline-related часть `health.py`.
+
+Цель:
+
+```text
+facebook/profiles/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  discovery/
+    service.py
+    mapping.py
+    geo.py
+  baseline/
+    models.py
+    builder.py
+    validation.py
+
+facebook/adapters/octo/
+  client.py
+  profiles.py
+  sessions.py
+  mapping.py
+```
+
+Проверки:
+
+- public API discovery;
+- local API start/stop;
+- новые профили подхватываются один раз;
+- geo извлекается и нормализуется;
+- неизвестный geo не выдумывается;
+- токен и proxy не попадают в log/result;
+- Octo timeout не считается плохой рекламной метрикой;
+- профиль не стартует одновременно дважды.
+
+### Этап 8. `facebook/relevance`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+services/facebook/relevance.py
+services/facebook_relevance_classifier.py
+services/facebook_isolated_landing_resolver.py
+clients/gemini.py
+```
+
+Подэтапы:
+
+1. Models/result parser.
+2. Prefilter и scope rules.
+3. Prompt construction.
+4. Classifier application service.
+5. Gemini adapter.
+6. Isolated evidence adapter.
+7. CLI compatibility wrapper.
+
+Цель:
+
+```text
+facebook/relevance/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  classification/
+    service.py
+    prefilter.py
+    rules.py
+    prompt.py
+    parser.py
+  evidence/
+    service.py
+    models.py
+    policy.py
+  adapters/
+    gemini.py
+    isolated_browser.py
+  commands.py
+```
+
+Критические тесты:
+
+- все существующие relevance fixtures;
+- invalid/model JSON;
+- нутра не становится relevant;
+- scam/news/celebrity patterns;
+- advertiser/domain guard;
+- uncertain result и evidence fallback;
+- отсутствие профильного landing navigation;
+- provider timeout/rate limit/empty response;
+- prompt snapshot меняется только осознанно.
+
+### Этап 9. `facebook/enrichment`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+services/facebook_ad_enricher.py
+services/facebook/landing_archive.py
+relevant-only части facebook_runner.py
+```
+
+Подэтапы:
+
+1. RelevantAd input contract.
+2. Post resolution.
+3. Landing capture.
+4. Screenshot capture.
+5. Video capture.
+6. Archive capture.
+7. EnrichmentService.
+
+Цель:
+
+```text
+facebook/enrichment/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  post/
+    resolver.py
+    urls.py
+  landing/
+    service.py
+    policy.py
+  media/
+    screenshot.py
+    video.py
+    archive.py
+  adapters/playwright/
+    post.py
+    landing.py
+    capture.py
+```
+
+Критические тесты:
+
+- service невозможно вызвать с неподтвержденным candidate;
+- landing открывается только после relevant decision;
+- archive limits и resource filtering;
+- video timeout/static-tail handling;
+- вкладки закрываются после каждого ad;
+- partial artifact failure не теряет весь result;
+- output совместим с ad ingestion.
+
+### Этап 10. `facebook/collection`
+
+Статус: `PENDING`
+
+Источники: passive/candidate части `facebook_runner.py`.
+
+Подэтапы:
+
+1. AdCandidate models.
+2. Candidate normalization и deduplication.
+3. Feed parsing.
+4. Passive media guard.
+5. FeedReader Playwright adapter.
+6. Passive artifacts.
+7. CollectionService pipeline.
+8. Legacy runner CLI wrapper.
+
+Цель:
+
+```text
+facebook/collection/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  policies.py
+  feed/
+    service.py
+    models.py
+    parser.py
+  candidates/
+    builder.py
+    normalization.py
+    deduplication.py
+  artifacts/
+    models.py
+    policy.py
+
+facebook/adapters/playwright/
+  session.py
+  feed_reader.py
+  feed_navigator.py
+  selectors.py
+  passive_artifacts.py
+```
+
+Критические тесты:
+
+- interest-safe pipeline;
+- no CTA/landing before relevance;
+- duplicate feed cards;
+- stuck/small-scroll recovery;
+- login-required detection;
+- profile/browser cleanup;
+- deadline и graceful stop;
+- output JSON parity;
+- CollectionService вызывает classifier/enricher/writer через contracts.
+
+### Этап 11. `facebook/calibration`
+
+Статус: `PENDING`
+
+Источники:
+
+```text
+services/facebook/calibration.py
+services/facebook/engagement.py
+services/facebook/offer_funnel.py
+services/facebook_calibrator.py
+calibration decision части services/facebook/health.py
+```
+
+Из-за размера этот модуль переносится четырьмя отдельными PR, но считается
+одним business-module этапом.
+
+#### 11A. Planning и health decision
+
+- CalibrationPolicy/Decision;
+- target pool;
+- baseline comparison;
+- recovery intensity;
+- cooldown/backoff/maintenance;
+- pure differential tests legacy/new.
+
+#### 11B. Engagement
+
+- post view contract;
+- reaction/follow policy;
+- Playwright engagement adapter;
+- comments disabled invariant;
+- repeated target behavior.
+
+#### 11C. Offer funnel
+
+- funnel policy отдельно от browser implementation;
+- prelander/quiz/form adapters;
+- domain allowlist;
+- identity/redaction;
+- submit disabled by default;
+- success detection.
+
+#### 11D. CalibrationService и CLI
+
+- target loop;
+- session deadline;
+- interaction accounting;
+- partial target failures;
+- legacy CLI wrapper;
+- orchestration-facing result.
+
+Цель:
+
+```text
+facebook/calibration/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  planning/
+    service.py
+    policy.py
+    target_pool.py
+    intensity.py
+  execution/
+    service.py
+    models.py
+  adapters/playwright/
+    post_viewer.py
+    engagement.py
+    offer_funnel.py
+    form_filler.py
+  commands.py
+```
+
+Критические тесты:
+
+- zero/low/drop/maintenance decisions;
+- calibration повторяется согласно policy;
+- target cap и daily cap;
+- работает с 2–3 targets, если больше нет;
+- выбирает до 30–50 при recovery;
+- не импортирует ads;
+- comments не выполняются;
+- landing visit выполняется по target;
+- submit невозможен без allowlist;
+- все tabs/profile закрываются после timeout.
+
+### Этап 12. `facebook/orchestration`
+
+Статус: `PENDING`
+
+Источник: `services/facebook_orchestrator.py`.
+
+Подэтапы:
+
+1. State models и serialization.
+2. Scheduling policy.
+3. Capacity и profile locks.
+4. Profile lifecycle state machine.
+5. Recovery transitions.
+6. File state adapter.
+7. Subprocess runner adapter.
+8. OrchestrationService.
+9. CLI compatibility wrapper.
+
+Цель:
+
+```text
+facebook/orchestration/
+  service.py
+  models.py
+  contracts.py
+  exceptions.py
+  scheduling/
+    policy.py
+    scheduler.py
+    capacity.py
+  lifecycle/
+    state_machine.py
+    profile_cycle.py
+    recovery.py
+  adapters/
+    file_state_store.py
+    subprocess_runner.py
+  commands.py
+```
+
+Критические тесты:
+
+- max parallel для 1/5/10 профилей;
+- независимый lifecycle каждого profile;
+- collection и calibration взаимоисключающие;
+- 15/45 schedule;
+- recovery burst без лишнего cooldown;
+- infrastructure retry не влияет на relevance baseline;
+- automatic profile discovery;
+- restart из сохраненного state;
+- SIGTERM/timeout/process-group cleanup;
+- один упавший профиль не останавливает остальные;
+- calibration result определяет следующий переход;
+- Saudi/disabled profile policy сохраняется конфигурацией, а не hardcode.
+
+### Этап 13. Entry points и composition root
+
+Статус: `PENDING`
+
+Изменения:
+
+- `application.py` становится только FastAPI assembly;
+- `api.py` только подключает публичные routers;
+- `ioc.py` является единственным composition root;
+- `worker.py` подключает module tasks;
+- `facebook/commands.py` подключает CLI commands;
+- старые `services/facebook_*.py` остаются только wrappers до одного release;
+- настройки группируются по owning module без изменения env names.
+
+Проверки:
+
+- FastAPI startup/shutdown;
+- Dishka graph строится полностью;
+- Taskiq imports;
+- все старые CLI команды запускаются;
+- compose commands остаются рабочими;
+- import graph не имеет cycles.
+
+### Этап 14. Удаление legacy и финальный cutover
+
+Статус: `PENDING`
+
+Перед удалением:
+
+- поиск всех imports старых paths;
+- полный backend suite;
+- frontend build;
+- architecture tests;
+- clean install из lockfile;
+- database migration на копии production schema;
+- один manual collection smoke;
+- один manual calibration smoke;
+- orchestrator smoke минимум с двумя fake и двумя тестовыми профилями;
+- сравнение ключевых metrics до/после.
+
+Удаляются:
+
+- `api/modules/*` после переноса;
+- общий `services/` после исчезновения consumers;
+- `clients/example_service.py` и неиспользуемый template code;
+- compatibility wrappers;
+- дубли `_load_json`, atomic writes, URL normalization и CLI parsers;
+- obsolete docs и placeholder tasks.
+
+Production cutover:
+
+1. Сделать backup DB и orchestration state.
+2. Остановить orchestrator без прерывания активного profile process.
+3. Развернуть новую версию с прежними env names.
+4. Выполнить migrations, если они появились отдельно и были проверены.
+5. Запустить API healthcheck.
+6. Запустить один профиль в manual collection.
+7. Запустить один calibration cycle.
+8. Запустить orchestrator с ограниченным parallelism.
+9. Проверить state/metrics/media/API.
+10. Вернуть полный parallelism.
+
+Rollback:
+
+- остановить новую версию;
+- вернуть предыдущий image/commit;
+- восстановить orchestration state backup;
+- DB rollback нужен только при наличии отдельной schema migration;
+- package-only refactor откатывается без изменения данных.
+
+## 15. Definition of Done для одного модуля
+
+Модуль считается перенесенным только если:
+
+- [ ] inventory завершен;
+- [ ] characterization tests добавлены до переноса;
+- [ ] публичные models/contracts/service определены;
+- [ ] dependency direction проверяется автоматически;
+- [ ] concrete SDK находятся только в adapters/delivery;
+- [ ] legacy и новая бизнес-логика не дублируются;
+- [ ] старые imports либо удалены, либо являются тонкими wrappers;
+- [ ] module tests проходят;
+- [ ] все 317 baseline tests и добавленные тесты проходят;
+- [ ] ruff проходит;
+- [ ] mypy измененного пакета проходит после этапа 0;
+- [ ] frontend build проходит, если затронут API;
+- [ ] размеры файлов соответствуют gate;
+- [ ] API/CLI/JSON/DB contracts не изменены;
+- [ ] security checks пройдены;
+- [ ] rollback описан и проверяем;
+- [ ] статус этапа обновлен в этом документе.
+
+## 16. Порядок работы в каждом следующем диалоге
+
+Перед началом этапа агент должен:
+
+1. Назвать один конкретный модуль или подэтап.
+2. Показать его source-to-target mapping.
+3. Перечислить тесты, которые будут добавлены до изменения кода.
+4. Подтвердить, что соседние модули не меняются.
+5. Выполнить перенос.
+6. Показать module tests и полный regression result.
+7. Обновить этот файл и остановиться перед следующим модулем.
+
+Без отдельного подтверждения нельзя объединять два этапа, менять business policy
+или начинать следующий модуль только потому, что предыдущий оказался небольшим.
+
