@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2020,6 +2020,39 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12D
+выполняется revert одного отдельного коммита.
+
+#### 12E. Subprocess runner и process registry
+
+Результат:
+
+- command execution, active-process registry, process-group signaling и timeout
+  escalation вынесены в
+  `facebook/orchestration/adapters/subprocess_runner.py`;
+- `SubprocessCommandRunner` получает cwd, environment и registry через
+  constructor; добавлен внутренний `CommandRunner` port, не зависящий от
+  subprocess implementation;
+- timeout sequence осталась exact: `SIGINT`, configurable grace,
+  `SIGTERM`, 10-second grace, `SIGKILL`, exit code 124; KeyboardInterrupt
+  forwarding и log messages не изменились;
+- orchestrator stop handler теперь делегирует snapshot/signaling в
+  `ProcessRegistry`; registry всегда очищается при normal exit, timeout и
+  KeyboardInterrupt;
+- legacy `_run_command`, `_write_log_line` и `_signal_process_group` сохранены
+  как wrappers; существующие monkeypatch contracts не изменились;
+- legacy orchestrator сократился с 2202 до 2157 строк; subprocess adapter
+  составляет 123 строки;
+- добавлено 7 focused tests: environment/cwd, full signal escalation,
+  KeyboardInterrupt, `killpg` fallback, missing process, registry fan-out и stop-handler
+  wiring;
+- focused orchestration regression: 110 tests; branch-aware coverage 96%,
+  subprocess adapter coverage 97%; полный regression: 632 tests;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12E
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

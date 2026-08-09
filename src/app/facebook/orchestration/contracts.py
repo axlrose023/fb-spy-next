@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, Protocol
 
 from app.facebook.calibration import CalibrationDecision, CalibrationPolicy
@@ -60,3 +62,14 @@ class ProfileStateWriter(Protocol):
 
 class OrchestrationStateStore(ProfileStateReader, ProfileStateWriter, Protocol):
     pass
+
+
+class CommandRunner(Protocol):
+    def run(
+        self,
+        command: Sequence[str],
+        log_path: Path,
+        *,
+        timeout_seconds: float | None = None,
+        interrupt_grace_seconds: float = 30.0,
+    ) -> int: ...

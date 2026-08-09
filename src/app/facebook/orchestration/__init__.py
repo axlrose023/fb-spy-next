@@ -1,4 +1,9 @@
-from .contracts import OrchestrationStateStore, ProfileStateReader, ProfileStateWriter
+from .contracts import (
+    CommandRunner,
+    OrchestrationStateStore,
+    ProfileStateReader,
+    ProfileStateWriter,
+)
 from .models import (
     OrchestrationState,
     ProfileCycleSchedule,
@@ -29,6 +34,7 @@ from .serialization import (
 
 __all__ = [
     "available_profile_slots",
+    "CommandRunner",
     "OrchestrationState",
     "OrchestrationStateStore",
     "ProfileCycleSchedule",

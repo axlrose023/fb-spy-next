@@ -56,7 +56,11 @@ from app.facebook.orchestration import (
 from app.facebook.orchestration.adapters import (
     FileLock,
     FileStateStore,
+    ProcessRegistry,
+    SubprocessCommandRunner,
     profile_lock_path,
+    signal_process_group,
+    write_log_line,
 )
 from app.facebook.orchestration.lifecycle import (
     baseline_from_run_records,
@@ -86,8 +90,7 @@ from app.services.facebook.health import (
 from app.settings import get_config
 
 _POOL_FILE_LOCK = threading.Lock()
-_ACTIVE_PROCESS_LOCK = threading.Lock()
-_ACTIVE_PROCESSES: set[subprocess.Popen] = set()
+_PROCESS_REGISTRY = ProcessRegistry()
 _STOP_EVENT = threading.Event()
 ProfileConfig = Profile
 
@@ -1702,58 +1705,19 @@ def _run_command(
     timeout_seconds: float | None = None,
     interrupt_grace_seconds: float = 30.0,
 ) -> int:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", str(get_config().paths.src_path))
     env["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
-    with log_path.open("ab", buffering=0) as log_file:
-        process = subprocess.Popen(
-            command,
-            cwd=get_config().paths.src_path.parent,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
-        with _ACTIVE_PROCESS_LOCK:
-            _ACTIVE_PROCESSES.add(process)
-        try:
-            return process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            _write_log_line(
-                log_file,
-                f"[orchestrator] command timeout after {timeout_seconds:.1f}s; sending SIGINT",
-            )
-            _signal_process_group(process, signal.SIGINT)
-            try:
-                process.wait(timeout=interrupt_grace_seconds)
-            except subprocess.TimeoutExpired:
-                _write_log_line(
-                    log_file,
-                    "[orchestrator] SIGINT grace expired; sending SIGTERM",
-                )
-                _signal_process_group(process, signal.SIGTERM)
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    _write_log_line(
-                        log_file,
-                        "[orchestrator] SIGTERM grace expired; sending SIGKILL",
-                    )
-                    _signal_process_group(process, signal.SIGKILL)
-                    process.wait()
-            return 124
-        except KeyboardInterrupt:
-            _write_log_line(log_file, "[orchestrator] interrupted; forwarding SIGINT")
-            _signal_process_group(process, signal.SIGINT)
-            try:
-                process.wait(timeout=interrupt_grace_seconds)
-            except subprocess.TimeoutExpired:
-                _signal_process_group(process, signal.SIGTERM)
-            raise
-        finally:
-            with _ACTIVE_PROCESS_LOCK:
-                _ACTIVE_PROCESSES.discard(process)
+    return SubprocessCommandRunner(
+        cwd=get_config().paths.src_path.parent,
+        env=env,
+        registry=_PROCESS_REGISTRY,
+    ).run(
+        command,
+        log_path,
+        timeout_seconds=timeout_seconds,
+        interrupt_grace_seconds=interrupt_grace_seconds,
+    )
 
 
 def _calibration_timeout_seconds(
@@ -1790,27 +1754,16 @@ def _calibration_timeout_seconds(
 
 
 def _write_log_line(log_file, message: str) -> None:
-    log_file.write(f"\n{message}\n".encode())
+    write_log_line(log_file, message)
 
 
 def _signal_process_group(process: subprocess.Popen, sig: signal.Signals) -> None:
-    try:
-        os.killpg(process.pid, sig)
-    except ProcessLookupError:
-        pass
-    except OSError:
-        try:
-            process.send_signal(sig)
-        except OSError:
-            pass
+    signal_process_group(process, sig)
 
 
 def _request_orchestrator_stop(_signum, _frame) -> None:
     _STOP_EVENT.set()
-    with _ACTIVE_PROCESS_LOCK:
-        processes = list(_ACTIVE_PROCESSES)
-    for process in processes:
-        _signal_process_group(process, signal.SIGINT)
+    _PROCESS_REGISTRY.signal_all(signal.SIGINT)
 
 
 def _evaluate(args) -> int:
