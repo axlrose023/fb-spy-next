@@ -55,6 +55,7 @@ from .serialization import (
     schedule_to_dict,
     to_nonnegative_int,
 )
+from .validation import OrchestrationRunOptions, validate_orchestration_run_options
 
 __all__ = [
     "available_profile_slots",
@@ -68,6 +69,7 @@ __all__ = [
     "CollectionPipelineRequest",
     "CollectionPipelineService",
     "CollectionPipelineState",
+    "OrchestrationRunOptions",
     "OrchestrationState",
     "OrchestrationStateStore",
     "ProfileCycleHooks",
@@ -104,4 +106,5 @@ __all__ = [
     "schedule_to_dict",
     "select_due_profile_ids",
     "to_nonnegative_int",
+    "validate_orchestration_run_options",
 ]

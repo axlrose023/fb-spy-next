@@ -68,6 +68,7 @@ from app.facebook.orchestration import (
     recovery_schedule_policy,
     relevance_result_meaningfully_improved,
     remaining_daily_calibration_attempts,
+    validate_orchestration_run_options,
 )
 from app.facebook.orchestration import (
     remaining_profile_rest_seconds as _remaining_profile_rest_seconds,
@@ -440,59 +441,7 @@ def _run(args) -> int:
     store = StateStore(Path(args.state_json))
     root_dir = Path(args.root_dir)
     policy = _calibration_policy(args)
-    if args.max_parallel < 1:
-        raise ValueError("--max-parallel must be at least 1")
-    if args.profile_rest_minutes < 0:
-        raise ValueError("--profile-rest-minutes cannot be negative")
-    if args.recovery_burst_cycles < 1:
-        raise ValueError("--recovery-burst-cycles must be at least 1")
-    if args.recovery_burst_rest_minutes < 0:
-        raise ValueError("--recovery-burst-rest-minutes cannot be negative")
-    if args.infrastructure_retry_minutes < 0:
-        raise ValueError("--infrastructure-retry-minutes cannot be negative")
-    if args.calibration_limit < 1:
-        raise ValueError("--calibration-limit must be at least 1")
-    if args.calibration_target_goal < 1:
-        raise ValueError("--calibration-target-goal must be at least 1")
-    if args.calibration_low_relevance_target_goal < 1:
-        raise ValueError("--calibration-low-relevance-target-goal must be at least 1")
-    if args.calibration_recovery_target_goal < 1:
-        raise ValueError("--calibration-recovery-target-goal must be at least 1")
-    if args.calibration_recovery_target_limit < args.calibration_recovery_target_goal:
-        raise ValueError(
-            "--calibration-recovery-target-limit must be at least "
-            "--calibration-recovery-target-goal"
-        )
-    if args.calibration_page_timeout <= 0:
-        raise ValueError("--calibration-page-timeout must be greater than 0")
-    if args.calibration_landing_view_seconds < 0:
-        raise ValueError("--calibration-landing-view-seconds cannot be negative")
-    if args.calibration_landing_timeout <= 0:
-        raise ValueError("--calibration-landing-timeout must be greater than 0")
-    if args.calibration_session_minutes < 0:
-        raise ValueError("--calibration-session-minutes cannot be negative")
-    if args.calibration_funnel_target_goal < 1:
-        raise ValueError("--calibration-funnel-target-goal must be at least 1")
-    if args.calibration_prelander_max_scrolls < 0:
-        raise ValueError("--calibration-prelander-max-scrolls cannot be negative")
-    if args.calibration_quiz_max_questions < 0:
-        raise ValueError("--calibration-quiz-max-questions cannot be negative")
-    if args.calibration_offer_success_wait_seconds < 0:
-        raise ValueError("--calibration-offer-success-wait-seconds cannot be negative")
-    if args.calibration_max_retained_offer_tabs < 1:
-        raise ValueError("--calibration-max-retained-offer-tabs must be at least 1")
-    if args.calibration_offer_submit_mode == "allowlisted":
-        if not args.calibration_offer_submit_allow_domain:
-            raise ValueError(
-                "allowlisted offer submit requires "
-                "--calibration-offer-submit-allow-domain"
-            )
-        if not args.calibration_offer_identity_json:
-            raise ValueError(
-                "allowlisted offer submit requires --calibration-offer-identity-json"
-            )
-    if args.min_calibration_targets < 1:
-        raise ValueError("--min-calibration-targets must be at least 1")
+    validate_orchestration_run_options(args)
     _discover_profiles(args, fail_fast=True)
     if not args.loop:
         return _run_once(args, store, policy, root_dir)

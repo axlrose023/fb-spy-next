@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 12R завершен
+Статус: `IN_PROGRESS` — этап 12S завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P, 12Q, 12R COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P, 12Q, 12R, 12S COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2467,6 +2467,37 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12R
+выполняется revert одного отдельного коммита.
+
+#### 12S. Orchestration run validation
+
+Результат:
+
+- 22 runtime-инварианта orchestration run вынесены из CLI-shaped `_run` в pure
+  `facebook/orchestration/validation.py`;
+- `OrchestrationRunOptions` protocol явно описывает только необходимые поля и
+  позволяет проверять argparse namespace структурно, без импорта argparse;
+- minimum/negative/timeout constraints, recovery limit relation и оба
+  allowlisted offer-submit prerequisites сохраняют exact order и тексты
+  `ValueError`;
+- `_calibration_policy` по-прежнему создаётся и валидируется до run-options,
+  затем выполняются discovery и выбор one-shot/continuous scheduler в прежнем
+  порядке;
+- application service намеренно не создавался на этом подэтапе: validation
+  отделена первой, чтобы следующий `OrchestrationService` не зависел от
+  argparse namespace и CLI error rules;
+- добавлено 24 focused tests: все 22 invalid boundaries, допустимые нижние
+  границы и валидный allowlisted submit; validation module имеет 100% coverage
+  по строкам и веткам; focused validation/orchestrator regression: 79 tests;
+  полный regression: 742 tests;
+- legacy orchestrator сократился с 1418 до 1367 строк; validation module
+  составляет 88 строк, focused test module — 161 строку;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12S
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
