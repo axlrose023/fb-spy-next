@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import signal
-import subprocess
 import threading
 import time
 from collections.abc import Sequence
@@ -31,11 +30,8 @@ from app.facebook.calibration import (
     CalibrationProcessEnvironment,
     JsonCalibrationTargetPool,
     build_calibration_command,
-    calibration_pool_name,
     calibration_timeout_seconds,
     effective_target_goal,
-    is_direct_calibration_target,
-    is_relevant_ad,
     load_saved_facebook_targets_from_ads_json,
     plan_calibration_intensity,
     quarantined_facebook_post_urls,
@@ -71,8 +67,6 @@ from app.facebook.orchestration.adapters import (
     build_relevance_classifier_command,
     build_relevant_enricher_command,
     profile_lock_path,
-    signal_process_group,
-    write_log_line,
 )
 from app.facebook.orchestration.commands import (
     ActiveDiscoveryCommandHooks,
@@ -91,7 +85,6 @@ from app.facebook.orchestration.commands import (
     SeedBaselineCommandRequest,
     build_parser,
     calibration_policy_from_args,
-    log_profile_schedule,
     profile_rest_seconds_from_args,
     run_active_discovery_command,
     run_calibration_command,
@@ -188,20 +181,6 @@ def _run(args) -> int:
 _calibration_policy = calibration_policy_from_args
 _profile_rest_seconds = profile_rest_seconds_from_args
 _profile_schedule_policy = schedule_policy_from_args
-
-
-def _log_profile_schedule(
-    profile: ProfileConfig,
-    schedule: ProfileCycleSchedule,
-    *,
-    burst_limit: int,
-) -> None:
-    log_profile_schedule(
-        profile,
-        schedule,
-        burst_limit=burst_limit,
-        log=lambda message: print(message, flush=True),
-    )
 
 
 def _discover_profiles(args, *, fail_fast: bool) -> None:
@@ -636,14 +615,6 @@ def _calibration_timeout_seconds(
     return calibration_timeout_seconds(args, target_limit=target_limit)
 
 
-def _write_log_line(log_file, message: str) -> None:
-    write_log_line(log_file, message)
-
-
-def _signal_process_group(process: subprocess.Popen, sig: signal.Signals) -> None:
-    signal_process_group(process, sig)
-
-
 def _request_orchestrator_stop(_signum, _frame) -> None:
     _STOP_EVENT.set()
     _PROCESS_REGISTRY.signal_all(signal.SIGINT)
@@ -800,19 +771,6 @@ def _update_calibration_pools(
     root_dir: Path,
 ) -> None:
     _calibration_target_pool().update(profile, collect_dir, root_dir)
-
-
-def _has_relevant_ads(path: Path) -> bool:
-    return _calibration_target_pool().has_relevant_ads(path)
-
-
-def _has_direct_relevant_ads(path: Path) -> bool:
-    return _calibration_target_pool().has_direct_relevant_ads(path)
-
-
-_ad_is_direct_calibration_target = is_direct_calibration_target
-_ad_is_relevant = is_relevant_ad
-_safe_name = calibration_pool_name
 
 
 def _calibration_target_pool() -> JsonCalibrationTargetPool:

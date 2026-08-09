@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G9 завершен
+Статус: `IN_PROGRESS` — этап 14G10 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G9 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G10 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3651,6 +3651,34 @@ server, live Octo runtime и старый репозиторий не менял
 оставшегося legacy wrapper, затем финальные 14G contracts. Production server,
 live Octo runtime и старый репозиторий не менялись. Rollback 14G9 выполняется
 revert одного отдельного коммита.
+
+#### 14G10. Orchestrator dead compatibility cleanup
+
+Результат:
+
+- после полного symbol/consumer inventory удалены только names без production и
+  test consumers: `_log_profile_schedule`, `_write_log_line`,
+  `_signal_process_group`, два устаревших target-pool predicate wrappers и три
+  прежних pure-rule aliases;
+- вместе с ними удалены только ставшие неиспользуемыми imports; scheduler,
+  subprocess, pool, discovery, command-builder и JSON adapters не менялись;
+- private compatibility names, которые всё ещё импортируются characterization
+  tests или используются runtime callbacks, сохранены без переименования;
+- единственным production consumer legacy module остаётся lazy console gateway
+  `app.facebook.commands`; прямых imports из других production modules нет;
+- legacy orchestrator сокращен с 895 до 853 строк, итог изменения — 42 чистых
+  удаления без replacement code;
+- focused orchestrator/orchestration/profiles/CLI/architecture regression:
+  278 тестов, полный regression: 885 тестов;
+- wheel, Ruff, stage-scoped pre-commit, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись, `npm audit` сохраняет известные
+  6 findings (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: следующий unit переносит оставшиеся concrete
+composition adapters либо документированно закрепляет facade boundary, после
+чего выполняются финальные 14G import/CLI gates. Production server, live Octo
+runtime и старый репозиторий не менялись. Rollback 14G10 выполняется revert
+одного отдельного коммита.
 
 Перед удалением:
 
