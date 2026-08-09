@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 2 завершен
+Статус: `IN_PROGRESS` — этап 12Q завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P, 12Q COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2399,6 +2399,39 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12P
+выполняется revert одного отдельного коммита.
+
+#### 12Q. Collection pipeline service
+
+Результат:
+
+- collection/relevance/import lifecycle вынесен из profile-cycle legacy function
+  в `facebook/orchestration/lifecycle/collection_service.py` с immutable request
+  и explicit hook ports;
+- `CollectionPipelineService` владеет exact sequence: collector, interest-safety
+  audit, relevance availability, prefilter, isolated hold resolution, gate,
+  enrichment, finalize и conditional backend import;
+- stop checks, artifact checks, error propagation, safe-mode import prohibition,
+  standard-mode fallback source, log messages и JSON marker semantics сохранены;
+- service не знает argparse, settings, subprocess runner, concrete commands,
+  filesystem JSON format и global stop event; external actions передаются через
+  `CollectionPipelineHooks`;
+- legacy `_run_profile_cycle_locked` делегирует pipeline новому service, а
+  `_run_collection_pipeline` остаётся composition wrapper для command builders,
+  timeouts, filesystem adapters и process runner;
+- добавлено 11 focused tests для полного safe pipeline, standard mode,
+  disabled classifier, dry-run, safety violation, missing artifact, stop,
+  prefilter/isolated/gate failures и optional resolution/enrichment;
+  collection service имеет 100% coverage по строкам и веткам; focused
+  collection/orchestration regression: 97 tests; полный regression: 714 tests;
+- legacy orchestrator сократился с 1528 до 1455 строк; collection pipeline
+  service составляет 161 строку;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12Q
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

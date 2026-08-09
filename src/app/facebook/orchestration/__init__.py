@@ -7,6 +7,9 @@ from .contracts import (
 )
 from .lifecycle import (
     CalibrationTransition,
+    CollectionPipelineHooks,
+    CollectionPipelineRequest,
+    CollectionPipelineService,
     CollectionPipelineState,
     ProfileEvaluation,
     ProfileEvaluationService,
@@ -58,6 +61,9 @@ __all__ = [
     "calibration_passes_for_cycle",
     "calibration_targets_consumed",
     "CommandRunner",
+    "CollectionPipelineHooks",
+    "CollectionPipelineRequest",
+    "CollectionPipelineService",
     "CollectionPipelineState",
     "OrchestrationState",
     "OrchestrationStateStore",

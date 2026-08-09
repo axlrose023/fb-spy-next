@@ -45,6 +45,9 @@ from app.facebook.calibration import (
 from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
     CalibrationTransition,
+    CollectionPipelineHooks,
+    CollectionPipelineRequest,
+    CollectionPipelineService,
     CollectionPipelineState,
     OrchestrationStateStore,
     ProfileCycleSchedule,
@@ -742,160 +745,8 @@ def _run_profile_cycle_locked(
     collect_dir = profile_root / f"collect_{cycle_at}"
     collect_dir.mkdir(parents=True, exist_ok=True)
     print(f"[{profile.display_name}] collect -> {collect_dir}", flush=True)
-    collect_code = 0
-    if not args.dry_run:
-        collect_code = _run_command(
-            _collector_command(profile, args, collect_dir),
-            collect_dir / "runner.log",
-            timeout_seconds=args.collect_minutes * 60 + args.collect_timeout_grace,
-        )
-    pipeline = CollectionPipelineState(collect_code=collect_code)
-    if collect_code == 0 and args.interest_safe_collection and not args.dry_run:
-        safety_violations = _interest_safe_collection_violations(collect_dir)
-        pipeline.interest_safety_code = 4 if safety_violations else 0
-        _write_json(
-            collect_dir / "interest_safety.json",
-            {
-                "status": "violation" if safety_violations else "passed",
-                "violations": safety_violations,
-            },
-        )
-        if safety_violations:
-            print(
-                f"[{profile.display_name}] interest-safety invariant failed: "
-                f"{','.join(safety_violations)}",
-                flush=True,
-            )
-    relevance_enabled = _relevance_classification_enabled(args)
-    if pipeline.can_start_relevance(
-        dry_run=args.dry_run,
-        stop_requested=_STOP_EVENT.is_set(),
-        relevance_enabled=relevance_enabled,
-        ads_available=(collect_dir / "ads.json").exists(),
-    ):
-        if args.interest_safe_collection:
-            pipeline.prefilter_code = _run_command(
-                _relevance_classifier_command(collect_dir, stage="prefilter"),
-                collect_dir / "prefilter.log",
-                timeout_seconds=args.relevance_timeout,
-            )
-            if pipeline.prefilter_code == 0 and not _STOP_EVENT.is_set():
-                enrichment_source = collect_dir / "ads.prefilter.json"
-                if args.isolated_hold_resolution:
-                    pipeline.isolated_resolution_code = _run_command(
-                        _isolated_landing_resolver_command(
-                            profile,
-                            args,
-                            collect_dir,
-                        ),
-                        collect_dir / "isolated_resolution.log",
-                        timeout_seconds=args.isolated_resolution_timeout,
-                    )
-                    if (
-                        pipeline.isolated_resolution_code == 0
-                        and not _STOP_EVENT.is_set()
-                    ):
-                        pipeline.gate_resolution_code = _run_command(
-                            _relevance_classifier_command(
-                                collect_dir,
-                                stage="resolve-holds",
-                                source=collect_dir / "ads.isolated.json",
-                            ),
-                            collect_dir / "gate_resolution.log",
-                            timeout_seconds=args.relevance_timeout,
-                        )
-                        if pipeline.gate_resolution_code == 0:
-                            enrichment_source = collect_dir / "ads.gated.json"
-                else:
-                    pipeline.isolated_resolution_code = 0
-                    pipeline.gate_resolution_code = 0
-                if args.relevant_enrichment:
-                    if pipeline.resolution_succeeded and not _STOP_EVENT.is_set():
-                        pipeline.enrichment_code = _run_command(
-                            _relevant_enricher_command(
-                                profile,
-                                args,
-                                collect_dir,
-                                source=enrichment_source,
-                            ),
-                            collect_dir / "enrichment.log",
-                            timeout_seconds=args.enrichment_timeout,
-                        )
-                    else:
-                        pipeline.enrichment_code = pipeline.resolution_failure_code
-                else:
-                    pipeline.enrichment_code = pipeline.resolution_result_code
-                if pipeline.enrichment_code == 0 and not _STOP_EVENT.is_set():
-                    finalize_source = (
-                        collect_dir / "ads.enriched.json"
-                        if args.relevant_enrichment
-                        else enrichment_source
-                    )
-                    pipeline.relevance_code = _run_command(
-                        _relevance_classifier_command(
-                            collect_dir,
-                            stage="finalize",
-                            source=finalize_source,
-                            include_video=not args.no_video_recording,
-                        ),
-                        collect_dir / "relevance.log",
-                        timeout_seconds=args.relevance_timeout,
-                    )
-                else:
-                    pipeline.relevance_code = pipeline.enrichment_code
-            else:
-                pipeline.relevance_code = pipeline.prefilter_code
-        else:
-            pipeline.relevance_code = _run_command(
-                _relevance_classifier_command(collect_dir),
-                collect_dir / "relevance.log",
-                timeout_seconds=args.relevance_timeout,
-            )
-        if pipeline.relevance_code:
-            print(
-                f"[{profile.display_name}] relevance classifier "
-                f"code={pipeline.relevance_code}",
-                flush=True,
-            )
-    elif pipeline.should_record_disabled_relevance(
-        interest_safe_collection=args.interest_safe_collection,
-        dry_run=args.dry_run,
-        relevance_enabled=relevance_enabled,
-    ):
-        _write_json(
-            collect_dir / "relevance_summary.json",
-            {
-                "status": "disabled_in_interest_safe_collection",
-                "total": 0,
-            },
-        )
-        print(
-            f"[{profile.display_name}] safe collection has no relevance classifier; "
-            "active enrichment and backend import are disabled",
-            flush=True,
-        )
-    if pipeline.can_import_backend(
-        import_enabled=args.import_backend,
-        interest_safe_collection=args.interest_safe_collection,
-        dry_run=args.dry_run,
-        stop_requested=_STOP_EVENT.is_set(),
-    ):
-        import_source = (
-            collect_dir / "ads.relevant.json"
-            if pipeline.relevance_code == 0
-            else collect_dir / "ads.json"
-        )
-        if import_source.exists():
-            import_code = _run_command(
-                _backend_import_command(profile, import_source),
-                collect_dir / "backend_import.log",
-                timeout_seconds=args.backend_import_timeout,
-            )
-            if import_code:
-                print(
-                    f"[{profile.display_name}] backend import code={import_code}",
-                    flush=True,
-                )
+    pipeline = _run_collection_pipeline(profile, args, collect_dir)
+    collect_code = pipeline.collect_code
     observed_metrics = collect_run_metrics(
         collect_dir,
         return_code=collect_code,
@@ -994,6 +845,82 @@ def _run_profile_cycle_locked(
         policy=policy,
         schedule_policy=_profile_schedule_policy(args),
         infrastructure_retry_required=pipeline.post_collection_failed,
+    )
+
+
+def _run_collection_pipeline(
+    profile: ProfileConfig,
+    args,
+    collect_dir: Path,
+) -> CollectionPipelineState:
+    hooks = CollectionPipelineHooks(
+        run_collector=lambda: _run_command(
+            _collector_command(profile, args, collect_dir),
+            collect_dir / "runner.log",
+            timeout_seconds=args.collect_minutes * 60 + args.collect_timeout_grace,
+        ),
+        stop_requested=_STOP_EVENT.is_set,
+        relevance_enabled=lambda: _relevance_classification_enabled(args),
+        artifact_exists=lambda path: path.exists(),
+        audit_interest_safety=lambda: _interest_safe_collection_violations(
+            collect_dir
+        ),
+        record_interest_safety=lambda violations: _write_json(
+            collect_dir / "interest_safety.json",
+            {
+                "status": "violation" if violations else "passed",
+                "violations": violations,
+            },
+        ),
+        run_classifier=lambda stage, source, include_video, log_name: _run_command(
+            _relevance_classifier_command(
+                collect_dir,
+                stage=stage,
+                source=source,
+                include_video=include_video,
+            ),
+            collect_dir / log_name,
+            timeout_seconds=args.relevance_timeout,
+        ),
+        run_isolated_resolver=lambda: _run_command(
+            _isolated_landing_resolver_command(profile, args, collect_dir),
+            collect_dir / "isolated_resolution.log",
+            timeout_seconds=args.isolated_resolution_timeout,
+        ),
+        run_enricher=lambda source: _run_command(
+            _relevant_enricher_command(
+                profile,
+                args,
+                collect_dir,
+                source=source,
+            ),
+            collect_dir / "enrichment.log",
+            timeout_seconds=args.enrichment_timeout,
+        ),
+        run_backend_import=lambda source: _run_command(
+            _backend_import_command(profile, source),
+            collect_dir / "backend_import.log",
+            timeout_seconds=args.backend_import_timeout,
+        ),
+        record_disabled_relevance=lambda: _write_json(
+            collect_dir / "relevance_summary.json",
+            {
+                "status": "disabled_in_interest_safe_collection",
+                "total": 0,
+            },
+        ),
+        log=lambda message: print(f"[{profile.display_name}] {message}", flush=True),
+    )
+    return CollectionPipelineService(hooks).run(
+        CollectionPipelineRequest(
+            collect_dir=collect_dir,
+            dry_run=args.dry_run,
+            interest_safe_collection=args.interest_safe_collection,
+            isolated_hold_resolution=args.isolated_hold_resolution,
+            relevant_enrichment=args.relevant_enrichment,
+            import_backend=args.import_backend,
+            include_video=not args.no_video_recording,
+        )
     )
 
 

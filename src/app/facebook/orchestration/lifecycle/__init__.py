@@ -1,3 +1,8 @@
+from .collection_service import (
+    CollectionPipelineHooks,
+    CollectionPipelineRequest,
+    CollectionPipelineService,
+)
 from .evaluation import ProfileEvaluation, ProfileEvaluationService
 from .history import (
     baseline_from_run_records,
@@ -26,6 +31,9 @@ __all__ = [
     "calibration_targets_consumed",
     "calibration_timestamp",
     "calibration_was_effective",
+    "CollectionPipelineHooks",
+    "CollectionPipelineRequest",
+    "CollectionPipelineService",
     "CollectionPipelineState",
     "is_healthy_relevance_result",
     "new_profile_state",
