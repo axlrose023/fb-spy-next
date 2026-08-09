@@ -10,7 +10,13 @@ pytestmark = pytest.mark.architecture
 
 SRC_ROOT = Path(__file__).parents[2]
 APP_ROOT = SRC_ROOT / "app"
-NEW_APPLICATIONS = ("accounts", "ad_library", "facebook", "observability")
+NEW_APPLICATIONS = (
+    "accounts",
+    "ad_library",
+    "browser",
+    "facebook",
+    "observability",
+)
 
 INNER_FILES = {
     "contracts.py",

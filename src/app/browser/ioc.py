@@ -7,7 +7,9 @@ from dishka import Provider, Scope, provide
 from app.settings import Config
 
 try:
-    from app.services.browser import BrowserPool, ContextFactory, UserAgentProvider
+    from .context import ContextFactory
+    from .pool import BrowserPool
+    from .useragent import UserAgentProvider
 except ModuleNotFoundError:
     _BROWSER_PROVIDER_ENABLED = False
 else:

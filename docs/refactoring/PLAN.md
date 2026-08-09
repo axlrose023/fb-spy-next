@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14D завершен
+Статус: `IN_PROGRESS` — этап 14E завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A, 14B, 14C, 14D COMPLETE`)
+Статус: `IN_PROGRESS` (`14A, 14B, 14C, 14D, 14E COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -2980,6 +2980,39 @@ Production server, Octo runtime и старый репозиторий не ме
   (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 14D
+выполняется revert одного отдельного коммита.
+
+#### 14E. Browser infrastructure ownership
+
+Результат:
+
+- browser pool, context factory и user-agent provider перенесены из
+  `app.services.browser` в ясные owning-модули `app.browser.pool`,
+  `app.browser.context` и `app.browser.useragent`;
+- pool start/stop, LIFO slot accounting, task-based scaling, random viewport,
+  user-agent fallback, config defaults и прежние logger names сохранены без
+  изменения runtime-поведения;
+- browser IoC переключен на собственные implementations; production import
+  count старого `app.services.browser` равен нулю;
+- `app.browser` публикует implementations лениво, поэтому независимый
+  `BrowserPool` доступен без optional `fake-useragent`, а IoC provider по-прежнему
+  корректно отключается при отсутствии emulation dependencies;
+- три legacy implementation-файла сокращены до 5-строчных identity-preserving
+  facades; legacy package facade также сделан ленивым и не загружает
+  несвязанные optional dependencies;
+- `browser` добавлен в architecture/file-size/test-kind/pre-commit guardrails;
+  добавлено 9 focused contracts для scaling lifecycle, slot allocation,
+  viewport/context metadata, UA fallback, facade identity, import order и IoC
+  availability; optional extra `emulation` также проверен отдельно;
+- canonical browser-файлы имеют от 31 до 111 строк; strict mypy,
+  architecture/contracts и focused regression проходят; полный regression:
+  792 теста;
+- wheel содержит canonical browser modules и все compatibility facades; Ruff,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+  frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 14E
 выполняется revert одного отдельного коммита.
 
 Перед удалением:

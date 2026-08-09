@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from app.browser import ioc as browser_ioc
 from app.ioc import get_async_container
 
 pytestmark = pytest.mark.unit
+
+
+def test_browser_provider_matches_optional_dependency_availability() -> None:
+    expected = importlib.util.find_spec("fake_useragent") is not None
+
+    assert browser_ioc.browser_provider_available() is expected
+    assert (browser_ioc.browser_provider() is not None) is expected
 
 
 def test_unavailable_browser_provider_is_omitted(

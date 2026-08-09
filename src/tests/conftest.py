@@ -48,7 +48,13 @@ for mod in pkgutil.walk_packages([_FIXTURES_ROOT.as_posix()], prefix="tests.fixt
 
 pytest_plugins = fixture_modules
 
-_REFACTORED_TEST_ROOTS = {"accounts", "ad_library", "facebook", "observability"}
+_REFACTORED_TEST_ROOTS = {
+    "accounts",
+    "ad_library",
+    "browser",
+    "facebook",
+    "observability",
+}
 _TEST_KINDS = {"unit", "contract", "integration", "browser", "smoke"}
 
 

@@ -20,7 +20,7 @@ repos:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
-        files: ^src/(app/(accounts|ad_library|facebook)/|tests/(architecture|contracts|accounts|ad_library|facebook)/)
+        files: ^src/(app/(accounts|ad_library|browser|facebook)/|tests/(architecture|contracts|accounts|ad_library|browser|facebook)/)
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.20.2
@@ -31,7 +31,7 @@ repos:
           --follow-imports=skip,
           --ignore-missing-imports,
         ]
-        files: ^src/(app/(accounts|ad_library|facebook)/|tests/(architecture|contracts|accounts|ad_library|facebook)/)
+        files: ^src/(app/(accounts|ad_library|browser|facebook)/|tests/(architecture|contracts|accounts|ad_library|browser|facebook)/)
 
   - repo: local
     hooks:
