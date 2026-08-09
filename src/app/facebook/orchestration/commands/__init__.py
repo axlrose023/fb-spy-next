@@ -4,6 +4,11 @@ from .collection import (
     CollectionCommandRequest,
     run_collection_command,
 )
+from .discovery import (
+    RuntimeDiscoveryHooks,
+    RuntimeDiscoveryRequest,
+    run_runtime_discovery,
+)
 from .dispatch import dispatch
 from .maintenance_options import add_common_paths
 from .models import (
@@ -30,6 +35,8 @@ __all__ = [
     "ProfileCycleCommandHooks",
     "ProfileCycleCommandRequest",
     "RunCommandHooks",
+    "RuntimeDiscoveryHooks",
+    "RuntimeDiscoveryRequest",
     "add_common_paths",
     "build_parser",
     "calibration_policy_from_args",
@@ -39,6 +46,7 @@ __all__ = [
     "run_collection_command",
     "run_calibration_command",
     "run_profile_cycle_command",
+    "run_runtime_discovery",
     "run_command",
     "schedule_policy_from_args",
 ]

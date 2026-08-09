@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G6 завершен
+Статус: `IN_PROGRESS` — этап 14G7 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G6 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G7 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3555,6 +3555,37 @@ Octo runtime и старый репозиторий не менялись. Rollb
 Этап 14G остается `IN_PROGRESS`: discovery и maintenance/evaluate/seed
 composition переносятся следующими независимыми units. Production server, live
 Octo runtime и старый репозиторий не менялись. Rollback 14G6 выполняется revert
+одного отдельного коммита.
+
+#### 14G7. Orchestrator runtime profile discovery
+
+Результат:
+
+- scheduler-facing runtime discovery вынесен в 53-строчный
+  `facebook.orchestration.commands.discovery` с immutable request и двумя
+  explicit hooks для catalog merge и logging;
+- token precedence `CLI -> OCTO_API_TOKEN -> configured token`, search-tag
+  fallback, `enable_new`, disabled discovery и missing-token skip semantics
+  сохранены;
+- initial discovery с `fail_fast=True` по-прежнему пробрасывает source/catalog
+  exception, periodic discovery логирует `repr` ошибки и не останавливает
+  независимый scheduler;
+- token и другие credentials не включаются ни в success, ни в skip/error log;
+  success log по-прежнему появляется только при ненулевом `added`;
+- legacy `_discover_profiles` остался settings/environment adapter и сохраняет
+  ранний return до загрузки config, когда discovery выключен; legacy
+  orchestrator временно вырос с 887 до 888 строк из-за explicit request wiring;
+- добавлено 6 focused contracts для трех уровней token precedence,
+  disabled/missing-token и обоих failure modes; focused regression: 131 тест,
+  полный regression: 880 тестов;
+- wheel содержит canonical runtime discovery module; Ruff, strict mypy,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: discovery CLI и maintenance/evaluate/seed
+composition переносятся следующими независимыми units. Production server, live
+Octo runtime и старый репозиторий не менялись. Rollback 14G7 выполняется revert
 одного отдельного коммита.
 
 Перед удалением:

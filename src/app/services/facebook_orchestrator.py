@@ -83,6 +83,8 @@ from app.facebook.orchestration.commands import (
     ProfileCycleCommandHooks,
     ProfileCycleCommandRequest,
     RunCommandHooks,
+    RuntimeDiscoveryHooks,
+    RuntimeDiscoveryRequest,
     build_parser,
     calibration_policy_from_args,
     log_profile_schedule,
@@ -91,6 +93,7 @@ from app.facebook.orchestration.commands import (
     run_collection_command,
     run_command,
     run_profile_cycle_command,
+    run_runtime_discovery,
     schedule_policy_from_args,
 )
 from app.facebook.orchestration.commands import dispatch as _dispatch_command
@@ -199,32 +202,30 @@ def _discover_profiles(args, *, fail_fast: bool) -> None:
     if not args.discover_octo_profiles:
         return
     config = get_config()
-    token = (
-        args.octo_api_token
-        or os.environ.get("OCTO_API_TOKEN", "")
-        or config.facebook.octo_api_token
-    )
-    search_tags = args.octo_search_tags or config.facebook.octo_search_tags
-    if not token:
-        print(
-            "[orchestrator] Octo Public API discovery skipped: token is not "
-            "configured; using profiles.json",
-            flush=True,
-        )
-        return
-    try:
-        added = _merge_public_profiles(
-            Path(args.profiles_json),
-            token=token,
-            search_tags=search_tags,
+    run_runtime_discovery(
+        RuntimeDiscoveryRequest(
+            enabled=args.discover_octo_profiles,
+            profiles_path=Path(args.profiles_json),
+            cli_token=args.octo_api_token,
+            environment_token=os.environ.get("OCTO_API_TOKEN", ""),
+            configured_token=config.facebook.octo_api_token,
+            cli_search_tags=args.octo_search_tags,
+            configured_search_tags=config.facebook.octo_search_tags,
             enable_new=args.enable_discovered,
-        )
-        if added:
-            print(f"[orchestrator] discovered {added} new Octo profile(s)", flush=True)
-    except Exception as exc:
-        if fail_fast:
-            raise
-        print(f"[orchestrator] Octo discovery failed: {exc!r}", flush=True)
+            fail_fast=fail_fast,
+        ),
+        RuntimeDiscoveryHooks(
+            merge_profiles=lambda path, token, search_tags, enable_new: (
+                _merge_public_profiles(
+                    path,
+                    token=token,
+                    search_tags=search_tags,
+                    enable_new=enable_new,
+                )
+            ),
+            log=lambda message: print(message, flush=True),
+        ),
+    )
 
 
 def _run_profile_cycle(
