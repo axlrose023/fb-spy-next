@@ -21,7 +21,7 @@ from ..persistence import FacebookRun
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from app.services.facebook.importer import (
+    from ..importing import (
         FacebookAdsImporter,
         FacebookAdsStreamingImportSession,
     )

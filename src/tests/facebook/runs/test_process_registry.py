@@ -10,7 +10,7 @@ import pytest
 
 from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
-from app.services.facebook.importer import FacebookAdsImporter
+from app.facebook.runs.adapters import FacebookAdsImporter
 from app.services.facebook.runner_process import FacebookRunnerRegistry
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 

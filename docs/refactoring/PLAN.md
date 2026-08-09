@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14B завершен
+Статус: `IN_PROGRESS` — этап 14C завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A, 14B COMPLETE`)
+Статус: `IN_PROGRESS` (`14A, 14B, 14C COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -2909,6 +2909,43 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 14B
+выполняется revert одного отдельного коммита.
+
+#### 14C. Facebook run importer
+
+Результат:
+
+- 690-строчный importer перенесён в owning outer adapter package
+  `facebook.runs.adapters.importing` и разделён на coordinator, artifacts,
+  batch relevance, streaming session, stream synchronization и typed state;
+- synchronous/Taskiq relevance paths, retry/timeout calculations, accepted/
+  rejected decoration, atomic JSON writes, metadata/stats updates, streaming
+  incremental/replace semantics и legacy logger name сохранены;
+- ad ingestion использует уже принадлежащий UoW `facebook_ads` repository вместо
+  создания второго wrapper над той же session; flush/replace/media upload
+  порядок не изменён;
+- application IoC, run commands/service и runner registry переключены на public
+  `facebook.runs.adapters` importer API; production import count старого
+  `services.facebook.importer` равен нулю;
+- `app.services.facebook.importer` сокращён с 690 до 8 строк и оставлен
+  identity-preserving compatibility facade; `app.services.facebook` также
+  экспортирует canonical class напрямую;
+- lazy exports в `ad_library` и `facebook.runs.adapters` устраняют settings/UoW
+  import cycles; оба порядка импорта UoW/importer защищены subprocess tests;
+- cross-application mapping/dedup helpers опубликованы через
+  `app.ad_library.ads`; architecture guard разрешает application-root facade
+  публиковать только модули собственного application;
+- добавлено 3 focused compatibility/import-order tests; importer, streaming,
+  ingestion, process registry, runner и architecture suites проходят; canonical
+  importer package проходит strict mypy; полный regression: 778 tests;
+- production-файлы importer package имеют от 26 до 272 строк, coordinator —
+  220 строк; wheel содержит все canonical modules и legacy facade;
+- Ruff, architecture/contracts, stage-scoped pre-commit, frontend production
+  build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 14C
 выполняется revert одного отдельного коммита.
 
 Перед удалением:

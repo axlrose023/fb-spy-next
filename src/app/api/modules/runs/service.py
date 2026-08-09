@@ -13,6 +13,7 @@ from app.facebook.runs import (
     RunService,
 )
 from app.facebook.runs.adapters import (
+    FacebookAdsImporter,
     LegacyRunAdsImporter,
     RunArtifactDirectoryStager,
 )
@@ -33,7 +34,6 @@ from app.facebook.runs.schemas import (
     to_response,
     to_start_command,
 )
-from app.services.facebook.importer import FacebookAdsImporter
 from app.settings import Config
 
 

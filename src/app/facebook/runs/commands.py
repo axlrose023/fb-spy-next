@@ -14,9 +14,9 @@ from sqlalchemy import select
 
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
-from app.services.facebook.importer import FacebookAdsImporter
 from app.settings import get_config
 
+from .adapters import FacebookAdsImporter
 from .adapters.persistence import FacebookRun
 
 

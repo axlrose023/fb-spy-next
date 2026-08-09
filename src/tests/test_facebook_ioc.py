@@ -4,9 +4,9 @@ import pytest
 
 from app.facebook.ioc import FacebookProvider
 from app.facebook.runs import RunService
+from app.facebook.runs.adapters import FacebookAdsImporter
 from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
 from app.ioc import get_async_container
-from app.services.facebook.importer import FacebookAdsImporter
 
 pytestmark = pytest.mark.unit
 

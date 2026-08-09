@@ -5,6 +5,7 @@ from app.ad_library.media import MediaStorage
 from app.database.uow import UnitOfWork
 from app.facebook.runs import RunDefaults, RunService
 from app.facebook.runs.adapters import (
+    FacebookAdsImporter,
     LegacyRunAdsImporter,
     RunArtifactDirectoryStager,
 )
@@ -13,7 +14,6 @@ from app.facebook.runs.adapters.persistence import (
     SqlAlchemyRunTransaction,
 )
 from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
-from app.services.facebook.importer import FacebookAdsImporter
 from app.settings import Config
 
 

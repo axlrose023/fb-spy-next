@@ -138,6 +138,8 @@ def test_cross_module_imports_use_public_package_api() -> None:
             target_owner = _owner(imported)
             if target_owner is None or target_owner == source_owner:
                 continue
+            if source == f"app.{target_owner[0]}":
+                continue
             if (
                 source.endswith(".ioc")
                 and source_owner is not None
