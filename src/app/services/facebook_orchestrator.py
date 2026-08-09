@@ -30,6 +30,12 @@ from app.facebook.adapters.octo import (
     OctoProfileSessionManager,
     OctoPublicProfileSource,
 )
+from app.facebook.calibration import (
+    CalibrationIntensityPolicy,
+    CalibrationPlan,
+    effective_target_goal,
+    plan_calibration_intensity,
+)
 from app.facebook.profiles import (
     BaselineBuildOptions,
     DiscoveredProfile,
@@ -60,31 +66,7 @@ _POOL_FILE_LOCK = threading.Lock()
 _ACTIVE_PROCESS_LOCK = threading.Lock()
 _ACTIVE_PROCESSES: set[subprocess.Popen] = set()
 _STOP_EVENT = threading.Event()
-_RECOVERY_CALIBRATION_REASONS = {
-    "zero_ads_repeated",
-    "zero_relevant_ads",
-}
-_LOW_RELEVANCE_CALIBRATION_REASONS = {
-    "one_relevant_ad",
-    "proactive_quality_drop",
-    "relevance_rate_below_minimum",
-    "relevance_rate_too_low",
-    "too_few_relevant_ads",
-}
-
-
 ProfileConfig = Profile
-
-
-@dataclass(frozen=True)
-class CalibrationPlan:
-    tier: str
-    target_limit: int
-    target_goal: int
-    max_reactions: int
-    max_follows: int
-    max_comments: int
-    min_interactions: int
 
 
 @dataclass(frozen=True)
@@ -1986,71 +1968,28 @@ def _calibration_plan(
     args,
     available_targets: int,
 ) -> CalibrationPlan:
-    reasons = set(decision.reasons)
-    if reasons.intersection(_RECOVERY_CALIBRATION_REASONS):
-        tier = "recovery"
-        desired_goal = args.calibration_recovery_target_goal
-        desired_limit = args.calibration_recovery_target_limit
-    elif reasons.intersection(_LOW_RELEVANCE_CALIBRATION_REASONS):
-        tier = "low_relevance"
-        desired_goal = args.calibration_low_relevance_target_goal
-        desired_limit = desired_goal
-    else:
-        tier = "standard"
-        desired_goal = args.calibration_target_goal
-        desired_limit = max(args.calibration_limit, desired_goal)
-
-    if args.calibration_offer_funnel:
-        desired_goal = min(desired_goal, args.calibration_funnel_target_goal)
-
-    target_limit = min(max(0, available_targets), desired_limit)
-    target_goal = min(target_limit, desired_goal)
-    if tier == "standard":
-        return CalibrationPlan(
-            tier=tier,
-            target_limit=target_limit,
-            target_goal=target_goal,
+    return plan_calibration_intensity(
+        decision,
+        CalibrationIntensityPolicy(
+            standard_limit=args.calibration_limit,
+            standard_goal=args.calibration_target_goal,
+            recovery_limit=args.calibration_recovery_target_limit,
+            recovery_goal=args.calibration_recovery_target_goal,
+            low_relevance_goal=args.calibration_low_relevance_target_goal,
+            funnel_enabled=args.calibration_offer_funnel,
+            funnel_goal=args.calibration_funnel_target_goal,
             max_reactions=args.calibration_max_reactions,
             max_follows=args.calibration_max_follows,
             max_comments=args.calibration_max_comments,
             min_interactions=args.calibration_min_interactions,
-        )
-
-    max_reactions = max(
-        args.calibration_max_reactions,
-        math.ceil(target_limit * 0.30),
-    )
-    max_follows = max(
-        args.calibration_max_follows,
-        math.ceil(target_limit * 0.10),
-    )
-    max_comments = args.calibration_max_comments
-    if args.calibration_comment_every > 0:
-        possible_comments = math.ceil(
-            target_limit / args.calibration_comment_every,
-        )
-        max_comments = max(max_comments, min(10, possible_comments))
-    return CalibrationPlan(
-        tier=tier,
-        target_limit=target_limit,
-        target_goal=target_goal,
-        max_reactions=max_reactions,
-        max_follows=max_follows,
-        max_comments=max_comments,
-        min_interactions=max(
-            args.calibration_min_interactions,
-            math.ceil(target_limit * 0.10),
+            comment_every=args.calibration_comment_every,
         ),
+        available_targets=available_targets,
     )
 
 
 def _effective_calibration_target_goal(plan: CalibrationPlan) -> int:
-    if plan.tier == "standard" or plan.target_limit <= 10:
-        return plan.target_goal
-    return min(
-        plan.target_goal,
-        max(10, math.ceil(plan.target_limit * 0.60)),
-    )
+    return effective_target_goal(plan)
 
 
 def _calibration_passes_for_cycle(

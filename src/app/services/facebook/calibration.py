@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -14,34 +14,19 @@ from sqlalchemy import select
 from app.api.modules.ads.models import FacebookAd
 from app.api.modules.runs.models import FacebookRun
 from app.database.engine import SessionFactory
+from app.facebook.calibration import (
+    CalibrationTarget,
+)
+from app.facebook.calibration import (
+    rotate_calibration_targets as _rotate_calibration_targets,
+)
+from app.facebook.calibration import (
+    select_calibration_targets as _select_calibration_targets,
+)
 from app.settings import Config
 
-
-@dataclass
-class CalibrationTarget:
-    url: str
-    advertiser: str = ""
-    displayed_domain: str = ""
-    headline: str = ""
-    ad_text: str = ""
-    cta: str = ""
-    cta_href: str | None = None
-    country: str | None = None
-    fb_ad_id: str | None = None
-    feed_element_id: str | None = None
-    facebook_page_url: str | None = None
-    facebook_post_url: str | None = None
-    landing_full: str | None = None
-    landing_clean: str | None = None
-    creative_img: str | None = None
-    source: str = ""
-    source_index: int | None = None
-    run_id: str | None = None
-    captured_at: str | None = None
-
-    @property
-    def domain_key(self) -> str:
-        return _domain_key(self.landing_clean or self.url or self.displayed_domain)
+rotate_calibration_targets = _rotate_calibration_targets
+select_calibration_targets = _select_calibration_targets
 
 
 def load_targets_from_ads_json(
@@ -213,18 +198,6 @@ def load_saved_facebook_targets_from_ads_json(
     return targets
 
 
-def rotate_calibration_targets(
-    targets: list[CalibrationTarget],
-    offset: int,
-) -> list[CalibrationTarget]:
-    if not targets:
-        return []
-    normalized_offset = max(0, offset) % len(targets)
-    if normalized_offset == 0:
-        return list(targets)
-    return [*targets[normalized_offset:], *targets[:normalized_offset]]
-
-
 async def load_targets_from_db(
     config: Config,
     *,
@@ -264,67 +237,6 @@ async def load_targets_from_db(
         limit=limit,
         max_per_domain=max_per_domain,
         include_creative_fallback=include_creative_fallback,
-    )
-
-
-def select_calibration_targets(
-    raw_ads: list[dict[str, Any]],
-    *,
-    country: str | None = None,
-    limit: int = 20,
-    max_per_domain: int = 2,
-    include_creative_fallback: bool = False,
-) -> list[CalibrationTarget]:
-    normalized_country = _normalize_filter(country)
-    candidates: list[tuple[int, datetime, CalibrationTarget]] = []
-    seen_keys: set[str] = set()
-    seen_landing_keys: set[str] = set()
-
-    for raw in raw_ads:
-        if normalized_country and _normalize_filter(raw.get("country")) != normalized_country:
-            continue
-
-        url = _target_url(raw, include_creative_fallback=include_creative_fallback)
-        if not url:
-            continue
-
-        target = CalibrationTarget(
-            url=url,
-            advertiser=str(raw.get("advertiser") or ""),
-            displayed_domain=str(raw.get("displayed_domain") or ""),
-            headline=str(raw.get("headline") or ""),
-            ad_text=str(raw.get("ad_text") or ""),
-            cta=str(raw.get("cta") or ""),
-            cta_href=_clean(raw.get("cta_href")),
-            country=_clean(raw.get("country")),
-            fb_ad_id=_clean(raw.get("fb_ad_id")),
-            feed_element_id=_clean(raw.get("feed_element_id")),
-            facebook_page_url=_clean(raw.get("facebook_page_url")),
-            facebook_post_url=_clean(raw.get("facebook_post_url")),
-            landing_full=_clean(raw.get("landing_full")),
-            landing_clean=_clean(raw.get("landing_clean")),
-            creative_img=_clean(raw.get("creative_img")),
-            source=str(raw.get("_source") or ""),
-            source_index=_int_or_none(raw.get("_source_index") or raw.get("source_index")),
-            run_id=_clean(raw.get("run_id")),
-            captured_at=_clean(raw.get("captured_at")),
-        )
-        unique_key = _unique_key(target)
-        landing_key = target.landing_clean or target.url
-        if (
-            unique_key in seen_keys
-            or (not target.fb_ad_id and landing_key in seen_landing_keys)
-        ):
-            continue
-        seen_keys.add(unique_key)
-        seen_landing_keys.add(landing_key)
-        candidates.append((_target_score(raw), _captured_at(raw), target))
-
-    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return _limit_by_domain(
-        [target for _, _, target in candidates],
-        limit=limit,
-        max_per_domain=max_per_domain,
     )
 
 
@@ -462,82 +374,6 @@ def _valid_facebook_post_url(value: Any) -> str:
         return url
     else:
         return ""
-
-
-def _target_score(raw: dict[str, Any]) -> int:
-    score = 0
-    if raw.get("landing_full"):
-        score += 5
-    if raw.get("fb_ad_id"):
-        score += 2
-    if raw.get("headline") or raw.get("ad_text"):
-        score += 1
-    if raw.get("has_video"):
-        score += 1
-    return score
-
-
-def _limit_by_domain(
-    targets: list[CalibrationTarget],
-    *,
-    limit: int,
-    max_per_domain: int,
-) -> list[CalibrationTarget]:
-    if limit <= 0:
-        return []
-
-    domain_counts: dict[str, int] = {}
-    selected: list[CalibrationTarget] = []
-    overflow: list[CalibrationTarget] = []
-    per_domain = max(1, max_per_domain)
-
-    for target in targets:
-        domain = target.domain_key or target.displayed_domain or target.url
-        count = domain_counts.get(domain, 0)
-        if count < per_domain:
-            selected.append(target)
-            domain_counts[domain] = count + 1
-        else:
-            overflow.append(target)
-        if len(selected) >= limit:
-            return selected
-
-    for target in overflow:
-        selected.append(target)
-        if len(selected) >= limit:
-            break
-    return selected
-
-
-def _unique_key(target: CalibrationTarget) -> str:
-    if target.fb_ad_id:
-        return f"fb_ad_id:{target.fb_ad_id}"
-    clean = target.landing_clean or ""
-    if clean:
-        return f"landing_clean:{clean}"
-    return f"url:{target.url}"
-
-
-def _domain_key(value: str) -> str:
-    if not value:
-        return ""
-    if "://" not in value and "." in value:
-        value = f"https://{value}"
-    try:
-        host = urlsplit(value).netloc or urlsplit(f"https://{value}").netloc
-    except ValueError:
-        return value.lower().strip()
-    return host.lower().removeprefix("www.")
-
-
-def _captured_at(raw: dict[str, Any]) -> datetime:
-    value = _clean(raw.get("captured_at"))
-    if not value:
-        return datetime.min
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return datetime.min
 
 
 def _aware_datetime(value: Any) -> datetime | None:

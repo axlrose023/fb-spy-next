@@ -1,6 +1,6 @@
 from .contracts import RunProcessRunner, RunRepository
 from .exceptions import RunArtifactsNotFound, RunNotActive, RunNotFound
-from .metrics import RunMetrics
+from .metrics import RunMetrics, collect_run_metrics, parse_datetime
 from .models import (
     ImportRun,
     NewRun,
@@ -27,4 +27,6 @@ __all__ = [
     "RunRepository",
     "RunService",
     "StartRun",
+    "collect_run_metrics",
+    "parse_datetime",
 ]

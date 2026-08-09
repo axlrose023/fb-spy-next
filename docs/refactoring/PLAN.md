@@ -1660,7 +1660,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 11. `facebook/calibration`
 
-Статус: `PENDING`
+Статус: `IN_PROGRESS` (`11A COMPLETE`)
 
 Источники:
 
@@ -1683,6 +1683,26 @@ calibration decision части services/facebook/health.py
 - recovery intensity;
 - cooldown/backoff/maintenance;
 - pure differential tests legacy/new.
+
+Результат 11A:
+
+- `CalibrationPolicy`, `CalibrationDecision` и `CalibrationPlan` перенесены в
+  `app.facebook.calibration.models`; legacy health module стал facade;
+- health evaluation разделён на baseline, windows/confidence, consecutive
+  signals, planning context, reasons, timing/backoff и final decision service;
+  production-файлы не превышают 250 строк;
+- target selection/rotation и severity-based calibration intensity перенесены
+  в чистые planning-модули; orchestrator только преобразует прежние CLI args в
+  `CalibrationIntensityPolicy`, сохраняя command contract;
+- zero/low/drop/maintenance, cooldown, retry, burst backoff, daily limit,
+  minimum target blockers и baseline compatibility сохраняют прежний результат;
+- до cutover выполнено 400 deterministic differential cases старой и новой
+  реализации без расхождений; после cutover 138 health/calibration/orchestrator
+  тестов проходят, focused branch coverage модуля составляет 91%;
+- полный regression 11A: 235 + 302 + 10, итого 547 тестов; frontend production
+  build, architecture/contracts, strict mypy, pre-commit и gitleaks проходят;
+- `app.services.facebook.health` и target helpers оставлены compatibility
+  facades; engagement, offer funnel и calibration CLI в 11A не переносились.
 
 #### 11B. Engagement
 
