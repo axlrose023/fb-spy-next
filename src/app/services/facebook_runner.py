@@ -44,8 +44,8 @@ import sys
 import time
 import traceback
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from dataclasses import asdict
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -59,6 +59,40 @@ from app.facebook.adapters.octo import (
 )
 from app.facebook.adapters.octo import (
     rewrite_cdp_endpoint_host as _rewrite_cdp_endpoint_host,
+)
+from app.facebook.collection import (
+    ArtifactPolicy,
+    CollectionService,
+    ad_summary,
+    creative_identity,
+    is_lazy_video_image,
+    normalize_fingerprint_text,
+)
+from app.facebook.collection import (
+    CollectedAd as Ad,
+)
+from app.facebook.collection import (
+    utc_now as collection_utc_now,
+)
+from app.facebook.collection.adapters.playwright import (
+    BAD_DOMAINS as COLLECTION_BAD_DOMAINS,
+)
+from app.facebook.collection.adapters.playwright import (
+    DETECT_JS as COLLECTION_DETECT_JS,
+)
+from app.facebook.collection.adapters.playwright import (
+    PASSIVE_MEDIA_GUARD_INSTALL_JS as COLLECTION_PASSIVE_MEDIA_GUARD_INSTALL_JS,
+)
+from app.facebook.collection.adapters.playwright import (
+    FeedReader,
+    install_passive_media_guard,
+    prepare_passive_media_guard,
+)
+from app.facebook.collection.adapters.playwright import (
+    passive_media_guard_stats as _passive_media_guard_stats,
+)
+from app.facebook.collection.adapters.playwright import (
+    pause_all_videos as _pause_all_videos,
 )
 from app.facebook.enrichment import (
     archive_landing_page_from_browser,
@@ -102,42 +136,31 @@ BROWSER_OPERATION_TIMEOUT_REASONS = frozenset({
     "resolve_timeout",
     "video_timeout",
 })
+BAD_DOMAINS = COLLECTION_BAD_DOMAINS
+DETECT_JS = COLLECTION_DETECT_JS
+PASSIVE_MEDIA_GUARD_INSTALL_JS = COLLECTION_PASSIVE_MEDIA_GUARD_INSTALL_JS
 
 # Sponsored marker glyphs (private use area). Language-independent.
 GLYPHS = [0xF17E1, 0xF078B]
 
-# Domains that appear inside ad cards but are NOT the advertiser landing.
-BAD_DOMAINS = (
-    "google.com", "facebook.com", "fb.com", "fb.me", "youtube.com",
-    "instagram.com", "wa.me", "whatsapp.com", "messenger.com",
-)
-
-
 def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+    return collection_utc_now()
 
 
 def _norm_fingerprint_text(value: str) -> str:
-    return re.sub(r"\s+", " ", value or "").strip().casefold()
+    return normalize_fingerprint_text(value)
 
 
 def _creative_identity(url: str) -> str:
-    if not url:
-        return ""
-    try:
-        from urllib.parse import urlsplit
-        p = urlsplit(url)
-        return f"{p.netloc.lower()}{p.path}"
-    except Exception:
-        return url.split("?", 1)[0]
+    return creative_identity(url)
 
 
 def _is_lazy_video_image(url: str, *, has_video: bool, creative_area: int) -> bool:
-    """Detect a profile thumbnail accidentally selected for a large video."""
-    if not has_video or creative_area < 45000 or not url:
-        return False
-    match = re.search(r"(?:^|[_=&])p(\d{2,4})x(\d{2,4})(?:[_&]|$)", url)
-    return bool(match and max(int(match.group(1)), int(match.group(2))) <= 240)
+    return is_lazy_video_image(
+        url,
+        has_video=has_video,
+        creative_area=creative_area,
+    )
 
 
 def _request_stop(signum, _frame) -> None:
@@ -400,61 +423,6 @@ def rewrite_cdp_endpoint_host(ws_endpoint: str, octo_host: str) -> str:
     return _rewrite_cdp_endpoint_host(ws_endpoint, octo_host)
 
 
-# ── Data model ──────────────────────────────────────────────────────────────
-@dataclass
-class Ad:
-    advertiser: str
-    ad_type: str                      # link | video | in_facebook
-    has_video: bool = False
-    country: str | None = None
-    displayed_domain: str = ""
-    headline: str = ""
-    ad_text: str = ""
-    cta: str = ""
-    cta_href: str = ""
-    creative_img: str = ""
-    video: str = ""
-    screenshot: str = ""
-    screenshot_ok: bool = True
-    screenshot_issue: str = ""
-    # filled by click-resolve (link ads only)
-    landing_full: str | None = None
-    landing_clean: str | None = None
-    landing_screenshot: str | None = None
-    landing_archive: str | None = None
-    fb_ad_id: str | None = None
-    feed_element_id: str | None = None
-    facebook_page_url: str | None = None
-    facebook_post_url: str | None = None
-    utm: dict = field(default_factory=dict)
-    # meta
-    captured_at: str = field(default_factory=utc_now)
-
-    def dedup_key(self) -> str:
-        if self.fb_ad_id:
-            return f"adid:{self.fb_ad_id}"
-        parts = (
-            self.advertiser,
-            self.displayed_domain,
-            self.headline,
-            self.ad_text,
-            self.cta,
-            _creative_identity(self.creative_img),
-        )
-        return "creative:" + "\x1f".join(_norm_fingerprint_text(p) for p in parts)
-
-    def coarse_key(self) -> str:
-        """Textual identity used only to collapse media-loading states."""
-        parts = (
-            self.advertiser,
-            self.displayed_domain,
-            self.headline,
-            self.ad_text,
-            self.cta,
-        )
-        return "text:" + "\x1f".join(_norm_fingerprint_text(p) for p in parts)
-
-
 def _write_ads(path: Path, ads: dict[str, Ad]) -> None:
     payload = json.dumps([asdict(a) for a in ads.values()],
                          ensure_ascii=False, indent=2)
@@ -539,416 +507,11 @@ def _write_octo_start_failure(
 
 
 def _ad_summary(ads: dict[str, Ad]) -> dict:
-    by_type: dict[str, int] = {}
-    countries: dict[str, int] = {}
-    domains: dict[str, int] = {}
-    for ad in ads.values():
-        by_type[ad.ad_type] = by_type.get(ad.ad_type, 0) + 1
-        if ad.country:
-            countries[ad.country] = countries.get(ad.country, 0) + 1
-        domain = ad.landing_clean or ad.landing_full or ad.displayed_domain
-        if domain:
-            domains[domain] = domains.get(domain, 0) + 1
-    resolved = [ad for ad in ads.values() if ad.landing_full or ad.landing_clean]
-    screenshots = [ad for ad in ads.values() if ad.screenshot]
-    return {
-        "unique_ads": len(ads),
-        "by_type": by_type,
-        "countries": countries,
-        "resolved_landings": len(resolved),
-        "unique_landing_clean": len({
-            ad.landing_clean or ad.landing_full for ad in resolved
-            if ad.landing_clean or ad.landing_full
-        }),
-        "unique_fb_ad_ids": len({
-            ad.fb_ad_id for ad in ads.values() if ad.fb_ad_id
-        }),
-        "unique_advertisers": len({
-            ad.advertiser for ad in ads.values() if ad.advertiser
-        }),
-        "unique_domains": len(domains),
-        "screenshot_attempted": len(screenshots),
-        "screenshot_ok": sum(1 for ad in screenshots if ad.screenshot_ok is not False),
-        "video_ads": sum(1 for ad in ads.values() if ad.has_video),
-    }
+    return ad_summary(ads)
 
 
 def normalize_country(value: str | None) -> str | None:
     return _normalize_country(value)
-
-
-# ── In-page detector (runs in the browser) ─────────────────────────────────
-# Returns one record per glyph-detected ad story currently in the DOM. The
-# detector starts from the sponsored glyph span and climbs to the smallest
-# story-like container, then tags it with data-fbspy-id so Python can screenshot
-# and click the exact same block.
-DETECT_JS = r"""
-() => {
-  const GLYPHS = [0xF17E1, 0xF078B];
-  const DOMAIN_RE = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
-  const BAD = %BAD%;
-  const PUA = c => (c>=0xE000&&c<=0xF8FF)||(c>=0xF0000);
-  const strip = s => [...(s||"")]
-    .filter(ch=>!PUA(ch.codePointAt(0)))
-    .join("")
-    .replace(/\u200e|\u200f|\u00a0/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const linesOf = el => (el && el.innerText || "")
-    .split("\n").map(strip).filter(Boolean);
-  const hasGlyphText = t => {
-    for (const ch of (t||"")) if (GLYPHS.includes(ch.codePointAt(0))) return true;
-    return false;
-  };
-  const isDomain = s => DOMAIN_RE.test((s||"").trim());
-  const domainOf = s => {
-    const m = (s||"").trim().match(DOMAIN_RE);
-    if (!m) return "";
-    return s.replace(/^https?:\/\//i,"").split("/")[0].toLowerCase();
-  };
-  const badDomain = dom => BAD.some(b => dom === b || dom.endsWith("." + b) || dom.includes(b));
-  const hasLetters = s => /[\p{L}]/u.test(s||"");
-  const wordCount = s => strip(s).split(/\s+/).filter(Boolean).length;
-  const numericLike = s => /^[\d\s.,+]+([KkMmBb])?$/.test(strip(s).replace(/\s+/g, ""));
-  const likelyCtaText = s => {
-    const tx = strip(s);
-    const words = wordCount(tx);
-    return tx.length >= 2 && tx.length <= 42 && words >= 1 && words <= 5 &&
-      hasLetters(tx) && !/\d/.test(tx) && !numericLike(tx) && !isDomain(tx) &&
-      !/[a-z0-9-]+\.[a-z]{2,}/i.test(tx);
-  };
-  const engagementTop = root => {
-    let top = Infinity;
-    for (const el of root.querySelectorAll('a,[role="button"],[role="link"],[data-action-id]')) {
-      const r = el.getBoundingClientRect();
-      const tx = strip(el.innerText);
-      if (r.width >= 40 && r.height >= 20 && numericLike(tx)) top = Math.min(top, r.top);
-    }
-    return top;
-  };
-  const bestButton = (root, maxTop = Infinity, minTop = -Infinity) => {
-    let best = null;
-    for (const el of root.querySelectorAll('a,[role="button"],[role="link"],[data-action-id]')) {
-      const r = el.getBoundingClientRect();
-      const tx = strip(el.innerText);
-      if (r.top < minTop) continue;
-      if (r.top >= maxTop) continue;
-      if (r.width < 50 || r.height < 20 || r.height > 90 || !likelyCtaText(tx)) continue;
-      const score = r.top * 10 + r.width;
-      if (!best || score > best.score) best = {el, text:tx, score};
-    }
-    return best;
-  };
-  const videoPoster = video => {
-    let root = video.parentElement;
-    for (let depth = 0; root && depth < 4; root = root.parentElement, depth++) {
-      const imgs = [...root.querySelectorAll('img[src][data-image-id]')];
-      if (!imgs.length) continue;
-      imgs.sort((a, b) =>
-        (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
-      return imgs[0].src || "";
-    }
-    return "";
-  };
-  const biggestImgInfo = s => {
-    let src = "", area = 0, bottom = -Infinity;
-    for (const im of s.querySelectorAll('img[src]')) {
-      if (!im.src || im.src.startsWith('data:')) continue;
-      const r = im.getBoundingClientRect();
-      const a = r.width * r.height;
-      if (a > area) { area = a; src = im.src; bottom = r.bottom; }
-    }
-    for (const v of s.querySelectorAll('video')) {
-      const r = v.getBoundingClientRect();
-      const a = r.width * r.height;
-      if (a > area) {
-        area = a;
-        bottom = r.bottom;
-        // The visible video has a hidden poster sibling. Keep that stable URL
-        // instead of retaining whichever small profile image was seen first.
-        src = videoPoster(v);
-      }
-    }
-    return {src, area, bottom};
-  };
-  const hasVideo = s => !!s.querySelector('video');
-  const hasVideoCreative = s => {
-    if (hasVideo(s)) return true;
-    for (const el of s.querySelectorAll('button,[role="button"],[aria-label],video')) {
-      const cls = (typeof el.className === "string" ? el.className : "").toLowerCase();
-      const label = (el.getAttribute("aria-label") || "").toLowerCase();
-      if (cls.includes("inline-video-icon") || label.includes("video")) return true;
-    }
-    return false;
-  };
-  const decodedAttributeValue = raw => (raw || "")
-    .replace(/\\u0025/gi, "%")
-    .replace(/\\u0026/gi, "&")
-    .replace(/\\u003d/gi, "=")
-    .replace(/\\u002f/gi, "/")
-    .replace(/\\\//g, "/")
-    .replace(/&amp;/gi, "&");
-  const urlsFromAttribute = raw => {
-    const value = decodedAttributeValue(raw);
-    const urls = [];
-    if (/^(?:https?:\/\/|\/l\.php\?)/i.test(value.trim())) {
-      urls.push(value.trim());
-    }
-    for (const match of value.matchAll(/https?:\/\/[^"'\\\s<>]+/gi)) {
-      urls.push(match[0]);
-    }
-    return [...new Set(urls)];
-  };
-  const outboundHrefInfo = (raw, displayedDomain, sourceScore) => {
-    let parsed;
-    try { parsed = new URL(raw, location.href); } catch (_) { return null; }
-    if (!/^https?:$/.test(parsed.protocol)) return null;
-    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
-    const path = parsed.pathname.toLowerCase();
-    let targetHost = host;
-    const facebookHost = host === "facebook.com" || host.endsWith(".facebook.com");
-    if (facebookHost) {
-      if (!path.endsWith("/l.php")) return null;
-      const target = parsed.searchParams.get("u");
-      if (!target) return null;
-      try {
-        const targetUrl = new URL(target);
-        targetHost = targetUrl.hostname.toLowerCase().replace(/^www\./, "");
-      } catch (_) {
-        return null;
-      }
-    }
-    if (badDomain(targetHost)) return null;
-    if (/\.(?:png|jpe?g|gif|webp|svg|mp4|m3u8)(?:$|\?)/i.test(parsed.href)) {
-      return null;
-    }
-    const expected = (displayedDomain || "").replace(/^www\./, "");
-    const domainMatch = expected && (
-      targetHost === expected ||
-      targetHost.endsWith("." + expected) ||
-      expected.endsWith("." + targetHost)
-    );
-    return {
-      href: parsed.href,
-      score: sourceScore + (domainMatch ? 1000 : 0),
-    };
-  };
-  const passiveHrefOf = (cardEl, buttonEl, story, displayedDomain) => {
-    const candidates = [];
-    const inspect = (node, baseScore) => {
-      if (!node || !node.attributes) return;
-      const explicitNames = new Set([
-        "href", "data-lynx-uri", "data-href", "data-url",
-        "data-destination-url", "data-endpoint",
-      ]);
-      for (const attr of node.attributes) {
-        const name = (attr.name || "").toLowerCase();
-        const explicit = explicitNames.has(name);
-        if (!explicit && !/(?:url|uri|href|store|tracking)/.test(name)) continue;
-        for (const rawUrl of urlsFromAttribute(attr.value || "")) {
-          const info = outboundHrefInfo(
-            rawUrl,
-            displayedDomain,
-            baseScore + (explicit ? 200 : 0),
-          );
-          if (info) candidates.push(info);
-        }
-      }
-    };
-    let node = buttonEl;
-    for (let depth = 0; node && node !== story && depth < 7;
-         node = node.parentElement, depth++) {
-      inspect(node, 700 - depth * 20);
-    }
-    for (const child of cardEl.querySelectorAll(
-      'a[href],[data-lynx-uri],[data-href],[data-url],[data-destination-url]'
-    )) {
-      inspect(child, 500);
-    }
-    node = cardEl;
-    for (let depth = 0; node && node !== story && depth < 5;
-         node = node.parentElement, depth++) {
-      inspect(node, 400 - depth * 20);
-    }
-    candidates.sort((a, b) => b.score - a.score);
-    return candidates.length ? candidates[0].href : "";
-  };
-  const linkCard = s => {
-    let best = null;
-    for (const d of s.querySelectorAll('div')) {
-      const r = d.getBoundingClientRect();
-      if (r.width < 240 || r.height < 30) continue;
-      if (hasGlyphText(d.innerText || "")) continue;
-      const dl = linesOf(d);
-      if (dl.length < 2 || !isDomain(dl[0])) continue;
-      const dom = domainOf(dl[0]);
-      if (!dom || badDomain(dom)) continue;
-      const btn = bestButton(d, engagementTop(s));
-      const cta = btn ? btn.text : "";
-      const candidate = {
-        el: d,
-        domain: dom,
-        headline: dl[1] || "",
-        cta,
-        btn: btn ? btn.el : null,
-        area: r.width * r.height,
-      };
-      if (!best || (candidate.btn && !best.btn) || candidate.area < best.area) best = candidate;
-    }
-    if (!best) return null;
-    let target = best.btn;
-    if (!target) {
-      for (let el = best.el, depth = 0; el && el !== s && depth < 5;
-           el = el.parentElement, depth++) {
-        if (el.matches('a,[role="button"],[role="link"],[data-action-id]')) {
-          target = el;
-          break;
-        }
-      }
-    }
-    const br = best.btn ? best.btn.getBoundingClientRect() : null;
-    const href = passiveHrefOf(best.el, target, s, best.domain);
-    return {
-      domain: best.domain,
-      headline: best.headline,
-      cta: best.cta,
-      href,
-      btn: br ? {x:Math.round(br.left+br.width/2), y:Math.round(br.top+br.height/2)} : null,
-      target,
-    };
-  };
-  const storyRootFor = sp => {
-    for (let el = sp.parentElement, depth = 0; el && depth < 14; el = el.parentElement, depth++) {
-      if (el.tagName !== "DIV") continue;
-      const text = el.innerText || "";
-      const r = el.getBoundingClientRect();
-      if (r.width < 300 || r.height < 150 || r.height > 2600 ||
-          text.length < 70 || text.length > 3500) continue;
-      const img = biggestImgInfo(el);
-      if (!linkCard(el) && !hasVideo(el) && img.area < 45000) continue;
-      return el;
-    }
-    return null;
-  };
-  const advertiserOf = sp => {
-    const sr = sp.getBoundingClientRect();
-    const sponsored = new Set(linesOf(sp));
-    const cands = [];
-    for (let root = sp.parentElement, depth = 0; root && depth < 8; root = root.parentElement, depth++) {
-      for (const el of root.querySelectorAll('a,[role="link"],span,div,h1,h2,h3,h4')) {
-        if (el === sp || el.contains(sp) || sp.contains(el)) continue;
-        const raw = el.innerText || "";
-        if (hasGlyphText(raw)) continue;
-        const r = el.getBoundingClientRect();
-        if (r.bottom > sr.top + 6) continue;
-        const tx = strip(raw);
-        if (sponsored.has(tx)) continue;
-        if (tx.length >= 2 && tx.length < 80 && hasLetters(tx))
-          cands.push({line:tx, top:r.top, len:tx.length});
-      }
-      if (cands.length) break;
-    }
-    cands.sort((a,b)=>b.top-a.top || b.len-a.len);
-    return cands.length ? cands[0].line : "";
-  };
-  const adTextOf = (root, sp, adv, card) => {
-    const lines = linesOf(root);
-    const sponsored = new Set(linesOf(sp));
-    const skip = new Set([adv, card && card.domain, card && card.headline, card && card.cta]
-      .filter(Boolean));
-    for (const s of sponsored) skip.add(s);
-    const domainIdx = card ? lines.findIndex(l => domainOf(l) === card.domain) : -1;
-    const windowLines = domainIdx > 0 ? lines.slice(0, domainIdx) : lines;
-    let best = "";
-    for (const line of windowLines) {
-      if (skip.has(line) || isDomain(line) || numericLike(line) || !hasLetters(line)) continue;
-      if (likelyCtaText(line) && line.length <= 42) continue;
-      if (line.length > best.length) best = line;
-    }
-    return best;
-  };
-  const facebookIdentityOf = root => {
-    let adId = "", ownerId = "", postId = "";
-    const values = [];
-    for (const el of [root, ...root.querySelectorAll("*")]) {
-      for (const attr of el.attributes || []) {
-        const value = attr.value || "";
-        if (!value.startsWith("{") ||
-            !/(adid|top_level_post_id|story_fbid|content_owner_id_new)/.test(value)) continue;
-        values.push(value);
-      }
-    }
-    for (const value of values) {
-      let payload;
-      try { payload = JSON.parse(value); } catch (_) { continue; }
-      const pending = [payload];
-      let inspected = 0;
-      while (pending.length && inspected++ < 150) {
-        const item = pending.pop();
-        if (!item || typeof item !== "object") continue;
-        if (!adId && item.adid) adId = String(item.adid);
-        if (!ownerId && item.content_owner_id_new) ownerId = String(item.content_owner_id_new);
-        if (!ownerId && item.actor_id) ownerId = String(item.actor_id);
-        if (!postId && item.top_level_post_id) postId = String(item.top_level_post_id);
-        if (!postId && item.story_fbid) {
-          postId = String(Array.isArray(item.story_fbid) ? item.story_fbid[0] : item.story_fbid);
-        }
-        if (!postId && item.post_id) postId = String(item.post_id);
-        for (const child of Object.values(item)) {
-          if (child && typeof child === "object") pending.push(child);
-        }
-      }
-      if (adId && ownerId && postId) break;
-    }
-    return {
-      fb_ad_id: adId,
-      facebook_page_url: ownerId ? `https://m.facebook.com/${ownerId}` : "",
-      facebook_post_url: ownerId && postId
-        ? `https://m.facebook.com/${ownerId}/posts/${postId}`
-        : "",
-    };
-  };
-
-  const seenRoots = new Set();
-  const out = [];
-  const spans = [...document.querySelectorAll('span')]
-    .filter(sp => (sp.getAttribute('style') || '').includes('#8a8d91') && hasGlyphText(sp.innerText));
-  for (const sp of spans) {
-    const el = storyRootFor(sp);
-    if (!el || seenRoots.has(el)) continue;
-    seenRoots.add(el);
-    const card = linkCard(el);
-    const adv = advertiserOf(sp);
-    const adText = adTextOf(el, sp, adv, card);
-    const img = biggestImgInfo(el);
-    const facebook = facebookIdentityOf(el);
-    const has_video = hasVideoCreative(el);
-    let ad_type = card ? "link" : (has_video ? "video" : "in_facebook");
-    const elementId = el.dataset.fbspyId ||
-      ("fbspy_" + Date.now().toString(36) + "_" + out.length);
-    el.dataset.fbspyId = elementId;
-    if (card && card.target) card.target.dataset.fbspyClickTarget = elementId;
-    out.push({
-      advertiser: adv,
-      ad_type,
-      has_video,
-      domain: card ? card.domain : "",
-      headline: card ? card.headline : "",
-      ad_text: adText.slice(0,300),
-      cta: card ? (card.cta || "") : ((bestButton(el, engagementTop(el), img.bottom - 8) || {}).text || ""),
-      cta_href: card ? (card.href || "") : "",
-      creative_img: img.src,
-      creative_area: Math.round(img.area || 0),
-      btn: card ? card.btn : null,
-      element_id: elementId,
-      fb_ad_id: facebook.fb_ad_id,
-      facebook_page_url: facebook.facebook_page_url,
-      facebook_post_url: facebook.facebook_post_url,
-    });
-  }
-  return out;
-}
-""".replace("%BAD%", json.dumps(list(BAD_DOMAINS)))
 
 
 MEDIA_READY_JS = r"""
@@ -1400,171 +963,6 @@ def _pause_ad_video(page, element_id: str | None) -> None:
         )
     except Exception:
         pass
-
-
-PASSIVE_MEDIA_GUARD_INSTALL_JS = r"""
-() => {
-  if (window.__fbSpyPassiveMediaGuard) {
-    window.__fbSpyPassiveMediaGuard.pauseAll();
-    return true;
-  }
-  const state = {
-    blockedPlayCalls: 0,
-    pauseEvents: 0,
-    observedVideos: 0,
-    pauseAll() {
-      for (const video of document.querySelectorAll("video")) {
-        state.observedVideos += 1;
-        try {
-          video.autoplay = false;
-          video.muted = true;
-          if (!video.paused) state.pauseEvents += 1;
-          video.pause();
-        } catch (_) {}
-      }
-    },
-  };
-  const nativePlay = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function (...args) {
-    state.blockedPlayCalls += 1;
-    try {
-      this.autoplay = false;
-      this.muted = true;
-      this.pause();
-    } catch (_) {}
-    return Promise.resolve();
-  };
-  state.nativePlay = nativePlay;
-  const stopPlayback = event => {
-    const video = event.target;
-    if (!(video instanceof HTMLMediaElement)) return;
-    try {
-      video.autoplay = false;
-      video.muted = true;
-      if (!video.paused) state.pauseEvents += 1;
-      video.pause();
-    } catch (_) {}
-  };
-  document.addEventListener("play", stopPlayback, true);
-  const startObserver = () => {
-    if (!document.documentElement || state.observer) return;
-    const observer = new MutationObserver(() => state.pauseAll());
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-    });
-    state.observer = observer;
-    state.pauseAll();
-  };
-  window.__fbSpyPassiveMediaGuard = state;
-  if (document.documentElement) startObserver();
-  else document.addEventListener("DOMContentLoaded", startObserver, {once: true});
-  return true;
-}
-"""
-
-
-def install_passive_media_guard(page) -> bool:
-    """Pause current and newly inserted videos for one passive feed document."""
-    try:
-        return bool(page.evaluate(PASSIVE_MEDIA_GUARD_INSTALL_JS))
-    except Exception:
-        return False
-
-
-def prepare_passive_media_guard(page) -> dict[str, int | bool]:
-    """Install play and media-request blockers before passive feed navigation."""
-    stats: dict[str, int | bool] = {
-        "init_script_installed": False,
-        "media_route_installed": False,
-        "blocked_media_requests": 0,
-    }
-    try:
-        page.add_init_script(f"({PASSIVE_MEDIA_GUARD_INSTALL_JS})()")
-        stats["init_script_installed"] = True
-    except Exception:
-        pass
-
-    def block_media(route) -> None:
-        try:
-            if route.request.resource_type == "media":
-                stats["blocked_media_requests"] += 1
-                route.abort()
-                return
-            route.continue_()
-        except Exception:
-            try:
-                route.abort()
-            except Exception:
-                pass
-
-    try:
-        page.route("**/*", block_media)
-        stats["media_route_installed"] = True
-    except Exception:
-        pass
-    return stats
-
-
-def _pause_all_videos(page) -> None:
-    try:
-        page.evaluate(
-            """
-            () => {
-              const guard = window.__fbSpyPassiveMediaGuard;
-              if (guard && typeof guard.pauseAll === "function") {
-                guard.pauseAll();
-                return;
-              }
-              for (const video of document.querySelectorAll("video")) {
-                try {
-                  video.autoplay = false;
-                  video.muted = true;
-                  video.pause();
-                } catch (_) {}
-              }
-            }
-            """
-        )
-    except Exception:
-        pass
-
-
-def _passive_media_guard_stats(page) -> dict[str, int | bool]:
-    try:
-        payload = page.evaluate(
-            """
-            () => {
-              const guard = window.__fbSpyPassiveMediaGuard;
-              return guard ? {
-                installed: true,
-                blocked_play_calls: Number(guard.blockedPlayCalls || 0),
-                pause_events: Number(guard.pauseEvents || 0),
-                observed_videos: Number(guard.observedVideos || 0),
-              } : {
-                installed: false,
-                blocked_play_calls: 0,
-                pause_events: 0,
-                observed_videos: 0,
-              };
-            }
-            """
-        )
-        if isinstance(payload, dict):
-            return {
-                "installed": bool(payload.get("installed")),
-                "blocked_play_calls": int(payload.get("blocked_play_calls") or 0),
-                "pause_events": int(payload.get("pause_events") or 0),
-                "observed_videos": int(payload.get("observed_videos") or 0),
-            }
-    except Exception:
-        pass
-    return {
-        "installed": False,
-        "blocked_play_calls": 0,
-        "pause_events": 0,
-        "observed_videos": 0,
-    }
 
 
 def neutralize_profile_pages(page, ctx) -> None:
@@ -2313,28 +1711,27 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
             max_ads_per_view: int = 1,
             resolve_post_urls: bool = True,
             interest_safe_mode: bool = False) -> dict[str, Ad]:
-    interest_safe_overrides: list[str] = []
-    if interest_safe_mode:
-        if do_resolve:
-            interest_safe_overrides.append("landing_resolution")
-        if record_videos:
-            interest_safe_overrides.append("video_recording")
-        if resolve_post_urls:
-            interest_safe_overrides.append("permalink_resolution")
-        do_resolve = False
-        record_videos = False
-        resolve_post_urls = False
+    artifact_policy = ArtifactPolicy.from_options(
+        screenshots=shots,
+        landing_resolution=do_resolve,
+        video_recording=record_videos,
+        permalink_resolution=resolve_post_urls,
+        interest_safe=interest_safe_mode,
+    )
+    interest_safe_overrides = list(artifact_policy.overrides)
+    shots = artifact_policy.screenshots
+    do_resolve = artifact_policy.landing_resolution
+    record_videos = artifact_policy.video_recording
+    resolve_post_urls = artifact_policy.permalink_resolution
     shots_dir = run_dir / "screens"
     if shots:
         shots_dir.mkdir(parents=True, exist_ok=True)
     videos_dir = run_dir / "videos"
     if record_videos:
         videos_dir.mkdir(parents=True, exist_ok=True)
-    ads: dict[str, Ad] = {}
-    coarse_keys: dict[str, set[str]] = {}
-    lazy_media_keys: set[str] = set()
-    seen_fb_ad_ids: set[str] = set()
-    duplicate_coarse_keys: set[str] = set()
+    collection_service = CollectionService()
+    feed_reader = FeedReader(page, passive=interest_safe_mode)
+    ads = collection_service.registry.ads
     resolved = 0
     captured = 0
     duplicate_fb_ad_ids = 0
@@ -2380,10 +1777,8 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
         debug.screenshot(page, "viewports/start.png")
     try:
         while not stop_reason and time.time() < deadline and scrolls < max_scrolls:
-            if interest_safe_mode:
-                _pause_all_videos(page)
             try:
-                rows = page.evaluate(DETECT_JS)
+                rows = feed_reader.detect()
             except Exception as exc:
                 rows = []
                 if debug:
@@ -2397,22 +1792,12 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
                 if remaining_seconds <= 5 or STOP_REQUESTED:
                     stop_reason = "interrupted" if STOP_REQUESTED else "time_budget"
                     break
-                ad = Ad(
-                    advertiser=r["advertiser"], ad_type=r["ad_type"],
-                    has_video=bool(r.get("has_video")),
-                    country=country,
-                    displayed_domain=r["domain"], headline=r["headline"],
-                    ad_text=r["ad_text"], cta=r["cta"],
-                    cta_href=r.get("cta_href") or "",
-                    creative_img=r["creative_img"],
-                    feed_element_id=r.get("element_id"),
-                    fb_ad_id=r.get("fb_ad_id") or None,
-                    facebook_page_url=r.get("facebook_page_url") or None,
-                    facebook_post_url=r.get("facebook_post_url") or None,
-                )
-                key = ad.dedup_key()
-                coarse_key = ad.coarse_key()
-                if coarse_key in duplicate_coarse_keys:
+                decision = collection_service.consider_detection(r, country=country)
+                ad = decision.ad
+                key = decision.key
+                coarse_key = decision.coarse_key
+                creative_area = int(r.get("creative_area") or 0)
+                if not decision.accepted and decision.reason == "confirmed_duplicate":
                     if debug:
                         debug.event(
                             "confirmed_duplicate_skip",
@@ -2422,59 +1807,30 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
                             domain=ad.displayed_domain,
                         )
                     continue
-                creative_area = int(r.get("creative_area") or 0)
-                lazy_media = _is_lazy_video_image(
-                    ad.creative_img, has_video=ad.has_video, creative_area=creative_area)
-                if key in ads:
-                    if r.get("element_id"):
-                        ads[key].feed_element_id = r["element_id"]
+                if not decision.accepted and decision.reason == "exact_duplicate":
                     if debug:
                         debug.event("dedup_skip", scroll=scrolls, dedup_key=key,
                                     advertiser=ad.advertiser, domain=ad.displayed_domain,
                                     headline=ad.headline, creative_img=ad.creative_img)
                     continue
-                siblings = coarse_keys.get(coarse_key, set())
-                if lazy_media and siblings:
+                if not decision.accepted and decision.reason == "lazy_media_duplicate":
                     if debug:
                         debug.event("lazy_media_duplicate_skip", scroll=scrolls,
-                                    coarse_key=coarse_key, existing_keys=sorted(siblings),
+                                    coarse_key=coarse_key,
+                                    existing_keys=list(decision.related_keys),
                                     advertiser=ad.advertiser, domain=ad.displayed_domain,
                                     headline=ad.headline, creative_img=ad.creative_img,
                                     creative_area=creative_area)
                     continue
-                inherited = None
-                if not lazy_media:
-                    for old_key in list(siblings & lazy_media_keys):
-                        old = ads.pop(old_key, None)
-                        coarse_keys[coarse_key].discard(old_key)
-                        lazy_media_keys.discard(old_key)
-                        if old and inherited is None:
-                            inherited = old
-                        if debug:
-                            debug.event("lazy_media_replaced", old_key=old_key,
-                                        new_key=key, coarse_key=coarse_key)
-                if inherited:
-                    for attr in (
-                        "landing_full",
-                        "landing_clean",
-                        "landing_screenshot",
-                        "landing_archive",
-                        "fb_ad_id",
-                        "facebook_page_url",
-                        "facebook_post_url",
-                        "utm",
-                        "video",
-                    ):
-                        value = getattr(inherited, attr)
-                        if value:
-                            setattr(ad, attr, value)
+                for old_key in decision.removed_keys:
+                    if debug:
+                        debug.event("lazy_media_replaced", old_key=old_key,
+                                    new_key=key, coarse_key=coarse_key)
                 captured += 1
                 debug_id = captured
                 if debug and r.get("element_id"):
                     try:
-                        html = page.locator(
-                            f'[data-fbspy-id="{r["element_id"]}"]').first.evaluate(
-                                "el => el.outerHTML", timeout=5000)
+                        html = feed_reader.card_html(r["element_id"])
                         debug.write_text(f"ads/{debug_id:04d}.html", html)
                     except Exception as exc:
                         debug.event("ad_dom_failed", debug_id=debug_id, error=repr(exc),
@@ -2502,10 +1858,7 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
                         ad.has_video = ad.has_video or has_video_creative(page, r.get("element_id"))
                         if ad.has_video and ad.ad_type == "in_facebook":
                             ad.ad_type = "video"
-                ads[key] = ad
-                coarse_keys.setdefault(coarse_key, set()).add(key)
-                if lazy_media:
-                    lazy_media_keys.add(key)
+                collection_service.accept(decision)
                 if record_videos and ad.has_video and r.get("element_id") and not ad.video:
                     video_budget_seconds = min(float(video_max_seconds or 0), 45.0) + 20.0
                     if deadline - time.time() > video_budget_seconds:
@@ -2632,12 +1985,8 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
                         stop_reason = "resolve_timeout"
                         break
                     if ad.landing_full:
-                        if ad.fb_ad_id and ad.fb_ad_id in seen_fb_ad_ids:
+                        if not collection_service.register_resolved(decision):
                             duplicate_fb_ad_ids += 1
-                            duplicate_coarse_keys.add(coarse_key)
-                            ads.pop(key, None)
-                            coarse_keys.get(coarse_key, set()).discard(key)
-                            lazy_media_keys.discard(key)
                             if debug:
                                 debug.event("duplicate_ad_id_skip", debug_id=debug_id,
                                             fb_ad_id=ad.fb_ad_id, domain=ad.displayed_domain)
@@ -2649,8 +1998,6 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
                                   f"(ad_id={ad.fb_ad_id})", flush=True)
                             _write_ads(run_dir / "ads.partial.json", ads)
                             continue
-                        if ad.fb_ad_id:
-                            seen_fb_ad_ids.add(ad.fb_ad_id)
                         resolved += 1
                         print(f"  resolved {ad.displayed_domain} -> {ad.landing_clean} "
                               f"(ad_id={ad.fb_ad_id})", flush=True)
@@ -2696,10 +2043,7 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
                             scroll_px=actual_scroll_px,
                             page_url=DebugRecorder._page_url(page), pages=len(ctx.pages))
             try:
-                page.evaluate(
-                    """dy => window.scrollBy({top: dy, left: 0, behavior: "smooth"})""",
-                    actual_scroll_px,
-                )
+                feed_reader.scroll(actual_scroll_px)
             except Exception as exc:
                 print(f"[collect stop] scroll failed: {exc}", flush=True)
                 stop_reason = "scroll_failed"

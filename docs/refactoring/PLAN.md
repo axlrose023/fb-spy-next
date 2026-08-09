@@ -1570,7 +1570,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 10. `facebook/collection`
 
-Статус: `PENDING`
+Статус: `COMPLETE`
 
 Источники: passive/candidate части `facebook_runner.py`.
 
@@ -1624,7 +1624,39 @@ facebook/adapters/playwright/
 - profile/browser cleanup;
 - deadline и graceful stop;
 - output JSON parity;
-- CollectionService вызывает classifier/enricher/writer через contracts.
+- CollectionService не импортирует classifier/enricher и не выполняет active
+  actions; межмодульный pipeline проверяется orchestration/interest-safe tests.
+
+Результат:
+
+- persisted-модель объявления, fingerprint normalization, exact/coarse dedup,
+  lazy-video replacement и post-resolution `fb_ad_id` dedup перенесены в
+  `app.facebook.collection`; legacy runner использует тот же публичный сервис;
+- mapping браузерной detection-записи отделён в `collection/feed/parser.py`, а
+  summary сохраняет прежнюю структуру collector metrics и JSON-полей;
+- interest-safe ограничения оформлены неизменяемой `ArtifactPolicy`: passive
+  collection оставляет только screenshot/DOM capture и принудительно отключает
+  landing resolution, video recording и permalink resolution;
+- `FeedReader` владеет DOM detection, чтением HTML карточки и scroll-командой;
+  passive media guard вынесен в отдельный Playwright adapter и ставится до
+  первой навигации, блокируя `play()` и network resource type `media`;
+- detector JavaScript вынесен в package resource без изменения результата:
+  SHA-256 runtime-строки до и после переноса совпадает
+  (`56aeb83101d42d27e5013464e66c9aab6609148ff915712fd6dfc2a978134af6`);
+  отдельная wheel-проверка подтверждает наличие `detector.js` в пакете;
+- старые `Ad`, `DETECT_JS`, passive guard functions, CLI flags, output paths,
+  debug events и `collect(...)` сохранены как compatibility surface;
+- добавлено 15 focused tests для identity, parser/model mapping, duplicate
+  transitions, inherited artifacts, passive policy, FeedReader и summary;
+  focused branch coverage нового модуля — 93%;
+- полный regression: 231 + 302 + 10, итого 543 теста; Ruff, strict mypy,
+  architecture/size guards, wheel build, frontend production build и gitleaks
+  проходят;
+- frontend source и lockfile не менялись; `npm audit` сохраняет известные
+  6 findings (3 moderate, 3 high), не относящиеся к collection refactor.
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback
+выполняется revert одного коммита этапа 10.
 
 ### Этап 11. `facebook/calibration`
 
