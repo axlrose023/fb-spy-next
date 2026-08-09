@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F10 завершен
+Статус: `IN_PROGRESS` — этап 14G1 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G NEXT`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3366,6 +3366,37 @@ Rollback 14F9 выполняется revert одного отдельного к
 Следующий независимый этап — 14G, orchestrator parser/composition. Production
 server, live Octo runtime и старый репозиторий не менялись. Rollback 14F10
 выполняется revert одного отдельного коммита.
+
+#### 14G1. Orchestrator CLI parser
+
+Результат:
+
+- orchestrator parser вынесен из legacy service в owning
+  `facebook.orchestration.commands` и разделен на parser assembly, run options
+  и maintenance/discovery options;
+- все subcommands, option order, names, defaults, BooleanOptionalAction,
+  hidden `--max-cycles`, choices, help text и exit semantics сохранены;
+- environment-derived `FACEBOOK_CALIBRATION_OFFER_SUBMIT_ALLOW_DOMAINS` и
+  `FACEBOOK_CALIBRATION_OFFER_IDENTITY_JSON` по-прежнему читаются при
+  каждом parser build;
+- legacy `_build_parser` является тем же function object, что и canonical
+  `build_parser`; import `facebook.orchestration.commands` не загружает
+  `app.services.facebook_orchestrator`;
+- legacy orchestrator сокращен с 1 377 до 1 097 строк; canonical
+  command-файлы имеют 4, 21, 54 и 239 строк;
+- добавлено 3 focused contracts: alias identity, import isolation и
+  environment defaults; CLI/orchestration/architecture и strict mypy проходят;
+  полный regression: 860 тестов;
+- все orchestrator CLI help hashes не изменились; wheel содержит
+  canonical commands package и legacy module; Ruff, stage-scoped pre-commit,
+  frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные
+  6 findings (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: dispatch, scheduler/profile-cycle/pipeline,
+calibration/discovery composition переносятся следующими независимыми
+14G units. Production server, live Octo runtime и старый репозиторий не
+менялись. Rollback 14G1 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 
