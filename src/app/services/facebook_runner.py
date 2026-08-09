@@ -79,6 +79,7 @@ from app.facebook.collection import (
 from app.facebook.collection import (
     utc_now as collection_utc_now,
 )
+from app.facebook.collection.adapters import playwright as collection_playwright
 from app.facebook.collection.adapters.playwright import (
     BAD_DOMAINS as COLLECTION_BAD_DOMAINS,
 )
@@ -96,9 +97,6 @@ from app.facebook.collection.adapters.playwright import (
 )
 from app.facebook.collection.adapters.playwright import (
     passive_media_guard_stats as _passive_media_guard_stats,
-)
-from app.facebook.collection.adapters.playwright import (
-    pause_all_videos as _pause_all_videos,
 )
 from app.facebook.enrichment.landing.adapters import (
     playwright as landing_playwright,
@@ -152,6 +150,12 @@ SCROLL_CTA_JS = landing_playwright.SCROLL_CTA_JS
 _close_landing_tabs = landing_playwright.close_landing_tabs
 neutralize_profile_pages = landing_playwright.neutralize_profile_pages
 resolve_in_view = landing_playwright.resolve_in_view
+MEDIA_READY_JS = collection_playwright.MEDIA_READY_JS
+VIDEO_CREATIVE_JS = collection_playwright.VIDEO_CREATIVE_JS
+_screenshot_has_blank_media = collection_playwright.screenshot_has_blank_media
+save_ad_screenshot = collection_playwright.save_ad_screenshot
+has_video_creative = collection_playwright.has_video_creative
+_pause_all_videos = collection_playwright.pause_all_videos
 BROWSER_OPERATION_TIMEOUT_REASONS = frozenset({
     "resolve_timeout",
     "video_timeout",
@@ -336,49 +340,6 @@ def normalize_country(value: str | None) -> str | None:
     return _normalize_country(value)
 
 
-MEDIA_READY_JS = r"""
-(elementId) => {
-  const root = document.querySelector(`[data-fbspy-id="${elementId}"]`);
-  if (!root) return false;
-  const visible = el => {
-    const r = el.getBoundingClientRect();
-    const s = getComputedStyle(el);
-    return r.width * r.height >= 25000 &&
-      r.bottom > 0 && r.top < innerHeight &&
-      s.display !== "none" && s.visibility !== "hidden" && Number(s.opacity || 1) > 0.05;
-  };
-  const media = [...root.querySelectorAll("img,video")].filter(visible);
-  if (!media.length) return true;
-  return media.some(el => {
-    if (el.tagName === "IMG") {
-      return el.complete && el.naturalWidth > 50 && el.naturalHeight > 50;
-    }
-    if (el.tagName === "VIDEO") {
-      return (el.readyState || 0) >= 2 ||
-        (el.videoWidth > 50 && el.videoHeight > 50) ||
-        !!el.poster;
-    }
-    return false;
-  });
-}
-"""
-
-
-VIDEO_CREATIVE_JS = r"""
-(elementId) => {
-  const root = document.querySelector(`[data-fbspy-id="${elementId}"]`);
-  if (!root) return false;
-  if (root.querySelector("video")) return true;
-  for (const el of root.querySelectorAll('button,[role="button"],[aria-label],video')) {
-    const cls = (typeof el.className === "string" ? el.className : "").toLowerCase();
-    const label = (el.getAttribute("aria-label") || "").toLowerCase();
-    if (cls.includes("inline-video-icon") || label.includes("video")) return true;
-  }
-  return false;
-}
-"""
-
-
 VIDEO_PREP_JS = r"""
 async (elementId) => {
   const root = document.querySelector(`[data-fbspy-id="${elementId}"]`);
@@ -437,123 +398,6 @@ async (elementId) => {
   };
 }
 """
-
-
-def _screenshot_has_blank_media(path: Path) -> bool:
-    """Best-effort screenshot QA: detect a large blank media placeholder."""
-    try:
-        from PIL import Image
-    except Exception:
-        return False
-    try:
-        im = Image.open(path).convert("RGB")
-    except Exception:
-        return False
-    w, h = im.size
-    if w < 280 or h < 420:
-        return False
-
-    x0, x1 = int(w * 0.04), int(w * 0.96)
-    y0 = max(80, int(h * 0.08))
-    y1 = h - max(150, int(h * 0.18))
-    if y1 - y0 < 180:
-        return False
-
-    crop = im.crop((x0, y0, x1, y1))
-    sample_h = max(1, round(crop.height * 96 / max(1, crop.width)))
-    content_sample = crop.resize((96, sample_h))
-    content_pixels = (
-        content_sample.get_flattened_data()
-        if hasattr(content_sample, "get_flattened_data")
-        else content_sample.getdata()
-    )
-    total = saturated = 0
-    for r, g, b in content_pixels:
-        total += 1
-        avg = (r + g + b) / 3
-        if max(r, g, b) - min(r, g, b) > 50 and avg < 245:
-            saturated += 1
-    if total and saturated / total > 0.015:
-        return False
-
-    run = max_run = 0
-    step = 16
-    for y in range(y0, y1, step):
-        band = im.crop((x0, y, x1, min(y + step, y1)))
-        sample_h = max(1, round(band.height * 64 / max(1, band.width)))
-        sample = band.resize((64, sample_h))
-        pixels = sample.get_flattened_data() if hasattr(sample, "get_flattened_data") else sample.getdata()
-        total = 0
-        light_neutral = dark = 0
-        for r, g, b in pixels:
-            total += 1
-            avg = (r + g + b) / 3
-            if (avg > 232 and max(r, g, b) - min(r, g, b) < 25) or (r > 245 and g > 245 and b > 245):
-                light_neutral += 1
-            if avg < 120:
-                dark += 1
-        if total and light_neutral / total > 0.965 and dark / total < 0.003:
-            run += band.height
-        else:
-            max_run = max(max_run, run)
-            run = 0
-    max_run = max(max_run, run)
-    return max_run >= min(360, max(220, int(h * 0.32)))
-
-
-def save_ad_screenshot(
-    page,
-    path: Path,
-    element_id: str | None,
-    expect_media: bool = False,
-    *,
-    interest_safe: bool = False,
-) -> bool:
-    """Screenshot the exact detected ad element; fall back to viewport only if lost."""
-    if element_id:
-        loc = page.locator(f'[data-fbspy-id="{element_id}"]').first
-        attempts = 1 if interest_safe else (2 if expect_media else 1)
-        for attempt in range(attempts):
-            try:
-                loc.scroll_into_view_if_needed(timeout=5000)
-                if interest_safe:
-                    _pause_all_videos(page)
-                try:
-                    page.wait_for_function(
-                        MEDIA_READY_JS,
-                        arg=element_id,
-                        timeout=(
-                            1200
-                            if interest_safe
-                            else 3000 + attempt * 2000
-                        ),
-                    )
-                except Exception:
-                    pass
-                time.sleep(0.15 if interest_safe else 0.5 + attempt * 1.0)
-                box = loc.bounding_box(timeout=5000)
-                if box and box.get("height", 0) <= 2600 and box.get("width", 0) <= 1200:
-                    loc.screenshot(path=str(path), timeout=10000)
-                    if expect_media and attempt == 0 and _screenshot_has_blank_media(path):
-                        print(f"  screenshot retry blank media {path.name}", flush=True)
-                        continue
-                    return True
-            except Exception:
-                pass
-    try:
-        page.screenshot(path=str(path))
-        return False
-    except Exception:
-        return False
-
-
-def has_video_creative(page, element_id: str | None) -> bool:
-    if not element_id:
-        return False
-    try:
-        return bool(page.evaluate(VIDEO_CREATIVE_JS, element_id))
-    except Exception:
-        return False
 
 
 def record_ad_video(

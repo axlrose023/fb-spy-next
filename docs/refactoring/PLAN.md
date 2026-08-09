@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F5 завершен
+Статус: `IN_PROGRESS` — этап 14F6 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F5 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F6 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3177,6 +3177,38 @@ Rollback 14F4 выполняется revert одного отдельного к
 переносятся следующими независимыми commit/revert units. Production server,
 Octo runtime и старый репозиторий не менялись. Rollback 14F5 выполняется revert
 одного отдельного коммита.
+
+#### 14F6. Passive ad media capture
+
+Результат:
+
+- passive media readiness, video-creative probe, exact-element screenshot и
+  blank-media QA перенесены из legacy runner в 173-строчный
+  `facebook.collection.adapters.playwright.screenshot`;
+- оба DOM scripts перенесены побайтно; visibility/area thresholds, image/video
+  readiness, inline-video marker detection и best-effort probe behavior не
+  менялись;
+- screenshot сохраняет прежние element bounds, media retry `0.5s`/`1.5s`,
+  interest-safe single attempt с pause и `0.15s`, readiness timeouts и viewport
+  fallback semantics;
+- RGB blank-placeholder heuristic сохраняет saturation guard, neutral-band
+  thresholds и minimum blank run; добавлен только точный cast фактического
+  Pillow RGB contract для strict mypy;
+- runner сохраняет identity-compatible constants/functions, включая
+  `_pause_all_videos`, но собственных passive screenshot/media реализаций больше
+  не содержит; runner уменьшен с 1 616 до 1 460 строк;
+- добавлено 6 focused contracts для blank/creative QA, media retry,
+  interest-safe pause, viewport fallback, video probe и legacy alias identity;
+  collection, runner, enrichment, architecture/contracts и strict mypy
+  проходят; полный regression: 839 тестов;
+- wheel содержит canonical screenshot adapter; Ruff, stage-scoped pre-commit,
+  frontend production build и gitleaks проходят; frontend source/lock не
+  менялись; `npm audit` сохраняет известные 6 findings (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: active video recording и collection CLI
+composition переносятся следующими независимыми commit/revert units. Production
+server, Octo runtime и старый репозиторий не менялись. Rollback 14F6 выполняется
+revert одного отдельного коммита.
 
 Перед удалением:
 
