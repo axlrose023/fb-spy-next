@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from app.facebook.adapters.octo import (
+    CallbackOctoTransport,
     OctoActiveProfileSource,
     OctoHttpClient,
     OctoProfileSessionManager,
@@ -107,13 +108,13 @@ from app.facebook.orchestration.lifecycle import (
     calibration_was_effective,
     is_healthy_relevance_result,
 )
-from app.facebook.profiles import (
-    DiscoveredProfile,
-    Profile,
-    ProfileDiscoveryService,
-    ProfileService,
+from app.facebook.profiles import Profile
+from app.facebook.profiles.adapters import (
+    OctoPayloadProfileSource,
+    adopt_catalog_country,
+    discover_catalog_profiles,
+    list_catalog_profiles,
 )
-from app.facebook.profiles.adapters import JsonProfileCatalog
 from app.services.facebook.health import (
     CalibrationDecision,
     CalibrationPolicy,
@@ -649,53 +650,19 @@ def _maintenance_command_hooks() -> MaintenanceCommandHooks:
     )
 
 
-class _PublicProfilesCompatibilitySource:
-    def __init__(self, token: str) -> None:
-        self._token = token
-
-    def discover(self, *, search_tags: str = "") -> list[DiscoveredProfile]:
-        return [
-            DiscoveredProfile(
-                octo_profile_uuid=str(raw.get("uuid") or ""),
-                label=str(raw.get("title") or str(raw.get("uuid") or "")[:8]),
-            )
-            for raw in _octo_public_profiles(self._token, search_tags=search_tags)
-            if raw.get("uuid")
-        ]
-
-
-class _LocalOctoCompatibilityTransport:
-    def __init__(self, host: str, port: int) -> None:
-        self._host = host
-        self._port = port
-
-    def request(
-        self,
-        method: str,
-        path: str,
-        body: dict[str, Any] | None = None,
-        *,
-        timeout_seconds: float | None = None,
-    ) -> dict[str, Any] | list[Any]:
-        del timeout_seconds
-        if method == "GET":
-            return _octo_local_get(self._host, self._port, path)
-        return _octo_local_post(self._host, self._port, path, body or {})
-
-
 def _discover_active(args) -> int:
     profiles_path = Path(args.profiles_json)
-    sessions = OctoProfileSessionManager(
-        _LocalOctoCompatibilityTransport(args.octo_host, args.octo_port)
-    )
-    discovery = ProfileDiscoveryService(
-        JsonProfileCatalog(profiles_path),
-        OctoActiveProfileSource(sessions),
+    source = OctoActiveProfileSource(
+        OctoProfileSessionManager(_local_octo_transport(args.octo_host, args.octo_port))
     )
     return run_active_discovery_command(
         enable_new=bool(args.enable_new),
         hooks=ActiveDiscoveryCommandHooks(
-            discover=lambda enable_new: discovery.discover(enable_new=enable_new),
+            discover=lambda enable_new: discover_catalog_profiles(
+                profiles_path,
+                source,
+                enable_new=enable_new,
+            ),
             log=print,
         ),
     )
@@ -725,19 +692,24 @@ def _merge_public_profiles(
 ) -> int:
     if not token:
         raise RuntimeError("Octo Public API token is required")
-    result = ProfileDiscoveryService(
-        JsonProfileCatalog(profiles_path),
-        _PublicProfilesCompatibilitySource(token),
-    ).discover(search_tags=search_tags, enable_new=enable_new)
+    source = OctoPayloadProfileSource(
+        lambda tags: _octo_public_profiles(token, search_tags=tags)
+    )
+    result = discover_catalog_profiles(
+        profiles_path,
+        source,
+        search_tags=search_tags,
+        enable_new=enable_new,
+    )
     return result.added
 
 
 def _load_profiles(path: Path) -> list[ProfileConfig]:
-    return ProfileService(JsonProfileCatalog(path)).list_profiles()
+    return list_catalog_profiles(path)
 
 
 def _persist_profile_country(path: Path, profile_uuid: str, country: str) -> None:
-    ProfileService(JsonProfileCatalog(path)).adopt_country(profile_uuid, country)
+    adopt_catalog_country(path, profile_uuid, country)
 
 
 def _count_calibration_targets(
@@ -785,14 +757,19 @@ def _octo_local_post(
     return OctoHttpClient(f"http://{host}:{port}").request("POST", path, body)
 
 
+def _local_octo_transport(host: str, port: int) -> CallbackOctoTransport:
+    return CallbackOctoTransport(
+        get=lambda path: _octo_local_get(host, port, path),
+        post=lambda path, body: _octo_local_post(host, port, path, body),
+    )
+
+
 def _stop_octo_profile(profile: ProfileConfig, args) -> None:
     config = get_config()
     host = args.octo_host or config.facebook.octo_host
     port = args.octo_port or config.facebook.octo_port
     try:
-        sessions = OctoProfileSessionManager(
-            _LocalOctoCompatibilityTransport(host, port)
-        )
+        sessions = OctoProfileSessionManager(_local_octo_transport(host, port))
         if not any(
             active.octo_profile_uuid == profile.octo_profile_uuid
             for active in sessions.active()

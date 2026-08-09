@@ -10,6 +10,7 @@ import pytest
 from app.facebook.adapters import OctoApiError as PublicOctoApiError
 from app.facebook.adapters.octo import (
     DEFAULT_OCTO_START_FLAGS,
+    CallbackOctoTransport,
     OctoActiveProfileSource,
     OctoApiError,
     OctoHttpClient,
@@ -53,6 +54,30 @@ class Response:
 
     def read(self) -> bytes:
         return self._payload
+
+
+def test_callback_transport_routes_legacy_get_and_post_callbacks() -> None:
+    calls: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def get(path: str) -> dict[str, Any]:
+        calls.append(("GET", path, None))
+        return {"active": True}
+
+    def post(path: str, body: dict[str, Any]) -> dict[str, Any]:
+        calls.append(("POST", path, body))
+        return {"ok": True}
+
+    transport = CallbackOctoTransport(
+        get=get,
+        post=post,
+    )
+
+    assert transport.request("GET", "/active", timeout_seconds=1) == {"active": True}
+    assert transport.request("POST", "/stop", {"uuid": "profile"}) == {"ok": True}
+    assert calls == [
+        ("GET", "/active", None),
+        ("POST", "/stop", {"uuid": "profile"}),
+    ]
 
 
 def test_public_source_paginates_deduplicates_and_drops_proxy_data() -> None:

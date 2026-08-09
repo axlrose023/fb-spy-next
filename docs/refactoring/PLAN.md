@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G11 завершен
+Статус: `IN_PROGRESS` — этап 14G12 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -3710,6 +3710,45 @@ runtime и старый репозиторий не менялись. Rollback 1
 выполняются финальные import/CLI gates. Production server, live Octo runtime и
 старый репозиторий не менялись. Rollback 14G11 выполняется revert одного
 отдельного коммита.
+
+#### 14G12. Profile catalog и Octo compatibility adapters
+
+Результат:
+
+- callback-based local Octo transport вынесен в 35-строчный
+  `facebook.adapters.octo.callback_transport` и реализует тот же transport port,
+  что HTTP client и profile session manager;
+- legacy GET/POST callbacks остались динамическими замыканиями фасада, поэтому
+  существующие monkeypatch contracts, host/port routing и прежняя обработка
+  любого non-GET метода как POST сохранены;
+- преобразование legacy public profile payload вынесено в 25-строчный
+  `facebook.profiles.adapters.payload_source`; source принимает только loader,
+  передает `search_tags`, пропускает payload без UUID, сохраняет title/fallback
+  label и намеренно не принимает proxy geo или credentials;
+- discovery, list и write-once country adoption для JSON profile catalog
+  собраны в 31-строчном `catalog_operations`; они используют существующие
+  `ProfileDiscoveryService`, `ProfileService` и `JsonProfileCatalog`, не
+  дублируя доменные правила;
+- legacy `_discover_active`, `_merge_public_profiles`, `_load_profiles`,
+  `_persist_profile_country` и `_stop_octo_profile` стали composition wrappers;
+  `_octo_local_get/_post` и `_octo_public_profiles` сохранены как совместимые
+  runtime/test seams;
+- legacy orchestrator сокращен с 844 до 821 строки, concrete compatibility
+  classes полностью удалены из service facade;
+- добавлено 3 direct adapter tests для GET/POST routing, safe payload mapping,
+  tag forwarding, deduplication, `enable_new` и write-once normalized geo;
+  focused regression: 75 тестов, полный regression: 891 тест;
+- wheel содержит все три новых adapter modules; Ruff, strict mypy,
+  architecture/contracts, stage-scoped pre-commit, frontend production build и
+  gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: command-builder/calibration-pool adapters и
+финальная граница legacy facade переносятся следующими units, затем выполняются
+итоговые import/CLI gates. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14G12 выполняется revert одного отдельного
+коммита.
 
 Перед удалением:
 
