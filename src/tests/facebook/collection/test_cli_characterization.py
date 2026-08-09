@@ -167,7 +167,7 @@ def test_collection_cli_maps_passive_topic_run_without_active_actions(
             )
         }
 
-    monkeypatch.setattr(facebook_runner, "collect", collect)
+    monkeypatch.setattr(runtime, "collect_feed", collect)
     run_dir = tmp_path / "exact-run"
 
     result = facebook_runner.main(

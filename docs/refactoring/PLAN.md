@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F8 завершен
+Статус: `IN_PROGRESS` — этап 14F9 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F8 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F9 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3289,6 +3289,45 @@ revert одного отдельного коммита.
 следующим независимым commit/revert unit 14F9. Production server, Octo runtime
 и старый репозиторий не менялись. Rollback 14F8 выполняется revert одного
 отдельного коммита.
+
+#### 14F9. Feed collection execution
+
+Результат:
+
+- 502-строчный feed loop вынесен из legacy runner в owning
+  `facebook.collection.adapters.playwright` и разделен на run state/options,
+  collector, candidate coordinator, media capture, landing/permalink resolution,
+  scrolling/refresh и final reporting;
+- порядок persist-before-click, screenshot/video/landing time budgets,
+  exact/lazy/Facebook ad-id deduplication, permalink-after-CTA, refresh пороги
+  `90`/`180`, random pauses, checkpoints и summary fields сохранены;
+- interest-safe collection сохраняет passive media guard до и после
+  navigation, а `ArtifactPolicy` по-прежнему запрещает active screenshot,
+  landing, video и permalink actions в passive mode;
+- stop state вынесен в `facebook.collection.stop`; canonical command/feed
+  больше не импортируют runner для signal handling и проверки
+  остановки;
+- atomic artifact writers подняты из CLI в owning
+  `facebook.collection.artifacts`; `collection.cli.artifacts` оставлен
+  тонким compatibility re-export без дублирования;
+- legacy `facebook_runner.collect` является тем же function object, что и
+  canonical `collect_feed`; runner сокращен с 734 до 229 строк и
+  оставляет только Octo bridge и compatibility aliases;
+- добавлено 3 focused contracts: authenticated empty-feed scroll budget,
+  stop-before-candidate и legacy/canonical alias identity; collection/runner,
+  architecture/contracts и strict mypy проходят; полный regression:
+  853 теста;
+- canonical implementation-файлы имеют от 76 до 216 строк;
+  wheel содержит canonical collector и compatibility runner; CLI/help/output
+  contracts, Ruff, stage-scoped pre-commit, frontend production build и
+  gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные
+  6 findings (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: Octo connection/configuration bridge и его
+последний canonical CLI -> legacy runner import переносятся отдельным 14F10.
+Production server, Octo runtime и старый репозиторий не менялись.
+Rollback 14F9 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

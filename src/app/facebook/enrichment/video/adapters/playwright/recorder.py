@@ -12,7 +12,7 @@ from .screencast import capture_screencast_frames
 
 
 class DebugEventSink(Protocol):
-    def event(self, name: str, **fields: Any) -> None: ...
+    def event(self, kind: str, **fields: Any) -> None: ...
 
 
 def record_ad_video(

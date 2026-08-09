@@ -2,27 +2,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .deadline import BrowserOperationDeadlineExceeded, hard_deadline
+
 if TYPE_CHECKING:
     from .context import ContextFactory
-    from .deadline import BrowserOperationDeadlineExceeded, hard_deadline
     from .ioc import browser_provider, browser_provider_available
     from .pool import BrowserPool
     from .useragent import UserAgentProvider
 
 _EXPORTS = {
-    "BrowserOperationDeadlineExceeded": (
-        "deadline",
-        "BrowserOperationDeadlineExceeded",
-    ),
     "BrowserPool": ("pool", "BrowserPool"),
     "ContextFactory": ("context", "ContextFactory"),
     "UserAgentProvider": ("useragent", "UserAgentProvider"),
     "browser_provider": ("ioc", "browser_provider"),
     "browser_provider_available": ("ioc", "browser_provider_available"),
-    "hard_deadline": ("deadline", "hard_deadline"),
 }
 
-__all__ = list(_EXPORTS)
+__all__ = [
+    "BrowserOperationDeadlineExceeded",
+    "hard_deadline",
+    *_EXPORTS,
+]
 
 
 def __getattr__(name: str) -> Any:

@@ -11,6 +11,11 @@ from PIL import Image
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from app.api.modules.runs.models import FacebookRun
+from app.facebook.collection.adapters.playwright import (
+    candidate_media,
+    candidate_resolution,
+)
+from app.facebook.collection.artifacts import files as collection_artifacts
 from app.facebook.enrichment.video.adapters.playwright import recorder as video_recorder
 from app.services import facebook_runner
 from app.services.facebook.importer import FacebookAdsImporter
@@ -285,7 +290,7 @@ def test_browser_operation_timeout_uses_successful_fast_exit(
         encoding="utf-8",
     )
     exit_codes = []
-    monkeypatch.setattr(facebook_runner.os, "_exit", exit_codes.append)
+    monkeypatch.setattr(collection_artifacts.os, "_exit", exit_codes.append)
 
     facebook_runner._fast_exit_after_browser_operation_timeout(tmp_path)
 
@@ -298,7 +303,7 @@ def test_normal_stop_reason_does_not_use_fast_exit(tmp_path, monkeypatch) -> Non
         encoding="utf-8",
     )
     exit_codes = []
-    monkeypatch.setattr(facebook_runner.os, "_exit", exit_codes.append)
+    monkeypatch.setattr(collection_artifacts.os, "_exit", exit_codes.append)
 
     facebook_runner._fast_exit_after_browser_operation_timeout(tmp_path)
 
@@ -443,8 +448,8 @@ def test_hard_deadline_interrupts_blocking_resolve_work() -> None:
 
 def test_resolve_timeout_saves_ad_and_ends_cycle(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
-        facebook_runner,
-        "_hard_deadline",
+        candidate_resolution,
+        "hard_deadline",
         lambda *_args, **_kwargs: ImmediateDeadline(),
     )
     monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
@@ -474,8 +479,8 @@ def test_resolve_timeout_saves_ad_and_ends_cycle(tmp_path, monkeypatch) -> None:
 
 def test_video_timeout_saves_ad_and_ends_cycle(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
-        facebook_runner,
-        "_hard_deadline",
+        candidate_media,
+        "hard_deadline",
         lambda *_args, **_kwargs: ImmediateDeadline(),
     )
     monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)

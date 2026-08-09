@@ -10,8 +10,9 @@ from app.facebook.collection import CollectedAd
 from app.facebook.profiles import normalize_country
 from app.services import facebook_runner
 
-from ..adapters.playwright import DebugRecorder
+from ..adapters.playwright import DebugRecorder, collect_feed
 from ..models import utc_now
+from ..stop import stop_requested
 from .artifacts import (
     fast_exit_after_browser_operation_timeout,
     write_octo_start_failure,
@@ -66,8 +67,8 @@ def run_command(args: argparse.Namespace) -> int:
             feed_url=target_feed_url,
             profile_country=profile_country,
             debug=debug,
-            collect=facebook_runner.collect,
-            stop_requested=lambda: facebook_runner.STOP_REQUESTED,
+            collect=collect_feed,
+            stop_requested=stop_requested,
         )
         fast_exit_after_browser_operation_timeout(run_dir)
         print_result(ads, run_dir=run_dir, debug_enabled=args.debug)

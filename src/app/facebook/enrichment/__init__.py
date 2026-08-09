@@ -16,6 +16,7 @@ from .post import (
     resolve_facebook_post_url,
 )
 from .service import EnrichmentService
+from .video.adapters.playwright import record_ad_video
 
 __all__ = [
     "LandingArchiveResult",
@@ -32,6 +33,7 @@ __all__ = [
     "normalized_facebook_post_url",
     "neutralize_profile_pages",
     "parse_landing",
+    "record_ad_video",
     "resolve_in_view",
     "resolve_facebook_post_url",
     "save_landing_screenshot_from_browser",
