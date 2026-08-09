@@ -22,6 +22,9 @@ from .adapters.playwright import (
 )
 from .contracts import CalibrationResultRecorder, CalibrationTargetExecutor
 from .execution import (
+    CalibrationPassHooks,
+    CalibrationPassRequest,
+    CalibrationPassService,
     EngagementPlan,
     EngagementPolicy,
     build_calibration_pass_record,
@@ -81,6 +84,9 @@ __all__ = [
     "CalibrationLoopPolicy",
     "CalibrationIntensityPolicy",
     "CalibrationPlan",
+    "CalibrationPassHooks",
+    "CalibrationPassRequest",
+    "CalibrationPassService",
     "CalibrationPolicy",
     "CalibrationProcessEnvironment",
     "CalibrationRunResult",

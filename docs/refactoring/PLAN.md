@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2366,6 +2366,39 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12O
+выполняется revert одного отдельного коммита.
+
+#### 12P. Calibration pass service
+
+Результат:
+
+- calibration pass lifecycle вынесен в
+  `facebook/calibration/execution/pass_service.py` с immutable request и explicit
+  hook ports;
+- `CalibrationPassService` владеет exact sequence: prepare directory, resolve
+  sources, count targets, apply pass cap, build plan, observe geo, log, optionally
+  execute, load summary и build outcome;
+- service не знает argparse, settings, datetime naming, JSON format, subprocess
+  runner и concrete target pool; все external actions передаются узкими
+  callable ports в `CalibrationPassHooks`;
+- target cap по-прежнему применяется до intensity planning; dry-run
+  пропускает только process execution, но сохраняет artifact/summary
+  evaluation; log text, command inputs и pass record shape не изменились;
+- legacy `_run_calibration` стал composition wrapper; directory naming, metrics
+  loading, command/timeout execution и JSON loading остались adapters на его
+  границе;
+- добавлено 3 focused tests для exact call order/cap, dry-run и uncapped pass;
+  pass service имеет 100% coverage по строкам и веткам; focused
+  calibration/orchestration regression: 68 tests; полный regression: 699 tests;
+- legacy orchestrator временно вырос с 1520 до 1528 строк из-за explicit
+  DI wiring; sequence/business rules из него удалены, а wiring переедет в
+  composition root на этапе 13; pass service составляет 106 строк;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12P
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
