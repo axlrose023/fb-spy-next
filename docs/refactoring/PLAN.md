@@ -1660,7 +1660,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 11. `facebook/calibration`
 
-Статус: `IN_PROGRESS` (`11A, 11B, 11C COMPLETE`)
+Статус: `COMPLETE` (`11A, 11B, 11C, 11D COMPLETE`)
 
 Источники:
 
@@ -1823,6 +1823,40 @@ facebook/calibration/
 - landing visit выполняется по target;
 - submit невозможен без allowlist;
 - все tabs/profile закрываются после timeout.
+
+Результат 11D:
+
+- framework-free `CalibrationService` теперь владеет target loop, session
+  deadline, repeat policy, pause semantics, goal termination и остановкой на
+  infrastructure error; внешнее выполнение цели и запись результата заданы
+  через публичные Protocol-контракты;
+- interaction accounting, funnel quality counters, target success и partial
+  navigation failure policy вынесены в отдельный чистый модуль без изменения
+  прежней result/summary JSON schema;
+- выполнение сохранённой цели разделено на navigation, typed browser options,
+  engagement coordinator и `SavedPostTargetExecutor`; Playwright, Octo helper,
+  screenshots и audit events остаются во внешнем adapter/CLI слое;
+- CLI разделён на parser, configuration, artifacts, browser session и runtime;
+  `commands.py` является тонким entrypoint, а прежний
+  `app.services.facebook_calibrator` сокращён с 1194 до 107 строк и сохраняет
+  старый module path и private compatibility aliases;
+- CLI help contract сохранил прежний SHA-256
+  `38c2ae20e7db6528c62a00417901c95dbb319dd79335bb1c6af771508c3973ec`;
+  старые flags/defaults, exit codes, output paths, event kinds и summary fields
+  не менялись;
+- 2000 randomized accounting/goal/stop cases и 500 randomized target-loop
+  schedules совпали с legacy-реализацией без расхождений;
+- добавлены 11 focused service/command tests для deadline, repeated targets,
+  early goals, partial failures, infrastructure stop, dry-run artifacts и
+  orchestration-facing result; focused branch coverage 11D surface — 75%;
+- полный regression: 255 + 312 + 10, итого 577 тестов; Ruff, strict mypy,
+  architecture/contracts, stage-scoped pre-commit, wheel build, frontend
+  production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high), не относящиеся к calibration refactor.
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 11D
+выполняется revert одного отдельного коммита.
 
 ### Этап 12. `facebook/orchestration`
 

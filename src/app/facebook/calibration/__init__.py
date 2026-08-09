@@ -1,3 +1,10 @@
+from .accounting import (
+    calibration_goals_met,
+    calibration_target_ok,
+    interaction_counts,
+    offer_funnel_action_ok,
+    should_stop_after_target_result,
+)
 from .adapters.playwright import (
     click_like,
     follow_advertiser,
@@ -8,6 +15,7 @@ from .adapters.playwright import (
     visit_ad_landing,
     wait_for_saved_post,
 )
+from .contracts import CalibrationResultRecorder, CalibrationTargetExecutor
 from .execution import (
     EngagementPlan,
     EngagementPolicy,
@@ -36,7 +44,13 @@ from .funnel import (
     redact_url,
     scroll_prelander,
 )
-from .models import CalibrationDecision, CalibrationPlan, CalibrationPolicy
+from .models import (
+    CalibrationDecision,
+    CalibrationLoopPolicy,
+    CalibrationPlan,
+    CalibrationPolicy,
+    CalibrationRunResult,
+)
 from .planning import (
     CalibrationIntensityPolicy,
     CalibrationTarget,
@@ -49,13 +63,19 @@ from .planning import (
     rotate_calibration_targets,
     select_calibration_targets,
 )
+from .service import CalibrationService
 
 __all__ = [
     "CalibrationDecision",
+    "CalibrationLoopPolicy",
     "CalibrationIntensityPolicy",
     "CalibrationPlan",
     "CalibrationPolicy",
+    "CalibrationRunResult",
+    "CalibrationService",
     "CalibrationTarget",
+    "CalibrationResultRecorder",
+    "CalibrationTargetExecutor",
     "EngagementPlan",
     "EngagementPolicy",
     "OfferFunnelPolicy",
@@ -63,6 +83,8 @@ __all__ = [
     "OfferIdentity",
     "baseline_from_history",
     "browse_offer_page",
+    "calibration_goals_met",
+    "calibration_target_ok",
     "click_like",
     "click_prelander_cta",
     "complete_quiz",
@@ -76,6 +98,7 @@ __all__ = [
     "follow_advertiser",
     "handle_offer_form",
     "inspect_offer_form",
+    "interaction_counts",
     "is_good_baseline_candidate",
     "live_ad_key",
     "load_offer_identity",
@@ -83,6 +106,7 @@ __all__ = [
     "metrics_from_dict",
     "open_ad_landing",
     "offer_url",
+    "offer_funnel_action_ok",
     "plan_calibration_intensity",
     "plan_engagement",
     "post_comment",
@@ -91,6 +115,7 @@ __all__ = [
     "redact_url",
     "rotate_calibration_targets",
     "select_calibration_targets",
+    "should_stop_after_target_result",
     "scroll_prelander",
     "target_match_score",
     "view_feed_ad",

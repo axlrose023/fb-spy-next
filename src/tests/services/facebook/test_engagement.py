@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from app.facebook.calibration.adapters.playwright import target_engagement
 from app.services import facebook_calibrator
 from app.services.facebook.calibration import CalibrationTarget
 from app.services.facebook.engagement import (
@@ -416,12 +417,14 @@ def test_comment_is_submitted_and_confirmed_inside_saved_post() -> None:
 
 def test_comment_waits_for_slow_pending_submission_to_finish() -> None:
     page = CommentPage()
-    page.responses = iter([
-        {"status": "located", "action": "comment", "label": "comment"},
-        0,
-        *({"count": 1, "pending": True} for _ in range(20)),
-        {"count": 1, "pending": False},
-    ])
+    page.responses = iter(
+        [
+            {"status": "located", "action": "comment", "label": "comment"},
+            0,
+            *({"count": 1, "pending": True} for _ in range(20)),
+            {"count": 1, "pending": False},
+        ]
+    )
 
     result = post_comment(page, "saved-post", "👍")
 
@@ -475,7 +478,7 @@ def test_reaction_is_confirmed_after_facebook_replaces_card(monkeypatch) -> None
         ]
     )
     monkeypatch.setattr(
-        facebook_calibrator,
+        target_engagement,
         "click_like",
         lambda _page, _element_id: next(results),
     )
@@ -485,7 +488,7 @@ def test_reaction_is_confirmed_after_facebook_replaces_card(monkeypatch) -> None
         advertiser="Relevant advertiser",
     )
     monkeypatch.setattr(
-        facebook_calibrator,
+        target_engagement,
         "locate_saved_post",
         lambda _page, _target: {"status": "located", "element_id": "replacement-post"},
     )
@@ -668,12 +671,12 @@ def test_calibration_with_three_target_goal_still_reaches_fifth_comment() -> Non
 def test_comment_is_posted_on_configured_relevant_ad_interval(monkeypatch) -> None:
     posted: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        facebook_calibrator,
+        target_engagement,
         "view_feed_ad",
         lambda *_args: {"status": "viewed"},
     )
     monkeypatch.setattr(
-        facebook_calibrator,
+        target_engagement,
         "post_comment",
         lambda _page, element_id, text: (
             posted.append((element_id, text)) or {"status": "posted"}
@@ -750,17 +753,17 @@ def test_visit_ad_landing_uses_same_context_and_closes_new_tab() -> None:
 def test_calibration_visits_landing_without_commenting(monkeypatch) -> None:
     visited: list[tuple[str, str, str]] = []
     monkeypatch.setattr(
-        facebook_calibrator,
+        target_engagement,
         "view_feed_ad",
         lambda *_args: {"status": "viewing"},
     )
     monkeypatch.setattr(
-        facebook_calibrator,
-        "_refresh_engagement_row",
+        target_engagement,
+        "refresh_engagement_row",
         lambda _page, row, _target: row,
     )
     monkeypatch.setattr(
-        facebook_calibrator,
+        target_engagement,
         "visit_ad_landing",
         lambda _page, element_id, *, cta, expected_url, **_kwargs: (
             visited.append((element_id, cta, expected_url))
@@ -817,9 +820,7 @@ def test_calibration_visits_landing_without_commenting(monkeypatch) -> None:
             "landing_url": "https://offer.example/path",
         }
     ]
-    assert visited == [
-        ("saved-post", "Learn more", "https://offer.example/path")
-    ]
+    assert visited == [("saved-post", "Learn more", "https://offer.example/path")]
     assert budget["comment"] == 0
     assert budget["successful"] == 1
 

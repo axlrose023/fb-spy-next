@@ -81,3 +81,49 @@ class CalibrationPlan:
     max_follows: int
     max_comments: int
     min_interactions: int
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationLoopPolicy:
+    session_seconds: float = 0.0
+    repeat_targets_until_deadline: bool = False
+    pause_between_targets: float = 0.0
+    min_successful_targets: int = 0
+    min_interactions: int = 1
+    comment_every: int = 0
+    max_comments: int = 0
+    continue_on_target_navigation_error: bool = False
+
+    @property
+    def has_deadline(self) -> bool:
+        return self.session_seconds > 0
+
+    @property
+    def repeats_targets(self) -> bool:
+        return self.repeat_targets_until_deadline and self.has_deadline
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationRunResult:
+    results: tuple[dict[str, Any], ...]
+    interactions: dict[str, int]
+    target_goal_met: bool
+    interaction_goal_met: bool
+    infrastructure_error: str | None
+    termination: str
+
+    @property
+    def ok(self) -> int:
+        return sum(1 for result in self.results if result.get("ok"))
+
+    @property
+    def failed(self) -> int:
+        return len(self.results) - self.ok
+
+    @property
+    def successful(self) -> bool:
+        return (
+            self.infrastructure_error is None
+            and self.target_goal_met
+            and self.interaction_goal_met
+        )
