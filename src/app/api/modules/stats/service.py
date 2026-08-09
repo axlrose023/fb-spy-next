@@ -1,7 +1,7 @@
+from app.ad_library.ads.adapters.persistence import FacebookAd
 from app.ad_library.statistics import StatisticsService
 from app.ad_library.statistics.adapters import SqlAlchemyAdStatisticsReader
 from app.ad_library.statistics.schemas import AdsStatsResponse, to_response
-from app.api.modules.ads.models import FacebookAd
 from app.database.uow import UnitOfWork
 
 

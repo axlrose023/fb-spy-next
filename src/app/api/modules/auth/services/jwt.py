@@ -15,10 +15,12 @@ from app.accounts.auth.exceptions import (
     UserNotAllowed,
 )
 from app.accounts.auth.models import AuthUser, TokenPair
+from app.accounts.auth.schemas import TokenPairResponse
 from app.accounts.auth.service import AuthService
-from app.api.modules.auth.schema import TokenPairResponse
-from app.api.modules.users.gateway import UserGateway
-from app.api.modules.users.models import User
+from app.accounts.users.adapters.persistence import (
+    SqlAlchemyUserRecordGateway as UserGateway,
+)
+from app.accounts.users.adapters.persistence import UserRecord as User
 from app.database.uow import UnitOfWork
 from app.settings import Config
 

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14A завершен
+Статус: `IN_PROGRESS` — этап 14B завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A COMPLETE`)
+Статус: `IN_PROGRESS` (`14A, 14B COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -2874,6 +2874,41 @@ production schema migration и server smoke выполняются только 
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 14A
+выполняется revert одного отдельного коммита.
+
+#### 14B. Persistence gateway ownership
+
+Результат:
+
+- record-level user/run gateways перенесены из `api.modules` в owning
+  `accounts.users.adapters.persistence` и `facebook.runs.adapters.persistence`;
+- прежний transaction contract сохранён: record create/update выполняют flush,
+  но не commit; domain repositories с commit-owning поведением не подставлялись
+  в UoW;
+- `UnitOfWork` переключён на owning gateways, сохранил публичные `users`,
+  `facebook_runs`, `facebook_ads` attributes и получил точные async lifecycle
+  annotations без изменения commit/rollback/close порядка;
+- `api.modules.users.gateway` и `api.modules.runs.gateway` сокращены с 47/43 до
+  5 строк и оставлены identity-preserving compatibility facades;
+- importer, calibration persistence и ad relationship больше не импортируют
+  legacy API models; global production import count `app.api.modules` равен
+  нулю;
+- Alembic model registration заменён с filesystem scan старого API tree на
+  явный registry трёх owning records; database metadata SHA и table/column
+  contract не изменились;
+- cross-module ORM relationship остаётся SQLAlchemy string mapping/FK без
+  Python import внутреннего adapter соседнего application;
+- добавлено 4 focused tests flush-only writes, UoW ownership и facade identity;
+  focused DB/importer/run/auth/statistics suites и strict mypy проходят; полный
+  regression: 775 tests;
+- user/run record gateways имеют 52/48 строк, legacy facades — по 5 строк;
+  wheel содержит owning gateways, UoW, explicit model registry и facades;
+- Ruff, architecture/contracts, stage-scoped pre-commit, frontend production
+  build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 14B
 выполняется revert одного отдельного коммита.
 
 Перед удалением:

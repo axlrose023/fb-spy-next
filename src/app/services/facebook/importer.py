@@ -27,9 +27,9 @@ from app.ad_library.ads.ingestion.mapping import (
 )
 from app.ad_library.media import MediaStorage
 from app.ad_library.media.configuration import configured_storage
-from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
 from app.facebook.relevance import configured_relevance_service
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.settings import Config
 
 logger = logging.getLogger(__name__)

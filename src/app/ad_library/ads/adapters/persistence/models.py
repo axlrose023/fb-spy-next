@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import TYPE_CHECKING
+from typing import Any
 
 from sqlalchemy import JSON, UUID, Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, DateTimeMixin, UUID7IDMixin
-
-if TYPE_CHECKING:
-    from app.api.modules.runs.models import FacebookRun
 
 
 class FacebookAd(Base, UUID7IDMixin, DateTimeMixin):
@@ -51,4 +48,4 @@ class FacebookAd(Base, UUID7IDMixin, DateTimeMixin):
     captured_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    run: Mapped[FacebookRun] = relationship("FacebookRun", back_populates="ads")
+    run: Mapped[Any] = relationship("FacebookRun", back_populates="ads")

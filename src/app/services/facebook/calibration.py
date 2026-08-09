@@ -11,8 +11,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.api.modules.ads.models import FacebookAd
-from app.api.modules.runs.models import FacebookRun
+from app.ad_library.ads.adapters.persistence import FacebookAd
 from app.database.engine import SessionFactory
 from app.facebook.calibration import (
     CalibrationTarget,
@@ -23,6 +22,7 @@ from app.facebook.calibration import (
 from app.facebook.calibration import (
     select_calibration_targets as _select_calibration_targets,
 )
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.settings import Config
 
 rotate_calibration_targets = _rotate_calibration_targets
