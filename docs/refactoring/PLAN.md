@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G7 завершен
+Статус: `IN_PROGRESS` — этап 14G8 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G7 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G8 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3587,6 +3587,39 @@ Octo runtime и старый репозиторий не менялись. Rollb
 composition переносятся следующими независимыми units. Production server, live
 Octo runtime и старый репозиторий не менялись. Rollback 14G7 выполняется revert
 одного отдельного коммита.
+
+#### 14G8. Orchestrator discovery CLI composition
+
+Результат:
+
+- `discover-active` и `discover-octo` handler flow, output и return-code
+  semantics перенесены в canonical discovery command module; модуль имеет 93
+  строки вместе с runtime discovery 14G7;
+- active command принимает `DiscoveryResult` через narrow callback, передает
+  `enable_new` и сохраняет output `active=<discovered> added=<added>`;
+- public command передает catalog path, token, tags и `enable_new` в общий merge
+  port, сохраняет output `added=<count>` и не включает token в output;
+- concrete `ProfileDiscoveryService`, JSON catalog, active Octo source и legacy
+  local/public compatibility transports остаются только outer adapters facade;
+  orchestration command module не импортирует внутренние adapters соседнего
+  profiles feature;
+- общий `_merge_profile_catalog` adapter устраняет дублирование runtime и CLI
+  public merge wiring, сохраняя dynamic `_merge_public_profiles` seam;
+- legacy orchestrator временно вырос с 888 до 908 строк из-за explicit DI и
+  сохранения compatibility transports; handler decisions и output удалены из
+  legacy-файла;
+- добавлено 2 focused contracts для active/public output, arguments, return code
+  и credential redaction; focused regression: 111 тестов, полный regression:
+  882 теста;
+- wheel содержит обновленный canonical discovery module; Ruff, strict mypy,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: maintenance evaluate/seed composition и
+legacy-wrapper cleanup выполняются следующими независимыми units. Production
+server, live Octo runtime и старый репозиторий не менялись. Rollback 14G8
+выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

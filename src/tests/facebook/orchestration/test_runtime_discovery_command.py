@@ -5,10 +5,15 @@ from pathlib import Path
 import pytest
 
 from app.facebook.orchestration.commands import (
+    ActiveDiscoveryCommandHooks,
+    PublicDiscoveryCommandRequest,
     RuntimeDiscoveryHooks,
     RuntimeDiscoveryRequest,
+    run_active_discovery_command,
+    run_public_discovery_command,
     run_runtime_discovery,
 )
+from app.facebook.profiles import DiscoveryResult
 
 pytestmark = pytest.mark.unit
 
@@ -104,6 +109,50 @@ def test_runtime_discovery_respects_failure_mode(
         assert logs == [
             "[orchestrator] Octo discovery failed: RuntimeError('Octo unavailable')"
         ]
+
+
+def test_active_discovery_command_reports_result() -> None:
+    enabled: list[bool] = []
+    logs: list[str] = []
+
+    def discover(enable_new: bool) -> DiscoveryResult:
+        enabled.append(enable_new)
+        return DiscoveryResult(discovered=5, added=2)
+
+    result = run_active_discovery_command(
+        enable_new=True,
+        hooks=ActiveDiscoveryCommandHooks(discover=discover, log=logs.append),
+    )
+
+    assert result == 0
+    assert enabled == [True]
+    assert logs == ["active=5 added=2"]
+
+
+def test_public_discovery_command_reports_added_without_token_log(
+    tmp_path: Path,
+) -> None:
+    merges: list[tuple[Path, str, str, bool]] = []
+    logs: list[str] = []
+    profiles_path = tmp_path / "profiles.json"
+
+    def merge_profiles(path: Path, token: str, tags: str, enable: bool) -> int:
+        merges.append((path, token, tags, enable))
+        return 3
+
+    result = run_public_discovery_command(
+        PublicDiscoveryCommandRequest(
+            profiles_path=profiles_path,
+            token="secret-token",
+            search_tags="facebook",
+            enable_new=False,
+        ),
+        RuntimeDiscoveryHooks(merge_profiles=merge_profiles, log=logs.append),
+    )
+
+    assert result == 0
+    assert merges == [(profiles_path, "secret-token", "facebook", False)]
+    assert logs == ["added=3"]
 
 
 def _request(

@@ -76,12 +76,14 @@ from app.facebook.orchestration.adapters import (
     write_log_line,
 )
 from app.facebook.orchestration.commands import (
+    ActiveDiscoveryCommandHooks,
     CalibrationCommandHooks,
     CollectionCommandHooks,
     CollectionCommandRequest,
     CommandHandlers,
     ProfileCycleCommandHooks,
     ProfileCycleCommandRequest,
+    PublicDiscoveryCommandRequest,
     RunCommandHooks,
     RuntimeDiscoveryHooks,
     RuntimeDiscoveryRequest,
@@ -89,10 +91,12 @@ from app.facebook.orchestration.commands import (
     calibration_policy_from_args,
     log_profile_schedule,
     profile_rest_seconds_from_args,
+    run_active_discovery_command,
     run_calibration_command,
     run_collection_command,
     run_command,
     run_profile_cycle_command,
+    run_public_discovery_command,
     run_runtime_discovery,
     schedule_policy_from_args,
 )
@@ -215,16 +219,23 @@ def _discover_profiles(args, *, fail_fast: bool) -> None:
             fail_fast=fail_fast,
         ),
         RuntimeDiscoveryHooks(
-            merge_profiles=lambda path, token, search_tags, enable_new: (
-                _merge_public_profiles(
-                    path,
-                    token=token,
-                    search_tags=search_tags,
-                    enable_new=enable_new,
-                )
-            ),
+            merge_profiles=_merge_profile_catalog,
             log=lambda message: print(message, flush=True),
         ),
+    )
+
+
+def _merge_profile_catalog(
+    path: Path,
+    token: str,
+    search_tags: str,
+    enable_new: bool,
+) -> int:
+    return _merge_public_profiles(
+        path,
+        token=token,
+        search_tags=search_tags,
+        enable_new=enable_new,
     )
 
 
@@ -728,23 +739,32 @@ def _discover_active(args) -> int:
     sessions = OctoProfileSessionManager(
         _LocalOctoCompatibilityTransport(args.octo_host, args.octo_port)
     )
-    result = ProfileDiscoveryService(
+    discovery = ProfileDiscoveryService(
         JsonProfileCatalog(profiles_path),
         OctoActiveProfileSource(sessions),
-    ).discover(enable_new=bool(args.enable_new))
-    print(f"active={result.discovered} added={result.added}")
-    return 0
+    )
+    return run_active_discovery_command(
+        enable_new=bool(args.enable_new),
+        hooks=ActiveDiscoveryCommandHooks(
+            discover=lambda enable_new: discovery.discover(enable_new=enable_new),
+            log=print,
+        ),
+    )
 
 
 def _discover_public(args) -> int:
-    added = _merge_public_profiles(
-        Path(args.profiles_json),
-        token=args.octo_api_token or os.environ.get("OCTO_API_TOKEN", ""),
-        search_tags=args.octo_search_tags,
-        enable_new=bool(args.enable_new),
+    return run_public_discovery_command(
+        PublicDiscoveryCommandRequest(
+            profiles_path=Path(args.profiles_json),
+            token=args.octo_api_token or os.environ.get("OCTO_API_TOKEN", ""),
+            search_tags=args.octo_search_tags,
+            enable_new=bool(args.enable_new),
+        ),
+        RuntimeDiscoveryHooks(
+            merge_profiles=_merge_profile_catalog,
+            log=print,
+        ),
     )
-    print(f"added={added}")
-    return 0
 
 
 def _merge_public_profiles(

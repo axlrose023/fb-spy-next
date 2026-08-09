@@ -5,8 +5,12 @@ from .collection import (
     run_collection_command,
 )
 from .discovery import (
+    ActiveDiscoveryCommandHooks,
+    PublicDiscoveryCommandRequest,
     RuntimeDiscoveryHooks,
     RuntimeDiscoveryRequest,
+    run_active_discovery_command,
+    run_public_discovery_command,
     run_runtime_discovery,
 )
 from .dispatch import dispatch
@@ -30,10 +34,12 @@ from .run import (
 __all__ = [
     "CommandHandlers",
     "CalibrationCommandHooks",
+    "ActiveDiscoveryCommandHooks",
     "CollectionCommandHooks",
     "CollectionCommandRequest",
     "ProfileCycleCommandHooks",
     "ProfileCycleCommandRequest",
+    "PublicDiscoveryCommandRequest",
     "RunCommandHooks",
     "RuntimeDiscoveryHooks",
     "RuntimeDiscoveryRequest",
@@ -45,7 +51,9 @@ __all__ = [
     "profile_rest_seconds_from_args",
     "run_collection_command",
     "run_calibration_command",
+    "run_active_discovery_command",
     "run_profile_cycle_command",
+    "run_public_discovery_command",
     "run_runtime_discovery",
     "run_command",
     "schedule_policy_from_args",

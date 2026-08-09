@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.facebook.profiles import DiscoveryResult
+
 
 @dataclass(frozen=True, slots=True)
 class RuntimeDiscoveryRequest:
@@ -22,6 +24,20 @@ class RuntimeDiscoveryRequest:
 class RuntimeDiscoveryHooks:
     merge_profiles: Callable[[Path, str, str, bool], int]
     log: Callable[[str], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveDiscoveryCommandHooks:
+    discover: Callable[[bool], DiscoveryResult]
+    log: Callable[[str], None]
+
+
+@dataclass(frozen=True, slots=True)
+class PublicDiscoveryCommandRequest:
+    profiles_path: Path
+    token: str
+    search_tags: str
+    enable_new: bool
 
 
 def run_runtime_discovery(
@@ -51,3 +67,27 @@ def run_runtime_discovery(
         if request.fail_fast:
             raise
         hooks.log(f"[orchestrator] Octo discovery failed: {exc!r}")
+
+
+def run_active_discovery_command(
+    *,
+    enable_new: bool,
+    hooks: ActiveDiscoveryCommandHooks,
+) -> int:
+    result = hooks.discover(enable_new)
+    hooks.log(f"active={result.discovered} added={result.added}")
+    return 0
+
+
+def run_public_discovery_command(
+    request: PublicDiscoveryCommandRequest,
+    hooks: RuntimeDiscoveryHooks,
+) -> int:
+    added = hooks.merge_profiles(
+        request.profiles_path,
+        request.token,
+        request.search_tags,
+        request.enable_new,
+    )
+    hooks.log(f"added={added}")
+    return 0
