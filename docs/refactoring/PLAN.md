@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13F завершен
+Статус: `IN_PROGRESS` — этап 13G завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D, 13E, 13F COMPLETE`)
+Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D, 13E, 13F, 13G COMPLETE`)
 
 Изменения:
 
@@ -2710,6 +2710,34 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13F
+выполняется revert одного отдельного коммита.
+
+#### 13G. Optional browser IoC provider
+
+Результат:
+
+- conditional import browser dependencies и fallback при отсутствии optional
+  Playwright stack перенесены из root composition file в owning
+  `app/browser/ioc.py`;
+- APP-scoped factories `UserAgentProvider`, `ContextFactory` и `BrowserPool`,
+  включая прежний `start/yield/stop` lifecycle, сохранены без изменения;
+- nullable provider factory сохраняет fail-open запуск API без browser extras и
+  прежний short-circuit: browser config не читается, если optional imports
+  недоступны;
+- root container подключает browser provider только при одновременно доступных
+  dependencies и `playwright.enabled`; browser types и lifecycle implementation
+  из root удалены;
+- добавлены focused tests unavailable-provider contract и построения/закрытия
+  root container без optional browser dependencies; manual strict mypy
+  проходит; полный regression: 754 tests;
+- root `ioc.py` сократился с 59 до 30 строк; browser provider составляет 54
+  строки, public package API — 3 строки, focused tests — 23 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13G
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover
