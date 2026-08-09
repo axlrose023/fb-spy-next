@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
+from app.facebook.calibration import CalibrationTarget
 from app.facebook.calibration.adapters.playwright import target_engagement
 from app.services import facebook_calibrator
-from app.services.facebook.calibration import CalibrationTarget
 from app.services.facebook.engagement import (
     EngagementPolicy,
     click_like,

@@ -5,11 +5,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.services.facebook.calibration import (
+from ..adapters.persistence.json_targets import (
     load_saved_facebook_targets_from_ads_json,
-    quarantined_facebook_post_urls,
 )
-
+from ..adapters.persistence.target_health import quarantined_facebook_post_urls
 from ..adapters.playwright import CalibrationBrowserOptions
 from ..execution import EngagementPolicy
 from ..funnel import OfferFunnelPolicy

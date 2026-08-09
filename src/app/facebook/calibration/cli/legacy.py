@@ -7,10 +7,10 @@ from typing import Any
 from playwright.sync_api import Page
 
 from app.services import facebook_runner
-from app.services.facebook.calibration import append_event
 
 from ..accounting import calibration_goals_met as goals_met
 from ..accounting import should_stop_after_target_result as should_stop
+from ..adapters.persistence.artifacts import append_event
 from ..adapters.playwright import (
     CalibrationBrowserOptions,
     SavedPostEngager,
@@ -39,7 +39,8 @@ def should_stop_after_result(
     result: dict[str, Any],
     args: argparse.Namespace,
 ) -> bool:
-    return should_stop(result, loop_policy_from_args(args))
+    stop: bool = should_stop(result, loop_policy_from_args(args))
+    return stop
 
 
 def calibration_goals_met(
@@ -48,11 +49,12 @@ def calibration_goals_met(
     *,
     targets_available: int | None = None,
 ) -> bool:
-    return goals_met(
+    complete: bool = goals_met(
         results,
         loop_policy_from_args(args),
         targets_available=targets_available,
     )
+    return complete
 
 
 def browser_options_from_args(args: argparse.Namespace) -> CalibrationBrowserOptions:
@@ -103,7 +105,8 @@ def calibrate_saved_ad(
         ignore_certificate_errors=facebook_runner._ignore_proxy_certificate_errors,
         funnel_session=funnel_session,
     )
-    return executor.execute(target, index=index, total=total)
+    result: dict[str, Any] = executor.execute(target, index=index, total=total)
+    return result
 
 
 def engage_row(
@@ -118,7 +121,7 @@ def engage_row(
     view_seconds: float | None = None,
     funnel_session: OfferFunnelSession | None = None,
 ) -> dict[str, Any]:
-    return SavedPostEngager(
+    result: dict[str, Any] = SavedPostEngager(
         policy,
         budget,
         browser_options_from_args(args),
@@ -130,6 +133,7 @@ def engage_row(
         relevant_ad_number=relevant_ad_number,
         view_seconds=view_seconds,
     )
+    return result
 
 
 def direct_offer_engagement(

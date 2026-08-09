@@ -8,7 +8,7 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from app.services.facebook.calibration import CalibrationTarget
+from app.facebook.calibration import CalibrationTarget
 from app.services.facebook.offer_funnel import (
     OfferFunnelPolicy,
     OfferFunnelSession,

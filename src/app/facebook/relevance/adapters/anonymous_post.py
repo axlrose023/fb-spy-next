@@ -6,8 +6,8 @@ from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
 
+from app.facebook.calibration import CalibrationTarget
 from app.services import facebook_runner
-from app.services.facebook.calibration import CalibrationTarget
 
 from ..evidence.policy import isolated_external_url
 from .isolation import host_is_public

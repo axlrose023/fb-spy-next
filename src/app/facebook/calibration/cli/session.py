@@ -7,8 +7,8 @@ from typing import Any
 from playwright.sync_api import sync_playwright
 
 from app.services import facebook_runner
-from app.services.facebook.calibration import append_event
 
+from ..adapters.persistence.artifacts import append_event
 from ..adapters.playwright import SavedPostTargetExecutor
 from ..funnel import OfferFunnelSession, load_offer_identity
 from ..models import CalibrationRunResult

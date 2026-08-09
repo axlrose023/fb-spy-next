@@ -4,13 +4,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from app.services.facebook.calibration import (
-    append_event,
-    record_facebook_post_target_result,
-    write_json,
-    write_targets,
-)
-
+from ..adapters.persistence.artifacts import append_event, write_json, write_targets
+from ..adapters.persistence.target_health import record_facebook_post_target_result
 from ..planning import CalibrationTarget
 
 

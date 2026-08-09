@@ -41,7 +41,9 @@ from app.facebook.calibration import (
     effective_target_goal,
     is_direct_calibration_target,
     is_relevant_ad,
+    load_saved_facebook_targets_from_ads_json,
     plan_calibration_intensity,
+    quarantined_facebook_post_urls,
 )
 from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
@@ -105,10 +107,6 @@ from app.facebook.profiles import (
     ProfileService,
 )
 from app.facebook.profiles.adapters import JsonProfileCatalog
-from app.services.facebook.calibration import (
-    load_saved_facebook_targets_from_ads_json,
-    quarantined_facebook_post_urls,
-)
 from app.services.facebook.health import (
     CalibrationDecision,
     CalibrationPolicy,

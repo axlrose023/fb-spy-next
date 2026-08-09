@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from .accounting import (
     calibration_goals_met,
     calibration_target_ok,
@@ -79,6 +83,31 @@ from .planning import (
 )
 from .service import CalibrationService
 
+if TYPE_CHECKING:
+    from .adapters.persistence import (
+        append_event,
+        load_engagement_targets_from_ads_json,
+        load_saved_facebook_targets_from_ads_json,
+        load_targets_from_ads_json,
+        load_targets_from_db,
+        quarantined_facebook_post_urls,
+        record_facebook_post_target_result,
+        write_json,
+        write_targets,
+    )
+
+_PERSISTENCE_EXPORTS = {
+    "append_event",
+    "load_engagement_targets_from_ads_json",
+    "load_saved_facebook_targets_from_ads_json",
+    "load_targets_from_ads_json",
+    "load_targets_from_db",
+    "quarantined_facebook_post_urls",
+    "record_facebook_post_target_result",
+    "write_json",
+    "write_targets",
+}
+
 __all__ = [
     "CalibrationDecision",
     "CalibrationLoopPolicy",
@@ -94,6 +123,7 @@ __all__ = [
     "CalibrationTarget",
     "CalibrationResultRecorder",
     "CalibrationTargetExecutor",
+    "append_event",
     "calibration_pool_name",
     "EngagementPlan",
     "EngagementPolicy",
@@ -126,7 +156,11 @@ __all__ = [
     "is_relevant_ad",
     "JsonCalibrationTargetPool",
     "live_ad_key",
+    "load_engagement_targets_from_ads_json",
     "load_offer_identity",
+    "load_saved_facebook_targets_from_ads_json",
+    "load_targets_from_ads_json",
+    "load_targets_from_db",
     "locate_saved_post",
     "metrics_from_dict",
     "merge_calibration_ads",
@@ -137,8 +171,10 @@ __all__ = [
     "plan_engagement",
     "post_comment",
     "public_offer_target",
+    "quarantined_facebook_post_urls",
     "redact_error",
     "redact_url",
+    "record_facebook_post_target_result",
     "rotate_calibration_targets",
     "select_calibration_targets",
     "should_stop_after_target_result",
@@ -147,4 +183,16 @@ __all__ = [
     "view_feed_ad",
     "visit_ad_landing",
     "wait_for_saved_post",
+    "write_json",
+    "write_targets",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _PERSISTENCE_EXPORTS:
+        raise AttributeError(name)
+    from .adapters import persistence
+
+    value = getattr(persistence, name)
+    globals()[name] = value
+    return value

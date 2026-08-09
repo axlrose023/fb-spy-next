@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14C завершен
+Статус: `IN_PROGRESS` — этап 14D завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A, 14B, 14C COMPLETE`)
+Статус: `IN_PROGRESS` (`14A, 14B, 14C, 14D COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -2946,6 +2946,40 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 14C
+выполняется revert одного отдельного коммита.
+
+#### 14D. Calibration persistence and target loading
+
+Результат:
+
+- 445-строчный calibration persistence implementation перенесен в owning
+  `facebook.calibration.adapters.persistence` и разделен на JSON target loading,
+  DB target loading, target health/quarantine, artifacts и target mapping;
+- country/relevance filters, deduplication, direct-post validation, direct-offer
+  fallback, target limits, DB ordering и domain selection сохранены без
+  изменения;
+- atomic JSON writes, permissions `0600`, append-only JSONL events, consecutive
+  failure accounting, seven-day quarantine и reset после успеха сохранены;
+- calibration CLI использует конкретные persistence adapters, orchestrator и
+  соседние Facebook-модули переключены на public `app.facebook.calibration`
+  API; production import count старого `services.facebook.calibration` равен
+  нулю;
+- `app.services.facebook.calibration` сокращен с 445 до 31 строки и оставлен
+  identity-preserving compatibility facade на один release;
+- ORM records доступны DB adapter через явные lazy application-root aliases;
+  JSON target и health exports не загружают database engine, а UoW/DB-loader
+  сохраняют оба порядка импорта без cycles;
+- добавлено 5 focused contracts: facade identity, lazy DB boundary, два порядка
+  импорта и DB row mapping без владения transaction; calibration/Facebook
+  regression, architecture/contracts и strict mypy проходят; полный regression:
+  783 теста;
+- новые production-файлы имеют от 35 до 218 строк; wheel содержит все шесть
+  persistence modules и compatibility facade;
+- Ruff, stage-scoped pre-commit, frontend production build и gitleaks проходят;
+  frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 14D
 выполняется revert одного отдельного коммита.
 
 Перед удалением:

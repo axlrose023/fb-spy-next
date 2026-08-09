@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import fields
 from typing import Any
 
+from app.facebook.calibration import CalibrationTarget
 from app.services import facebook_runner
-from app.services.facebook.calibration import CalibrationTarget
 
 
 def ad_from_raw(raw: dict[str, Any], *, element_id: str) -> facebook_runner.Ad:

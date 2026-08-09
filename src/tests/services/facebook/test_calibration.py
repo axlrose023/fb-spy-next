@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from app.services.facebook.calibration import (
+from app.facebook.calibration import (
     CalibrationTarget,
     append_event,
     load_engagement_targets_from_ads_json,
