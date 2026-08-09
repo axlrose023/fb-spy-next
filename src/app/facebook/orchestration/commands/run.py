@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from app.facebook.calibration import CalibrationPolicy
 from app.facebook.profiles import Profile
@@ -33,16 +33,14 @@ def run_command(args: Any, hooks: RunCommandHooks) -> int:
     policy = calibration_policy_from_args(args)
     validate_orchestration_run_options(args)
     scheduler = profile_scheduler(args, hooks, store, policy, root_dir)
-    return cast(
-        int,
-        OrchestrationService(
-            OrchestrationRunHooks(
-                discover_profiles=lambda: hooks.discover_profiles(True),
-                run_once=scheduler.run_once,
-                run_continuously=scheduler.run_continuously,
-            )
-        ).run(OrchestrationRunRequest(continuous=args.loop)),
-    )
+    result: int = OrchestrationService(
+        OrchestrationRunHooks(
+            discover_profiles=lambda: hooks.discover_profiles(True),
+            run_once=scheduler.run_once,
+            run_continuously=scheduler.run_continuously,
+        )
+    ).run(OrchestrationRunRequest(continuous=args.loop))
+    return result
 
 
 def profile_scheduler(
@@ -92,13 +90,11 @@ def profile_scheduler(
 
 
 def profile_rest_seconds_from_args(args: Any) -> float:
-    return cast(
-        float,
-        profile_rest_seconds(
-            cycle_sleep_seconds=args.cycle_sleep,
-            profile_rest_minutes=args.profile_rest_minutes,
-        ),
+    rest_seconds: float = profile_rest_seconds(
+        cycle_sleep_seconds=args.cycle_sleep,
+        profile_rest_minutes=args.profile_rest_minutes,
     )
+    return rest_seconds
 
 
 def schedule_policy_from_args(args: Any) -> RecoverySchedulePolicy:

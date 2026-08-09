@@ -14,7 +14,6 @@ import subprocess
 import threading
 import time
 from collections.abc import Sequence
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -50,10 +49,7 @@ from app.facebook.orchestration import (
     CollectionPipelineService,
     CollectionPipelineState,
     OrchestrationStateStore,
-    ProfileCycleHooks,
-    ProfileCycleRequest,
     ProfileCycleSchedule,
-    ProfileCycleService,
     ProfileEvaluationService,
     calibration_allows_followup,
     calibration_pass_target_cap,
@@ -86,12 +82,15 @@ from app.facebook.orchestration.adapters import (
 )
 from app.facebook.orchestration.commands import (
     CommandHandlers,
+    ProfileCycleCommandHooks,
+    ProfileCycleCommandRequest,
     RunCommandHooks,
     build_parser,
     calibration_policy_from_args,
     log_profile_schedule,
     profile_rest_seconds_from_args,
     run_command,
+    run_profile_cycle_command,
     schedule_policy_from_args,
 )
 from app.facebook.orchestration.commands import dispatch as _dispatch_command
@@ -235,95 +234,61 @@ def _run_profile_cycle(
     policy: CalibrationPolicy,
     root_dir: Path,
 ) -> ProfileCycleSchedule:
-    with _profile_cycle_guard(profile, args, root_dir):
-        return _run_profile_cycle_locked(profile, args, store, policy, root_dir)
-
-
-@contextmanager
-def _profile_cycle_guard(profile: ProfileConfig, args, root_dir: Path):
-    lock_path = profile_lock_path(root_dir, profile.octo_profile_uuid)
-    with FileLock(lock_path):
-        try:
-            yield
-        finally:
-            if not args.dry_run:
-                _stop_octo_profile(profile, args)
-
-
-def _run_profile_cycle_locked(
-    profile: ProfileConfig,
-    args,
-    store: OrchestrationStateStore,
-    policy: CalibrationPolicy,
-    root_dir: Path,
-) -> ProfileCycleSchedule:
-    cycle_at = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
-    profile_root = root_dir / "profiles" / profile.storage_name
-    collect_dir = profile_root / f"collect_{cycle_at}"
-    collect_dir.mkdir(parents=True, exist_ok=True)
-    print(f"[{profile.display_name}] collect -> {collect_dir}", flush=True)
-    pipeline = _run_collection_pipeline(profile, args, collect_dir)
-    collect_code = pipeline.collect_code
-    observed_metrics = collect_run_metrics(
-        collect_dir,
-        return_code=collect_code,
-        default_elapsed_seconds=args.collect_minutes * 60,
-    )
-    if not profile.expected_country and observed_metrics.profile_country:
-        profile.expected_country = observed_metrics.profile_country
-        _persist_profile_country(
-            Path(args.profiles_json),
-            profile.octo_profile_uuid,
-            observed_metrics.profile_country,
+    def execute_calibration(
+        cycle_profile: Profile,
+        collect_dir: Path,
+        cycle_root: Path,
+        decision: CalibrationDecision,
+        target_offset: int,
+        target_limit: int,
+    ) -> dict[str, Any]:
+        return _run_calibration(
+            cycle_profile,
+            args,
+            collect_dir,
+            cycle_root,
+            decision=decision,
+            target_offset=target_offset,
+            target_limit_cap=target_limit,
         )
-        print(
-            f"[{profile.display_name}] adopted geo={observed_metrics.profile_country}",
-            flush=True,
-        )
-    _update_calibration_pools(profile, collect_dir, root_dir)
-    target_count = _count_calibration_targets(profile, collect_dir, root_dir)
-    metrics = collect_run_metrics(
-        collect_dir,
-        expected_country=profile.expected_country,
-        return_code=collect_code,
-        default_elapsed_seconds=args.collect_minutes * 60,
-        calibration_targets_available=target_count,
-    )
-    return ProfileCycleService(
-        ProfileEvaluationService(store),
-        store,
-        ProfileCycleHooks(
-            write_health=lambda decision: _write_json(
-                collect_dir / "health.json",
-                decision.to_dict(),
-            ),
-            stop_requested=_STOP_EVENT.is_set,
-            execute_calibration=lambda decision, target_offset, target_limit: (
-                _run_calibration(
-                    profile,
-                    args,
-                    collect_dir,
-                    root_dir,
-                    decision=decision,
-                    target_offset=target_offset,
-                    target_limit_cap=target_limit,
-                )
-            ),
-            log=lambda message: print(
-                f"[{profile.display_name}] {message}",
-                flush=True,
-            ),
-        ),
-    ).run(
-        ProfileCycleRequest(
+
+    return run_profile_cycle_command(
+        ProfileCycleCommandRequest(
             profile=profile,
-            metrics=metrics,
+            state=store,
             policy=policy,
             schedule_policy=_profile_schedule_policy(args),
-            pipeline=pipeline,
-            calibration_targets_available=target_count,
+            root_dir=root_dir,
+            collect_seconds=args.collect_minutes * 60,
             recovery_burst_cycles=args.recovery_burst_cycles,
-        )
+            dry_run=args.dry_run,
+        ),
+        ProfileCycleCommandHooks(
+            profile_lock=lambda cycle_root, profile_uuid: FileLock(
+                profile_lock_path(cycle_root, profile_uuid)
+            ),
+            run_collection=lambda cycle_profile, collect_dir: _run_collection_pipeline(
+                cycle_profile, args, collect_dir
+            ),
+            persist_profile_country=lambda profile_uuid, country: (
+                _persist_profile_country(
+                    Path(args.profiles_json),
+                    profile_uuid,
+                    country,
+                )
+            ),
+            update_calibration_pools=_update_calibration_pools,
+            count_calibration_targets=_count_calibration_targets,
+            run_calibration=execute_calibration,
+            stop_profile=lambda cycle_profile: _stop_octo_profile(
+                cycle_profile,
+                args,
+            ),
+            write_json=_write_json,
+            stop_requested=_STOP_EVENT.is_set,
+            now=lambda: datetime.now(UTC),
+            log=lambda message: print(message, flush=True),
+        ),
     )
 
 
@@ -341,9 +306,7 @@ def _run_collection_pipeline(
         stop_requested=_STOP_EVENT.is_set,
         relevance_enabled=lambda: _relevance_classification_enabled(args),
         artifact_exists=lambda path: path.exists(),
-        audit_interest_safety=lambda: _interest_safe_collection_violations(
-            collect_dir
-        ),
+        audit_interest_safety=lambda: _interest_safe_collection_violations(collect_dir),
         record_interest_safety=lambda violations: _write_json(
             collect_dir / "interest_safety.json",
             {

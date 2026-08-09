@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G3 завершен
+Статус: `IN_PROGRESS` — этап 14G4 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G2 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G4 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3458,6 +3458,41 @@ collection pipeline, calibration и discovery composition переносятся
 calibration и discovery composition переносятся следующими независимыми units.
 Production server, live Octo runtime и старый репозиторий не менялись. Rollback
 14G3 выполняется revert одного отдельного коммита.
+
+#### 14G4. Orchestrator profile-cycle composition
+
+Результат:
+
+- lock/cleanup одного профиля, создание collection run directory, первичный и
+  итоговый сбор метрик, принятие обнаруженного geo, обновление calibration pools
+  и связывание `ProfileCycleService` вынесены в 100-строчный canonical
+  `facebook.orchestration.commands.profile_cycle`;
+- immutable request содержит только значения текущего cycle, а lock, collection
+  pipeline, profile catalog, target pools, calibration execution, stop event,
+  clock, JSON writer и logging передаются через `ProfileCycleCommandHooks`;
+- Octo stop по-прежнему выполняется внутри profile lock после success или
+  exception, но пропускается для `dry-run`; run directory naming, log text,
+  health artifact и state write order сохранены;
+- geo по-прежнему принимается из первичных metrics до обновления pools и
+  повторного расчета metrics с `expected_country` и количеством доступных
+  calibration targets;
+- legacy `_run_profile_cycle` остался CLI/runtime adapter и динамически связывает
+  прежние `_run_collection_pipeline`, `_run_calibration`, target-pool,
+  persistence и `_stop_octo_profile` seams;
+- legacy orchestrator сокращен с 934 до 897 строк; command models и canonical
+  profile-cycle composition имеют 73 и 100 строк;
+- добавлено 3 focused contracts для geo/metrics/state ordering, exception
+  cleanup и `dry-run`; focused regression: 105 тестов, полный regression:
+  871 тест;
+- wheel содержит canonical profile-cycle module; Ruff, strict mypy,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: collection pipeline, calibration и discovery
+composition переносятся следующими независимыми units. Production server, live
+Octo runtime и старый репозиторий не менялись. Rollback 14G4 выполняется revert
+одного отдельного коммита.
 
 Перед удалением:
 
