@@ -263,7 +263,7 @@ def test_cross_domain_white_page_is_not_engaged(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.facebook.offer_funnel._same_site",
+        "app.facebook.calibration.funnel.adapters.playwright.landing.same_site",
         lambda _left, _right: False,
     )
     context = chromium_browser.new_context()
@@ -335,7 +335,7 @@ def test_mismatched_facebook_cta_uses_saved_direct_offer(
     wrong_page.set_content("<main>Unrelated destination</main>")
 
     monkeypatch.setattr(
-        "app.services.facebook.offer_funnel.open_ad_landing",
+        "app.facebook.calibration.funnel.adapters.playwright.landing.open_ad_landing",
         lambda *_args, **_kwargs: (
             {
                 "action": "landing_visit",

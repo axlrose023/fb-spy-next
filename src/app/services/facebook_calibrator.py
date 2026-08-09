@@ -21,11 +21,18 @@ from playwright.sync_api import Page, sync_playwright
 
 from app.facebook.calibration import (
     EngagementPolicy,
+    OfferFunnelPolicy,
+    OfferFunnelSession,
     click_like,
     follow_advertiser,
+    load_offer_identity,
     locate_saved_post,
+    offer_url,
     plan_engagement,
     post_comment,
+    public_offer_target,
+    redact_error,
+    redact_url,
     view_feed_ad,
     visit_ad_landing,
     wait_for_saved_post,
@@ -40,15 +47,6 @@ from app.services.facebook.calibration import (
     rotate_calibration_targets,
     write_json,
     write_targets,
-)
-from app.services.facebook.offer_funnel import (
-    OfferFunnelPolicy,
-    OfferFunnelSession,
-    load_offer_identity,
-    offer_url,
-    public_offer_target,
-    redact_error,
-    redact_url,
 )
 from app.settings import get_config
 

@@ -1660,7 +1660,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 11. `facebook/calibration`
 
-Статус: `IN_PROGRESS` (`11A, 11B COMPLETE`)
+Статус: `IN_PROGRESS` (`11A, 11B, 11C COMPLETE`)
 
 Источники:
 
@@ -1745,6 +1745,38 @@ Production server, Octo runtime и старый репозиторий не ме
 - identity/redaction;
 - submit disabled by default;
 - success detection.
+
+Результат 11C:
+
+- `OfferFunnelPolicy`, `OfferIdentity`, identity selection, URL redaction,
+  domain allowlist и safe target projection перенесены в framework-free
+  `app.facebook.calibration.funnel` модули;
+- Playwright implementation разделён на controls, fields, forms, quiz,
+  prelander, landing strategy, success detection, browser helpers и session;
+  concrete session находится во внешнем adapter, а внутренний `service.py` не
+  импортирует Playwright и содержит только final-status policy;
+- `OfferFunnelSession` сохраняет Facebook CTA/direct-offer fallback, persistent
+  Octo context, retained tabs, pixel events и repeated-submit guard; каждый
+  production-файл меньше 200 строк;
+- fail-closed invariants сохранены: submit по умолчанию disabled, allowlisted
+  submit проверяет точный domain suffix, dangerous financial/identity fields не
+  заполняются, а публичные результаты и ошибки не содержат URL query values;
+- legacy `app.services.facebook.offer_funnel` сокращён с 1186 до 43 строк и
+  оставлен facade; calibration CLI переключён на новый публичный API без
+  изменения arguments, defaults или result schema;
+- 500 randomized pure differential cases совпали с legacy-реализацией, а 13
+  групп selectors/terms/constants совпадают точно;
+- 23 focused tests, включая реальные Chromium quiz/form/success, iframe form,
+  CTA mismatch fallback, repeated submit и dangerous-form block, проходят;
+  focused branch coverage funnel package составляет 64%;
+- полный regression: 244 + 312 + 10, итого 566 тестов; Ruff, strict mypy,
+  architecture/contracts, stage-scoped pre-commit, wheel build, frontend
+  production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 11C
+выполняется revert одного отдельного коммита.
 
 #### 11D. CalibrationService и CLI
 
