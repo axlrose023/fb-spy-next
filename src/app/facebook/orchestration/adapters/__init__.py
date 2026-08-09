@@ -3,6 +3,14 @@ from .collector_command import build_collector_command
 from .command_environment import OctoProcessEnvironment, PythonProcessEnvironment
 from .file_lock import FileLock, profile_lock_path
 from .file_state_store import FileStateStore
+from .orchestrator_runtime import (
+    OctoRuntimeOptions,
+    octo_headless,
+    octo_process_environment,
+    python_process_environment,
+    relevance_classification_enabled,
+    run_orchestrator_command,
+)
 from .relevance_commands import (
     build_isolated_landing_resolver_command,
     build_relevance_classifier_command,
@@ -19,6 +27,7 @@ __all__ = [
     "FileLock",
     "FileStateStore",
     "OctoProcessEnvironment",
+    "OctoRuntimeOptions",
     "ProcessRegistry",
     "PythonProcessEnvironment",
     "SubprocessCommandRunner",
@@ -28,6 +37,11 @@ __all__ = [
     "build_relevance_classifier_command",
     "build_relevant_enricher_command",
     "profile_lock_path",
+    "octo_headless",
+    "octo_process_environment",
+    "python_process_environment",
+    "relevance_classification_enabled",
+    "run_orchestrator_command",
     "signal_process_group",
     "write_log_line",
 ]

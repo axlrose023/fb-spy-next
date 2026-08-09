@@ -60,13 +60,17 @@ from app.facebook.orchestration.adapters import (
     OctoProcessEnvironment,
     ProcessRegistry,
     PythonProcessEnvironment,
-    SubprocessCommandRunner,
     build_backend_import_command,
     build_collector_command,
     build_isolated_landing_resolver_command,
     build_relevance_classifier_command,
     build_relevant_enricher_command,
+    octo_headless,
+    octo_process_environment,
     profile_lock_path,
+    python_process_environment,
+    relevance_classification_enabled,
+    run_orchestrator_command,
 )
 from app.facebook.orchestration.commands import (
     ActiveDiscoveryCommandHooks,
@@ -403,9 +407,10 @@ def _isolated_landing_resolver_command(
 
 
 def _relevance_classification_enabled(args) -> bool:
-    if args.classify_relevance is not None:
-        return bool(args.classify_relevance)
-    return bool(get_config().facebook.relevance_filter_enabled)
+    return relevance_classification_enabled(
+        args.classify_relevance,
+        get_config().facebook,
+    )
 
 
 def _backend_import_command(
@@ -416,18 +421,11 @@ def _backend_import_command(
 
 
 def _python_environment() -> PythonProcessEnvironment:
-    return PythonProcessEnvironment(executable=get_config().facebook.runner_python)
+    return python_process_environment(get_config().facebook)
 
 
 def _octo_environment(args) -> OctoProcessEnvironment:
-    config = get_config()
-    return OctoProcessEnvironment(
-        executable=config.facebook.runner_python,
-        collector_module=config.facebook.runner_module,
-        host=args.octo_host or config.facebook.octo_host,
-        port=args.octo_port or config.facebook.octo_port,
-        headless=_octo_headless(args),
-    )
+    return octo_process_environment(args, get_config().facebook)
 
 
 def _calibrator_command(
@@ -469,9 +467,7 @@ def _calibrator_command(
 
 
 def _octo_headless(args) -> bool:
-    if args.octo_headless is not None:
-        return bool(args.octo_headless)
-    return bool(get_config().facebook.octo_headless)
+    return octo_headless(args.octo_headless, get_config().facebook)
 
 
 def _calibration_plan(
@@ -592,16 +588,11 @@ def _run_command(
     timeout_seconds: float | None = None,
     interrupt_grace_seconds: float = 30.0,
 ) -> int:
-    env = os.environ.copy()
-    env.setdefault("PYTHONPATH", str(get_config().paths.src_path))
-    env["PW_TEST_SCREENSHOT_NO_FONTS_READY"] = "1"
-    return SubprocessCommandRunner(
-        cwd=get_config().paths.src_path.parent,
-        env=env,
-        registry=_PROCESS_REGISTRY,
-    ).run(
+    return run_orchestrator_command(
         command,
         log_path,
+        src_path=get_config().paths.src_path,
+        registry=_PROCESS_REGISTRY,
         timeout_seconds=timeout_seconds,
         interrupt_grace_seconds=interrupt_grace_seconds,
     )

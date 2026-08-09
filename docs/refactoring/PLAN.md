@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G10 завершен
+Статус: `IN_PROGRESS` — этап 14G11 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G10 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G11 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3679,6 +3679,37 @@ composition adapters либо документированно закрепля�
 чего выполняются финальные 14G import/CLI gates. Production server, live Octo
 runtime и старый репозиторий не менялись. Rollback 14G10 выполняется revert
 одного отдельного коммита.
+
+#### 14G11. Orchestrator process environment adapter
+
+Результат:
+
+- Python/Octo process environment, host/port/headless precedence, relevance flag
+  fallback и subprocess environment assembly вынесены в 76-строчный
+  `facebook.orchestration.adapters.orchestrator_runtime`;
+- adapter зависит от typed `FacebookConfig`, `OctoRuntimeOptions` и explicit
+  `ProcessRegistry`; он не читает root settings и не владеет global state;
+- subprocess сохраняет cwd `src_path.parent`, existing `PYTHONPATH` precedence,
+  default `PYTHONPATH=src_path`, `PW_TEST_SCREENSHOT_NO_FONTS_READY=1`, timeout и
+  interrupt grace forwarding;
+- legacy `_python_environment`, `_octo_environment`, `_octo_headless`,
+  `_relevance_classification_enabled` и `_run_command` стали тонкими wrappers,
+  поэтому monkeypatch `get_config`, `_run_command` и shared process registry
+  contracts сохранены;
+- legacy orchestrator сокращен с 853 до 844 строк;
+- добавлено 3 focused adapter contracts для config/CLI precedence, relevance
+  override и реального subprocess cwd/environment; focused regression: 128
+  тестов, полный regression: 888 тестов;
+- wheel содержит canonical runtime adapter; Ruff, strict mypy, stage-scoped
+  pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: profile catalog/Octo compatibility boundary и
+оставшиеся command-builder adapters переносятся следующими units, затем
+выполняются финальные import/CLI gates. Production server, live Octo runtime и
+старый репозиторий не менялись. Rollback 14G11 выполняется revert одного
+отдельного коммита.
 
 Перед удалением:
 
