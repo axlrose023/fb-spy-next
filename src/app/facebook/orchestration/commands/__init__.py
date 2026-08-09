@@ -1,3 +1,4 @@
+from .calibration import CalibrationCommandHooks, run_calibration_command
 from .collection import (
     CollectionCommandHooks,
     CollectionCommandRequest,
@@ -23,6 +24,7 @@ from .run import (
 
 __all__ = [
     "CommandHandlers",
+    "CalibrationCommandHooks",
     "CollectionCommandHooks",
     "CollectionCommandRequest",
     "ProfileCycleCommandHooks",
@@ -35,6 +37,7 @@ __all__ = [
     "log_profile_schedule",
     "profile_rest_seconds_from_args",
     "run_collection_command",
+    "run_calibration_command",
     "run_profile_cycle_command",
     "run_command",
     "schedule_policy_from_args",

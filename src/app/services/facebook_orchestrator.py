@@ -26,9 +26,7 @@ from app.facebook.adapters.octo import (
 )
 from app.facebook.calibration import (
     CalibrationIntensityPolicy,
-    CalibrationPassHooks,
     CalibrationPassRequest,
-    CalibrationPassService,
     CalibrationPlan,
     CalibrationProcessEnvironment,
     JsonCalibrationTargetPool,
@@ -78,6 +76,7 @@ from app.facebook.orchestration.adapters import (
     write_log_line,
 )
 from app.facebook.orchestration.commands import (
+    CalibrationCommandHooks,
     CollectionCommandHooks,
     CollectionCommandRequest,
     CommandHandlers,
@@ -88,6 +87,7 @@ from app.facebook.orchestration.commands import (
     calibration_policy_from_args,
     log_profile_schedule,
     profile_rest_seconds_from_args,
+    run_calibration_command,
     run_collection_command,
     run_command,
     run_profile_cycle_command,
@@ -520,54 +520,30 @@ def _run_calibration(
     target_offset: int = 0,
     target_limit_cap: int | None = None,
 ) -> dict[str, Any]:
-    hooks = CalibrationPassHooks(
-        prepare_run_dir=_prepare_calibration_run_dir,
-        target_sources=_calibration_ads_paths,
-        count_targets=_count_calibration_targets,
-        plan=lambda pass_decision, available: _calibration_plan(
-            pass_decision,
+    def calibrator_command(
+        pass_profile: Profile,
+        run_dir: Path,
+        paths: list[Path],
+        country: str | None,
+        offset: int,
+        plan: CalibrationPlan,
+    ) -> list[str]:
+        return _calibrator_command(
+            pass_profile,
             args,
-            available,
-        ),
-        observe_country=lambda pass_profile, run_dir, elapsed: (
-            collect_run_metrics(
-                run_dir,
-                expected_country=pass_profile.expected_country,
-                default_elapsed_seconds=elapsed,
-            ).profile_country
-            or pass_profile.expected_country
-        ),
-        execute=lambda pass_profile, run_dir, paths, country, offset, plan: (
-            _run_command(
-                _calibrator_command(
-                    pass_profile,
-                    args,
-                    run_dir,
-                    paths,
-                    country,
-                    target_offset=offset,
-                    target_limit=plan.target_limit,
-                    min_successful_targets=plan.target_goal,
-                    max_reactions=plan.max_reactions,
-                    max_follows=plan.max_follows,
-                    max_comments=plan.max_comments,
-                    min_interactions=plan.min_interactions,
-                ),
-                run_dir / "calibrator.log",
-                timeout_seconds=_calibration_timeout_seconds(
-                    args,
-                    target_limit=plan.target_limit,
-                ),
-            )
-        ),
-        load_summary=lambda run_dir: _load_json(
-            run_dir / "summary.json",
-            default={},
-        ),
-        now=utc_now,
-        log=lambda message: print(message, flush=True),
-    )
-    return CalibrationPassService(hooks).run(
+            run_dir,
+            paths,
+            country,
+            target_offset=offset,
+            target_limit=plan.target_limit,
+            min_successful_targets=plan.target_goal,
+            max_reactions=plan.max_reactions,
+            max_follows=plan.max_follows,
+            max_comments=plan.max_comments,
+            min_interactions=plan.min_interactions,
+        )
+
+    return run_calibration_command(
         CalibrationPassRequest(
             profile=profile,
             collect_dir=collect_dir,
@@ -577,7 +553,33 @@ def _run_calibration(
             dry_run=args.dry_run,
             target_offset=target_offset,
             target_limit_cap=target_limit_cap,
-        )
+        ),
+        CalibrationCommandHooks(
+            prepare_run_dir=_prepare_calibration_run_dir,
+            target_sources=_calibration_ads_paths,
+            count_targets=_count_calibration_targets,
+            plan=lambda pass_decision, available: _calibration_plan(
+                pass_decision,
+                args,
+                available,
+            ),
+            calibrator_command=calibrator_command,
+            run_command=lambda command, log_path, timeout: _run_command(
+                command,
+                log_path,
+                timeout_seconds=timeout,
+            ),
+            timeout_seconds=lambda target_limit: _calibration_timeout_seconds(
+                args,
+                target_limit=target_limit,
+            ),
+            load_json=lambda run_dir: _load_json(
+                run_dir / "summary.json",
+                default={},
+            ),
+            now=utc_now,
+            log=lambda message: print(message, flush=True),
+        ),
     )
 
 

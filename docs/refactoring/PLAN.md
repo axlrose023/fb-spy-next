@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G5 завершен
+Статус: `IN_PROGRESS` — этап 14G6 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G5 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G6 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3523,6 +3523,38 @@ Octo runtime и старый репозиторий не менялись. Rollb
 Этап 14G остается `IN_PROGRESS`: calibration и discovery/maintenance
 composition переносятся следующими независимыми units. Production server, live
 Octo runtime и старый репозиторий не менялись. Rollback 14G5 выполняется revert
+одного отдельного коммита.
+
+#### 14G6. Orchestrator calibration-pass composition
+
+Результат:
+
+- outer wiring одного calibration pass вынесен в 74-строчный
+  `facebook.orchestration.commands.calibration`; последовательностью target
+  sources/count, cap, planning, geo observation, execution и record accounting
+  по-прежнему владеет `CalibrationPassService`;
+- process runner, calibration argv builder, timeout budget, target pools,
+  intensity planner, run-directory factory, summary loader, clock и logger
+  передаются через immutable `CalibrationCommandHooks`;
+- observed country по-прежнему читается из collection metrics с fallback на
+  `profile.expected_country`; `CalibrationPlan` целиком передается в command
+  adapter, включая limit/goal/reaction/follow/comment/interaction параметры;
+- `calibrator.log`, timeout от фактического `plan.target_limit`, target offset,
+  capped `pass_targets_available`, dry-run и summary record semantics сохранены;
+- legacy `_run_calibration`, `_calibrator_command`, `_calibration_plan` и
+  `_calibration_timeout_seconds` contracts сохранены; legacy orchestrator
+  временно вырос с 885 до 887 строк из-за explicit typed mapping существующего
+  command-builder API, при этом pass composition удалена из legacy-файла;
+- добавлен focused contract capped pass/geo/plan/timeout/summary wiring;
+  focused regression: 161 тест, полный regression: 874 теста;
+- wheel содержит canonical calibration composition; Ruff, strict mypy,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: discovery и maintenance/evaluate/seed
+composition переносятся следующими независимыми units. Production server, live
+Octo runtime и старый репозиторий не менялись. Rollback 14G6 выполняется revert
 одного отдельного коммита.
 
 Перед удалением:
