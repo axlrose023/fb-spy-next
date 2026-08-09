@@ -7,6 +7,7 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.calibration import wait_for_saved_post
+from app.facebook.navigation import goto_with_retry
 from app.services import facebook_runner
 
 from ...models import EnrichmentOptions, EnrichmentResult, RelevantAd
@@ -121,7 +122,7 @@ def _initial_details(post_url: str) -> dict[str, Any]:
 
 
 def _open_saved_post(page: Any, post_url: str, options: EnrichmentOptions) -> None:
-    response = facebook_runner._goto_with_retry(
+    response = goto_with_retry(
         page,
         post_url,
         timeout=max(1, options.timeout_ms),

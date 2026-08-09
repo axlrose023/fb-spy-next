@@ -6,6 +6,7 @@ from typing import Any
 
 from playwright.sync_api import Page
 
+from app.facebook.navigation import ignore_proxy_certificate_errors
 from app.services import facebook_runner
 
 from ..accounting import calibration_goals_met as goals_met
@@ -102,7 +103,7 @@ def calibrate_saved_ad(
         options=browser_options_from_args(args),
         write_event=append_event,
         utc_now=facebook_runner.utc_now,
-        ignore_certificate_errors=facebook_runner._ignore_proxy_certificate_errors,
+        ignore_certificate_errors=ignore_proxy_certificate_errors,
         funnel_session=funnel_session,
     )
     result: dict[str, Any] = executor.execute(target, index=index, total=total)
@@ -163,5 +164,5 @@ def goto_saved_post(
         url,
         timeout_ms=timeout_ms,
         attempts=attempts,
-        ignore_certificate_errors=facebook_runner._ignore_proxy_certificate_errors,
+        ignore_certificate_errors=ignore_proxy_certificate_errors,
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.facebook.navigation import goto_with_retry
 from app.services import facebook_runner
 
 from ...models import EnrichmentOptions
@@ -88,7 +89,7 @@ def _restore_feed(page: Any, options: EnrichmentOptions) -> None:
             timeout=max(1, options.timeout_ms),
         )
     elif not is_facebook_url(page.url):
-        facebook_runner._goto_with_retry(
+        goto_with_retry(
             page,
             "https://m.facebook.com/",
             timeout=max(1, options.timeout_ms),

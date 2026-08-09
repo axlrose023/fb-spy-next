@@ -5,19 +5,20 @@ from collections.abc import Callable
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, Response
 
-TRANSIENT_NAVIGATION_ERRORS = (
-    "ERR_SOCKS_CONNECTION_FAILED",
-    "ERR_PROXY_CONNECTION_FAILED",
-    "ERR_NETWORK_CHANGED",
-    "ERR_CONNECTION_RESET",
-    "ERR_CONNECTION_CLOSED",
-    "ERR_TIMED_OUT",
+from app.facebook.navigation import (
+    PROXY_CERTIFICATE_AUTHORITY_ERROR as PROXY_CERTIFICATE_AUTHORITY_ERROR,
 )
+from app.facebook.navigation import (
+    TRANSIENT_NAVIGATION_ERRORS as TRANSIENT_NAVIGATION_ERRORS,
+)
+from app.facebook.navigation import (
+    is_transient_navigation_error as is_transient_navigation_error,
+)
+
 BROWSER_CONTEXT_CLOSED_ERRORS = (
     "Target page, context or browser has been closed",
     "BrowserContext.new_page: Target page, context or browser has been closed",
 )
-PROXY_CERTIFICATE_AUTHORITY_ERROR = "ERR_CERT_AUTHORITY_INVALID"
 
 
 class SavedPostAccessError(RuntimeError):
@@ -80,10 +81,6 @@ def goto_saved_post(
                 raise
             page.wait_for_timeout(1500 * attempt)
     raise RuntimeError("saved Facebook post navigation exhausted retries")
-
-
-def is_transient_navigation_error(exc: Exception) -> bool:
-    return any(code in str(exc) for code in TRANSIENT_NAVIGATION_ERRORS)
 
 
 def is_browser_context_closed_error(exc: Exception) -> bool:

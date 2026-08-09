@@ -6,6 +6,7 @@ from typing import Any
 
 from playwright.sync_api import sync_playwright
 
+from app.facebook.navigation import ignore_proxy_certificate_errors
 from app.services import facebook_runner
 
 from ..adapters.persistence.artifacts import append_event
@@ -75,7 +76,7 @@ def run_browser_session(
             options=browser_options(args),
             write_event=append_event,
             utc_now=facebook_runner.utc_now,
-            ignore_certificate_errors=facebook_runner._ignore_proxy_certificate_errors,
+            ignore_certificate_errors=ignore_proxy_certificate_errors,
             funnel_session=funnel_session,
         )
         service = CalibrationService(

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F2 завершен
+Статус: `IN_PROGRESS` — этап 14F3 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F2 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F3 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3070,6 +3070,41 @@ commit/revert units. Production server, Octo runtime и старый репоз�
 collection CLI composition переносятся следующими независимыми commit/revert
 units. Production server, Octo runtime и старый репозиторий не менялись.
 Rollback 14F2 выполняется revert одного отдельного коммита.
+
+#### 14F3. Shared Facebook navigation
+
+Результат:
+
+- общая Playwright-навигация вынесена из legacy runner в 141-строчный
+  `facebook.navigation.adapters.playwright`; публичный `facebook.navigation`
+  экспортирует retry policy, login probe, feed recovery, proxy certificate
+  handling и признаки временных сетевых ошибок;
+- backoff, количество попыток, Playwright timeout handling, best-effort возврат
+  в ленту, CDP-команда принятия proxy CA и прежние stdout diagnostics сохранены
+  без изменения runtime-поведения;
+- calibration сохранила отдельный saved-post loop с `page.wait_for_timeout`, но
+  использует общие error codes и transient-error policy; enrichment, relevance
+  и calibration CLI больше не обращаются к navigation helpers через legacy
+  runner;
+- `facebook_runner` сохраняет identity-compatible private aliases и публичные
+  constants для обратной совместимости, но собственных реализаций навигации
+  больше не содержит; runner уменьшен с 2 155 до 2 051 строки;
+- dynamic `time.sleep` lookup сохранен для существующих runtime/test seams;
+  retry-функция также допускает явное внедрение sleeper и certificate handler;
+- добавлено 12 focused contracts для transient/timeout retries, permanent
+  failures, однократного proxy CA acceptance, feed URL classification, login
+  probe, feed recovery и alias/policy identity; navigation, runner, calibration,
+  enrichment, relevance, architecture/contracts и strict mypy проходят; полный
+  regression: 812 тестов;
+- wheel содержит canonical navigation package и обновленные consumers; Ruff,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+  frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: post/landing, video/media и collection CLI
+composition переносятся следующими независимыми commit/revert units. Production
+server, Octo runtime и старый репозиторий не менялись. Rollback 14F3 выполняется
+revert одного отдельного коммита.
 
 Перед удалением:
 

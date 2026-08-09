@@ -35,7 +35,7 @@ def test_failed_post_match_closes_page_and_preserves_candidate(
     tmp_path: Path,
 ) -> None:
     page = FakePage()
-    monkeypatch.setattr(facebook_runner, "_goto_with_retry", lambda *_a, **_k: None)
+    monkeypatch.setattr(capture, "goto_with_retry", lambda *_a, **_k: None)
     monkeypatch.setattr(
         capture,
         "wait_for_saved_post",

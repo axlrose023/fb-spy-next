@@ -50,13 +50,13 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
 from app.browser import (
     BrowserOperationDeadlineExceeded as _OperationDeadlineExceeded,
 )
 from app.browser import hard_deadline as _hard_deadline
+from app.facebook import navigation as facebook_navigation
 from app.facebook.adapters.octo import (
     OctoHttpClient,
     OctoProfileSessionManager,
@@ -128,15 +128,15 @@ OCTO_START_FLAGS = [
     "--remote-debugging-address=0.0.0.0",
 ]
 STOP_REQUESTED = False
-TRANSIENT_NAVIGATION_ERRORS = (
-    "ERR_SOCKS_CONNECTION_FAILED",
-    "ERR_PROXY_CONNECTION_FAILED",
-    "ERR_NETWORK_CHANGED",
-    "ERR_CONNECTION_RESET",
-    "ERR_CONNECTION_CLOSED",
-    "ERR_TIMED_OUT",
+TRANSIENT_NAVIGATION_ERRORS = facebook_navigation.TRANSIENT_NAVIGATION_ERRORS
+PROXY_CERTIFICATE_AUTHORITY_ERROR = (
+    facebook_navigation.PROXY_CERTIFICATE_AUTHORITY_ERROR
 )
-PROXY_CERTIFICATE_AUTHORITY_ERROR = "ERR_CERT_AUTHORITY_INVALID"
+_facebook_login_required = facebook_navigation.facebook_login_required
+_goto_with_retry = facebook_navigation.goto_with_retry
+_ignore_proxy_certificate_errors = facebook_navigation.ignore_proxy_certificate_errors
+_is_fb_feed_url = facebook_navigation.is_facebook_feed_url
+_recover_feed = facebook_navigation.recover_facebook_feed
 BROWSER_OPERATION_TIMEOUT_REASONS = frozenset({
     "resolve_timeout",
     "video_timeout",
@@ -1069,110 +1069,6 @@ def _encode_video_frames(
         return False, (completed.stderr or completed.stdout or "ffmpeg_failed")[-1000:]
     tmp_path.replace(output_path)
     return output_path.exists() and output_path.stat().st_size > 0, "ok"
-
-
-def _is_fb_feed_url(url: str) -> bool:
-    from urllib.parse import urlparse
-    try:
-        p = urlparse(url)
-    except Exception:
-        return False
-    host = p.netloc.lower()
-    return host.endswith("facebook.com") and p.path in ("", "/", "/home.php")
-
-
-def _facebook_login_required(page) -> bool:
-    """Distinguish a logged-out Facebook page from an empty authenticated feed."""
-    try:
-        return bool(page.evaluate(
-            """
-            () => {
-              const path = window.location.pathname.toLowerCase();
-              const authPath = (
-                path.startsWith("/login")
-                || path.startsWith("/checkpoint")
-                || path.startsWith("/recover")
-                || path.startsWith("/unified/login")
-              );
-              const password = document.querySelector('input[type="password"]');
-              const identity = document.querySelector(
-                'input[name="email"], input[type="email"], input[name="phone"]'
-              );
-              return authPath || Boolean(password && identity);
-            }
-            """
-        ))
-    except Exception:
-        return False
-
-
-def _goto_with_retry(
-    page,
-    url: str,
-    *,
-    timeout: int,
-    attempts: int = 5,
-    base_delay_seconds: float = 1.5,
-):
-    """Retry navigation while an Octo profile's proxy is still coming up."""
-    total_attempts = max(1, attempts)
-    ignored_proxy_certificate_error = False
-    for attempt in range(1, total_attempts + 1):
-        try:
-            return page.goto(
-                url,
-                wait_until="domcontentloaded",
-                timeout=timeout,
-            )
-        except Exception as exc:
-            if (
-                not ignored_proxy_certificate_error
-                and PROXY_CERTIFICATE_AUTHORITY_ERROR in str(exc)
-                and _ignore_proxy_certificate_errors(page)
-            ):
-                ignored_proxy_certificate_error = True
-                print(
-                    "[navigation retry] accepted proxy certificate authority "
-                    f"for this browser session; attempt={attempt}/{total_attempts}",
-                    flush=True,
-                )
-                continue
-            transient = isinstance(exc, PlaywrightTimeoutError) or any(
-                code in str(exc) for code in TRANSIENT_NAVIGATION_ERRORS
-            )
-            if not transient or attempt >= total_attempts:
-                raise
-            delay = base_delay_seconds * attempt
-            print(
-                f"[navigation retry] attempt={attempt}/{total_attempts} "
-                f"delay={delay:.1f}s error={exc}",
-                flush=True,
-            )
-            time.sleep(delay)
-    raise RuntimeError("navigation retries exhausted")
-
-
-def _ignore_proxy_certificate_errors(page) -> bool:
-    """Allow an Octo proxy's untrusted CA only in the current CDP session."""
-    try:
-        session = page.context.new_cdp_session(page)
-        session.send("Security.setIgnoreCertificateErrors", {"ignore": True})
-    except Exception as exc:
-        print(
-            f"[navigation] could not accept proxy certificate authority: {exc}",
-            flush=True,
-        )
-        return False
-    return True
-
-
-def _recover_feed(page, feed_url: str = "https://m.facebook.com/") -> None:
-    try:
-        if not _is_fb_feed_url(page.url):
-            _goto_with_retry(page, feed_url, timeout=12000, attempts=3)
-            time.sleep(3)
-    except Exception:
-        pass
 
 
 def resolve_facebook_post_url(
