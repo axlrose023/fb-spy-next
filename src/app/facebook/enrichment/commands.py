@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import argparse
 import signal
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .adapters.playwright.runtime import run
 
@@ -16,12 +17,12 @@ def request_stop(signum: int, _frame: Any) -> None:
     raise KeyboardInterrupt(f"signal {signum}")
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
-    return run(args, stop_requested=lambda: STOP_REQUESTED)
+    return cast(int, run(args, stop_requested=lambda: STOP_REQUESTED))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,3 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--landing-archive-timeout", type=float, default=20.0)
     parser.add_argument("--landing-archive-max-resources", type=int, default=120)
     return parser
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -35,7 +35,7 @@ def build_relevance_classifier_command(
     command = [
         environment.executable,
         "-m",
-        "app.services.facebook_relevance_classifier",
+        "app.facebook.relevance.commands",
         "--run-dir",
         str(run_dir),
     ]
@@ -59,7 +59,7 @@ def build_relevant_enricher_command(
     command = [
         environment.executable,
         "-m",
-        "app.services.facebook_ad_enricher",
+        "app.facebook.enrichment.commands",
         "--run-dir",
         str(run_dir),
         "--octo-host",
@@ -99,7 +99,7 @@ def build_isolated_landing_resolver_command(
     command = [
         environment.executable,
         "-m",
-        "app.services.facebook_isolated_landing_resolver",
+        "app.facebook.relevance.evidence.browser_command",
         "--run-dir",
         str(run_dir),
         "--octo-host",

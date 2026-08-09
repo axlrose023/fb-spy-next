@@ -14,10 +14,12 @@ pytestmark = pytest.mark.contract
 PROJECT_ROOT = Path(__file__).parents[3]
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 APP_CLI = str(Path(sys.executable).with_name("cli"))
+FACEBOOK_CLI = str(Path(sys.executable).with_name("facebook-spy"))
 ORCHESTRATOR = "app.services.facebook_orchestrator"
 
 CLI_COMMANDS = {
     "app-cli": [APP_CLI, "--help"],
+    "facebook-spy": [FACEBOOK_CLI, "--help"],
     "calibrator": [
         sys.executable,
         "-m",
@@ -92,6 +94,7 @@ EXPECTED_HELP_SHA256 = {
     "app-cli-upgrade": "f8c22eb67d684f89015f39e61d11772abab0977c76838a6b893123670260f9ab",
     "calibrator": "38c2ae20e7db6528c62a00417901c95dbb319dd79335bb1c6af771508c3973ec",
     "db-importer": "14f273d3f891e3a60a933b209ec0f30d410278f6ee28a15c574aaae364d394d9",
+    "facebook-spy": "1f7bf50c4378e2a7beba8b3335b0050946841d8e2ce0eafdfaab6464cad8bf28",
     "isolated-landing": "f24e9d2c923b524ed103266e896a2486cc82e3c9139c56139607c25f2240bab1",
     "orchestrator": "df20956c24924f7ec8d1e9a1e01def00f3a3c6028912e4346a42696d55759085",
     "orchestrator-discover-active": "3a266b115336739881d481fc7f953c1c0a01ae754eaa768e6bae1444f94a6899",

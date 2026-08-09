@@ -43,6 +43,7 @@ import subprocess
 import sys
 import time
 import traceback
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime
@@ -2156,7 +2157,7 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
 
 
 # ── main ──────────────────────────────────────────────────────────────────
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     global OCTO_API
     global OCTO_HEADLESS
     global OCTO_PROFILE_UUID
@@ -2213,7 +2214,7 @@ def main() -> int:
                     help="Start Octo browser profiles without a visible window.")
     ap.add_argument("--topic", default="",
                     help="Optional Facebook mobile search topic to scroll instead of the home feed.")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     signal.signal(signal.SIGINT, _request_stop)
     signal.signal(signal.SIGTERM, _request_stop)

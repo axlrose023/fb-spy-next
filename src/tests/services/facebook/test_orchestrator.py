@@ -811,7 +811,7 @@ def test_backend_import_command_uses_already_classified_file(
 
     command = _backend_import_command(profile, path)
 
-    assert "app.services.facebook_db_importer" in command
+    assert "app.facebook.runs.commands" in command
     assert command[command.index("--ads-json") + 1] == str(path)
     assert command[command.index("--title") + 1].startswith("spain - ")
 

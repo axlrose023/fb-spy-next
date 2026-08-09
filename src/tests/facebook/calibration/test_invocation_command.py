@@ -70,7 +70,7 @@ def test_default_calibration_command_preserves_policy_defaults(tmp_path: Path) -
         environment(),
     )
 
-    assert command[:3] == ["python", "-m", "app.services.facebook_calibrator"]
+    assert command[:3] == ["python", "-m", "app.facebook.calibration.commands"]
     assert option_value(command, "--limit") == "20"
     assert option_value(command, "--target-offset") == "0"
     assert option_value(command, "--min-successful-targets") == "3"

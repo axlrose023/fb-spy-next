@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13G завершен
+Статус: `IN_PROGRESS` — этап 13H завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D, 13E, 13F, 13G COMPLETE`)
+Статус: `IN_PROGRESS` (`13A–13H COMPLETE`)
 
 Изменения:
 
@@ -2738,6 +2738,40 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13G
+выполняется revert одного отдельного коммита.
+
+#### 13H. Facebook command gateway
+
+Результат:
+
+- добавлен canonical lazy gateway `app.facebook.commands` и wheel console script
+  `facebook-spy` для семи workflows: collection, orchestration, calibration,
+  relevance classification, relevant enrichment, isolated landing resolution и
+  backend import;
+- gateway импортирует только выбранную команду, передаёт ей явный argv без
+  мутации process-global `sys.argv` и не загружает Playwright/DB dependencies
+  при показе общего help;
+- canonical calibration, relevance, enrichment, isolated evidence и runs
+  commands принимают optional argv и исполняются напрямую через `python -m`;
+  отсутствовавшие module guards добавлены;
+- production subprocess builders переведены с пяти `app.services.facebook_*`
+  paths на owning feature commands; argument order, options, timeout clamps и
+  exit-code handling не изменились;
+- прежние calibrator/classifier/enricher/resolver/importer module paths остались
+  compatibility wrappers; collector и orchestrator пока остаются legacy
+  implementations, но их `main(argv)` подключены к новому gateway без изменения
+  существующих standalone entrypoints;
+- help SHA всех прежних CLI commands не изменился; новый console script получил
+  отдельный contract, а 9 gateway tests проверяют lazy argv forwarding, empty
+  command и исполнение help каждого workflow;
+- canonical command layer проходит strict mypy; architecture/contracts проходят;
+  полный regression: 764 tests; wheel содержит gateway и console entrypoint;
+- gateway составляет 80 строк, focused test — 60 строк; Ruff,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13H
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -63,11 +64,11 @@ async def import_run(ads_json_path: Path, *, title: str = "") -> FacebookRun:
         return run
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ads-json", type=Path, required=True)
     parser.add_argument("--title", default="")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         run = asyncio.run(import_run(args.ads_json, title=args.title))
     except Exception as exc:
@@ -101,3 +102,7 @@ def _load_json(path: Path, *, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return default
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

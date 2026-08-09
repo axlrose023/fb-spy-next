@@ -14,6 +14,7 @@ import signal
 import subprocess
 import threading
 import time
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -136,9 +137,9 @@ _remaining_daily_calibration_attempts = remaining_daily_calibration_attempts
 _profile_evaluation_policy = recovery_evaluation_policy
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "run":
         signal.signal(signal.SIGINT, _request_orchestrator_stop)
         signal.signal(signal.SIGTERM, _request_orchestrator_stop)

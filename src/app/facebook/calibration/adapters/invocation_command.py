@@ -66,7 +66,7 @@ def build_calibration_command(
     command = [
         environment.executable,
         "-m",
-        "app.services.facebook_calibrator",
+        "app.facebook.calibration.commands",
         "--octo-host",
         environment.octo_host,
         "--octo-port",

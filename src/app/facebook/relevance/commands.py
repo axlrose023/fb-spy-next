@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +14,8 @@ from .evidence.command import run_resolve_holds
 from .files import source_path
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     run_dir = args.run_dir.expanduser().resolve()
     source = source_path(run_dir, args.stage, args.source)
     config = get_config()

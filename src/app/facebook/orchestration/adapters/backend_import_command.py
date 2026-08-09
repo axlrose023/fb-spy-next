@@ -15,7 +15,7 @@ def build_backend_import_command(
     return [
         environment.executable,
         "-m",
-        "app.services.facebook_db_importer",
+        "app.facebook.runs.commands",
         "--ads-json",
         str(ads_json_path),
         "--title",

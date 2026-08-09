@@ -8,6 +8,8 @@ same Octo context. Every attempted action is written to private audit artifacts.
 from __future__ import annotations
 
 import signal
+from collections.abc import Sequence
+from typing import cast
 
 from .cli import build_parser, run_command, validate_args
 
@@ -20,10 +22,14 @@ def request_stop(signum: int, _frame: object) -> None:
     raise KeyboardInterrupt(f"signal {signum}")
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     validate_args(args, parser)
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
-    return run_command(args, stop_requested=lambda: STOP_REQUESTED)
+    return cast(int, run_command(args, stop_requested=lambda: STOP_REQUESTED))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

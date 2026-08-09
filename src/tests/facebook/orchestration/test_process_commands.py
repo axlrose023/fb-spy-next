@@ -102,6 +102,7 @@ def test_classifier_command_supports_staged_source_and_video(tmp_path: Path) -> 
         include_video=True,
     )
 
+    assert standard[:3] == ["python", "-m", "app.facebook.relevance.commands"]
     assert "--stage" not in standard
     assert staged[-5:] == [
         "--stage",
@@ -129,6 +130,7 @@ def test_enricher_command_clamps_timeouts_and_adds_guards(tmp_path: Path) -> Non
         source=source,
     )
 
+    assert command[:3] == ["python", "-m", "app.facebook.enrichment.commands"]
     assert option_value(command, "--timeout-ms") == "1"
     assert option_value(command, "--locate-timeout-ms") == "0"
     assert command[-5:] == [
@@ -166,7 +168,13 @@ def test_isolated_resolver_and_backend_import_commands(tmp_path: Path) -> None:
         PythonProcessEnvironment("python"),
     )
 
+    assert isolated[:3] == [
+        "python",
+        "-m",
+        "app.facebook.relevance.evidence.browser_command",
+    ]
     assert option_value(isolated, "--timeout-ms") == "1"
     assert isolated[-1] == "--octo-headless"
+    assert imported[:3] == ["python", "-m", "app.facebook.runs.commands"]
     assert option_value(imported, "--ads-json") == str(ads_path)
     assert option_value(imported, "--title") == "Spain - collect"

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 from ..adapters.isolated_browser import run_isolated_browser
 
 
-def main() -> int:
-    return run_isolated_browser(build_parser().parse_args())
+def main(argv: Sequence[str] | None = None) -> int:
+    return cast(int, run_isolated_browser(build_parser().parse_args(argv)))
 
 
 def build_parser() -> argparse.ArgumentParser:
