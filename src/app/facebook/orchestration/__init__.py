@@ -8,6 +8,8 @@ from .contracts import (
 from .lifecycle import (
     CalibrationTransition,
     CollectionPipelineState,
+    ProfileEvaluation,
+    ProfileEvaluationService,
     RecoveryCycleCoordinator,
     RecoveryCycleResult,
     calibration_allows_followup,
@@ -60,6 +62,8 @@ __all__ = [
     "OrchestrationState",
     "OrchestrationStateStore",
     "ProfileCycleSchedule",
+    "ProfileEvaluation",
+    "ProfileEvaluationService",
     "ProfileScheduleState",
     "ProfileScheduler",
     "ProfileState",

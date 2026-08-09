@@ -38,6 +38,7 @@ from app.facebook.orchestration import (
     CollectionPipelineState,
     OrchestrationStateStore,
     ProfileCycleSchedule,
+    ProfileEvaluationService,
     ProfileScheduler,
     RecoveryCycleCoordinator,
     RecoverySchedulePolicy,
@@ -49,12 +50,10 @@ from app.facebook.orchestration import (
     calibration_targets_consumed,
     next_profile_schedule,
     profile_rest_seconds,
+    recovery_evaluation_policy,
     recovery_schedule_policy,
     relevance_result_meaningfully_improved,
     remaining_daily_calibration_attempts,
-)
-from app.facebook.orchestration import (
-    recovery_evaluation_policy as _profile_evaluation_policy,
 )
 from app.facebook.orchestration import (
     remaining_profile_rest_seconds as _remaining_profile_rest_seconds,
@@ -90,9 +89,7 @@ from app.services.facebook.calibration import (
 from app.services.facebook.health import (
     CalibrationDecision,
     CalibrationPolicy,
-    baseline_from_history,
     collect_run_metrics,
-    evaluate_calibration_need,
     is_good_baseline_candidate,
 )
 from app.settings import get_config
@@ -114,6 +111,7 @@ _calibration_passes_for_cycle = calibration_passes_for_cycle
 _calibration_targets_consumed = calibration_targets_consumed
 _relevance_result_meaningfully_improved = relevance_result_meaningfully_improved
 _remaining_daily_calibration_attempts = remaining_daily_calibration_attempts
+_profile_evaluation_policy = recovery_evaluation_policy
 
 
 def main() -> int:
@@ -909,37 +907,18 @@ def _run_profile_cycle_locked(
         default_elapsed_seconds=args.collect_minutes * 60,
         calibration_targets_available=target_count,
     )
-    history, baseline, calibration_timestamps = store.profile_history(
+    evaluation = ProfileEvaluationService(store).evaluate(
         profile.octo_profile_uuid,
-    )
-    recovery_burst_count = store.profile_recovery_burst_count(profile.octo_profile_uuid)
-    recovery_evaluation_active = store.profile_recovery_evaluation_active(
-        profile.octo_profile_uuid
-    )
-    evaluation_policy = _profile_evaluation_policy(
+        metrics,
         policy,
-        recovery_active=recovery_evaluation_active,
         quality_guard=profile.quality_guard,
     )
-    calibration_attempt_timestamps = store.profile_calibration_attempts(
-        profile.octo_profile_uuid,
-    )
-    calibration_target_offset = store.profile_calibration_target_offset(
-        profile.octo_profile_uuid,
-    )
-    if baseline.sample_count <= 0:
-        baseline = baseline_from_history(history, policy=policy)
-    decision = evaluate_calibration_need(
-        metrics,
-        history=history,
-        baseline=baseline,
-        policy=evaluation_policy,
-        last_calibration_at=calibration_timestamps[-1]
-        if calibration_timestamps
-        else None,
-        calibration_timestamps=calibration_timestamps,
-        calibration_attempt_timestamps=calibration_attempt_timestamps,
-    )
+    history = list(evaluation.history)
+    recovery_burst_count = evaluation.recovery_burst_count
+    recovery_evaluation_active = evaluation.recovery_active
+    calibration_attempt_timestamps = list(evaluation.calibration_attempt_timestamps)
+    calibration_target_offset = evaluation.calibration_target_offset
+    decision = evaluation.decision
     _write_json(collect_dir / "health.json", decision.to_dict())
     print(
         f"[{profile.display_name}] health={decision.status} "
@@ -1550,10 +1529,6 @@ def _request_orchestrator_stop(_signum, _frame) -> None:
 def _evaluate(args) -> int:
     policy = CalibrationPolicy()
     store = StateStore(Path(args.state_json))
-    history, baseline, calibration_timestamps = store.profile_history(args.profile_uuid)
-    calibration_attempt_timestamps = store.profile_calibration_attempts(
-        args.profile_uuid
-    )
     metrics = collect_run_metrics(
         args.run_dir,
         expected_country=args.expected_country or None,
@@ -1562,28 +1537,16 @@ def _evaluate(args) -> int:
         default_scrolls=args.default_scrolls,
         calibration_targets_available=args.calibration_targets,
     )
-    current_path = Path(metrics.run_dir).expanduser().resolve()
-    history = [
-        item
-        for item in history
-        if Path(item.run_dir).expanduser().resolve() != current_path
-    ]
-    baseline_contains_current = any(
-        Path(run_dir).expanduser().resolve() == current_path
-        for run_dir in baseline.source_run_dirs
-    )
-    if baseline.sample_count <= 0 or baseline_contains_current:
-        baseline = baseline_from_history(history, policy=policy)
-    decision = evaluate_calibration_need(
-        metrics,
-        history=history,
-        baseline=baseline,
-        policy=policy,
-        last_calibration_at=calibration_timestamps[-1]
-        if calibration_timestamps
-        else None,
-        calibration_timestamps=calibration_timestamps,
-        calibration_attempt_timestamps=calibration_attempt_timestamps,
+    decision = (
+        ProfileEvaluationService(store)
+        .evaluate(
+            args.profile_uuid,
+            metrics,
+            policy,
+            load_recovery_context=False,
+            exclude_run_dir=metrics.run_dir,
+        )
+        .decision
     )
     print(json.dumps(decision.to_dict(), ensure_ascii=False, indent=2))
     return 0 if not decision.should_calibrate else 10

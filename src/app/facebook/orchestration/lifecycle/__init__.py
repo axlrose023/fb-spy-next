@@ -1,3 +1,4 @@
+from .evaluation import ProfileEvaluation, ProfileEvaluationService
 from .history import (
     baseline_from_run_records,
     calibration_was_effective,
@@ -28,6 +29,8 @@ __all__ = [
     "CollectionPipelineState",
     "is_healthy_relevance_result",
     "new_profile_state",
+    "ProfileEvaluation",
+    "ProfileEvaluationService",
     "RecoveryCycleCoordinator",
     "RecoveryCycleResult",
     "relevance_result_meaningfully_improved",
