@@ -5,11 +5,23 @@ import sys
 from argparse import Namespace
 from collections.abc import Callable
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from app.facebook.orchestration.commands import CommandHandlers, build_parser, dispatch
+from app.facebook.orchestration.adapters import FileStateStore
+from app.facebook.orchestration.commands import (
+    CommandHandlers,
+    RunCommandHooks,
+    build_parser,
+    calibration_policy_from_args,
+    dispatch,
+    profile_rest_seconds_from_args,
+    run_command,
+    schedule_policy_from_args,
+)
+from app.facebook.profiles import Profile
 from app.services import facebook_orchestrator
 
 pytestmark = pytest.mark.unit
@@ -18,6 +30,12 @@ pytestmark = pytest.mark.unit
 def test_legacy_orchestrator_uses_canonical_parser() -> None:
     assert facebook_orchestrator._build_parser is build_parser
     assert facebook_orchestrator._dispatch_command is dispatch
+
+
+def test_legacy_run_option_helpers_are_canonical_aliases() -> None:
+    assert facebook_orchestrator._calibration_policy is calibration_policy_from_args
+    assert facebook_orchestrator._profile_rest_seconds is profile_rest_seconds_from_args
+    assert facebook_orchestrator._profile_schedule_policy is schedule_policy_from_args
 
 
 def test_commands_package_does_not_load_legacy_orchestrator() -> None:
@@ -151,3 +169,44 @@ def test_missing_command_prints_help_and_returns_two(
     assert result == 2
     assert harness.calls == []
     assert "Profile-level Facebook collector orchestrator" in capsys.readouterr().out
+
+
+def test_run_command_composes_discovery_and_one_shot_scheduler(tmp_path: Path) -> None:
+    calls: list[str] = []
+    state_paths: list[Path] = []
+    args = build_parser().parse_args(
+        [
+            "run",
+            "--root-dir",
+            str(tmp_path / "root"),
+            "--state-json",
+            str(tmp_path / "state.json"),
+        ]
+    )
+
+    def state_store(path: Path) -> FileStateStore:
+        state_paths.append(path)
+        return FileStateStore(path)
+
+    def enabled_profiles() -> list[Profile]:
+        calls.append("profiles")
+        return []
+
+    result = run_command(
+        args,
+        RunCommandHooks(
+            clear_stop=lambda: calls.append("clear"),
+            state_store=state_store,
+            discover_profiles=lambda fail_fast: calls.append(f"discover:{fail_fast}"),
+            enabled_profiles=enabled_profiles,
+            run_profile_cycle=lambda *_args: None,
+            stop_requested=lambda: False,
+            monotonic=lambda: 0.0,
+            sleep=lambda _seconds: None,
+            log=lambda message: calls.append(message),
+        ),
+    )
+
+    assert result == 1
+    assert state_paths == [tmp_path / "state.json"]
+    assert calls == ["clear", "discover:True", "profiles", "No enabled profiles."]

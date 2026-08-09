@@ -15,7 +15,6 @@ import threading
 import time
 from collections.abc import Sequence
 from contextlib import contextmanager
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -50,33 +49,24 @@ from app.facebook.orchestration import (
     CollectionPipelineRequest,
     CollectionPipelineService,
     CollectionPipelineState,
-    OrchestrationRunHooks,
-    OrchestrationRunRequest,
-    OrchestrationService,
     OrchestrationStateStore,
     ProfileCycleHooks,
     ProfileCycleRequest,
     ProfileCycleSchedule,
     ProfileCycleService,
     ProfileEvaluationService,
-    ProfileScheduler,
-    RecoverySchedulePolicy,
-    SchedulerConfig,
-    SchedulerHooks,
     calibration_allows_followup,
     calibration_pass_target_cap,
     calibration_passes_for_cycle,
     calibration_targets_consumed,
     next_profile_schedule,
-    profile_rest_seconds,
     recovery_evaluation_policy,
-    recovery_schedule_policy,
     relevance_result_meaningfully_improved,
     remaining_daily_calibration_attempts,
-    validate_orchestration_run_options,
+    remaining_profile_rest_seconds,
 )
 from app.facebook.orchestration import (
-    remaining_profile_rest_seconds as _remaining_profile_rest_seconds,
+    RecoverySchedulePolicy as RecoverySchedulePolicy,
 )
 from app.facebook.orchestration.adapters import (
     FileLock,
@@ -94,7 +84,16 @@ from app.facebook.orchestration.adapters import (
     signal_process_group,
     write_log_line,
 )
-from app.facebook.orchestration.commands import CommandHandlers, build_parser
+from app.facebook.orchestration.commands import (
+    CommandHandlers,
+    RunCommandHooks,
+    build_parser,
+    calibration_policy_from_args,
+    log_profile_schedule,
+    profile_rest_seconds_from_args,
+    run_command,
+    schedule_policy_from_args,
+)
 from app.facebook.orchestration.commands import dispatch as _dispatch_command
 from app.facebook.orchestration.lifecycle import (
     baseline_from_run_records,
@@ -134,6 +133,7 @@ _calibration_passes_for_cycle = calibration_passes_for_cycle
 _calibration_targets_consumed = calibration_targets_consumed
 _relevance_result_meaningfully_improved = relevance_result_meaningfully_improved
 _remaining_daily_calibration_attempts = remaining_daily_calibration_attempts
+_remaining_profile_rest_seconds = remaining_profile_rest_seconds
 _profile_evaluation_policy = recovery_evaluation_policy
 
 
@@ -152,178 +152,34 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run(args) -> int:
-    _STOP_EVENT.clear()
-    store = StateStore(Path(args.state_json))
-    root_dir = Path(args.root_dir)
-    policy = _calibration_policy(args)
-    validate_orchestration_run_options(args)
-    return OrchestrationService(
-        OrchestrationRunHooks(
-            discover_profiles=lambda: _discover_profiles(args, fail_fast=True),
-            run_once=lambda: _run_once(args, store, policy, root_dir),
-            run_continuously=lambda: _run_continuously(
+    return run_command(
+        args,
+        RunCommandHooks(
+            clear_stop=_STOP_EVENT.clear,
+            state_store=StateStore,
+            discover_profiles=lambda fail_fast: _discover_profiles(
                 args,
-                store,
-                policy,
-                root_dir,
+                fail_fast=fail_fast,
             ),
-        )
-    ).run(OrchestrationRunRequest(continuous=args.loop))
-
-
-def _calibration_policy(args) -> CalibrationPolicy:
-    if args.calibration_cooldown_hours < 0:
-        raise ValueError("--calibration-cooldown-hours cannot be negative")
-    if args.soft_drop_calibration_windows < 2:
-        raise ValueError("--soft-drop-calibration-windows must be at least 2")
-    if not 0 < args.watch_drop_ratio <= 1:
-        raise ValueError("--watch-drop-ratio must be greater than 0 and at most 1")
-    if not 0 < args.immediate_drop_ratio <= 1:
-        raise ValueError("--immediate-drop-ratio must be greater than 0 and at most 1")
-    if not 0 < args.minimum_healthy_relevant_rate <= 1:
-        raise ValueError(
-            "--minimum-healthy-relevant-rate must be greater than 0 and at most 1"
-        )
-    if args.minimum_healthy_relevant_ads < 1:
-        raise ValueError("--minimum-healthy-relevant-ads must be at least 1")
-    if args.zero_ads_windows < 1:
-        raise ValueError("--zero-ads-windows must be at least 1")
-    if args.absolute_low_ads_windows < 1:
-        raise ValueError("--absolute-low-ads-windows must be at least 1")
-    if args.absolute_low_ads_per_hour < 0:
-        raise ValueError("--absolute-low-ads-per-hour cannot be negative")
-    if args.zero_ads_calibration_cooldown_minutes < 0:
-        raise ValueError("--zero-ads-calibration-cooldown-minutes cannot be negative")
-    if args.zero_ads_calibration_burst_limit < 1:
-        raise ValueError("--zero-ads-calibration-burst-limit must be at least 1")
-    if args.zero_ads_calibration_backoff_hours < 0:
-        raise ValueError("--zero-ads-calibration-backoff-hours cannot be negative")
-    if args.calibration_retry_cooldown_hours < 0:
-        raise ValueError("--calibration-retry-cooldown-hours cannot be negative")
-    if args.maintenance_calibration_hours < 0:
-        raise ValueError("--maintenance-calibration-hours cannot be negative")
-    if args.maintenance_min_valid_windows < 1:
-        raise ValueError("--maintenance-min-valid-windows must be at least 1")
-    if args.max_calibrations_per_24h < 1:
-        raise ValueError("--max-calibrations-per-24h must be at least 1")
-    return replace(
-        CalibrationPolicy(),
-        zero_ads_windows=args.zero_ads_windows,
-        absolute_low_ads_windows=args.absolute_low_ads_windows,
-        absolute_low_ads_per_hour=args.absolute_low_ads_per_hour,
-        soft_drop_calibration_windows=args.soft_drop_calibration_windows,
-        watch_drop_ratio=args.watch_drop_ratio,
-        immediate_drop_ratio=args.immediate_drop_ratio,
-        minimum_healthy_relevant_rate=args.minimum_healthy_relevant_rate,
-        minimum_healthy_relevant_ads=args.minimum_healthy_relevant_ads,
-        calibration_cooldown_seconds=args.calibration_cooldown_hours * 60 * 60,
-        zero_ads_calibration_cooldown_seconds=(
-            args.zero_ads_calibration_cooldown_minutes * 60
-        ),
-        zero_ads_calibration_burst_limit=args.zero_ads_calibration_burst_limit,
-        zero_ads_calibration_backoff_seconds=(
-            args.zero_ads_calibration_backoff_hours * 60 * 60
-        ),
-        calibration_retry_cooldown_seconds=(
-            args.calibration_retry_cooldown_hours * 60 * 60
-        ),
-        maintenance_calibration_interval_seconds=(
-            args.maintenance_calibration_hours * 60 * 60
-        ),
-        maintenance_min_valid_windows=args.maintenance_min_valid_windows,
-        max_calibrations_per_24h=args.max_calibrations_per_24h,
-        min_calibration_targets=args.min_calibration_targets,
-        min_successful_calibration_targets=args.min_calibration_targets,
-    )
-
-
-def _run_once(
-    args,
-    store: OrchestrationStateStore,
-    policy: CalibrationPolicy,
-    root_dir: Path,
-) -> int:
-    return _profile_scheduler(args, store, policy, root_dir).run_once()
-
-
-def _run_continuously(
-    args,
-    store: OrchestrationStateStore,
-    policy: CalibrationPolicy,
-    root_dir: Path,
-) -> int:
-    """Schedule each profile independently without a global cycle barrier."""
-    return _profile_scheduler(args, store, policy, root_dir).run_continuously()
-
-
-def _profile_scheduler(
-    args,
-    store: OrchestrationStateStore,
-    policy: CalibrationPolicy,
-    root_dir: Path,
-) -> ProfileScheduler:
-    schedule_policy = _profile_schedule_policy(args)
-    return ProfileScheduler(
-        SchedulerConfig(
-            max_parallel=args.max_parallel,
-            default_rest_seconds=schedule_policy.normal_rest_seconds,
-            infrastructure_retry_seconds=(schedule_policy.infrastructure_retry_seconds),
-            discovery_interval_seconds=args.discovery_interval,
-            max_cycles=args.max_cycles,
-        ),
-        store,
-        SchedulerHooks(
-            discover_profiles=lambda: _discover_profiles(args, fail_fast=False),
-            enabled_profiles=lambda: _enabled_profiles(args),
-            run_profile_cycle=lambda profile: _run_profile_cycle(
-                profile,
-                args,
-                store,
-                policy,
-                root_dir,
+            enabled_profiles=lambda: [
+                profile
+                for profile in _load_profiles(Path(args.profiles_json))
+                if profile.enabled
+            ],
+            run_profile_cycle=lambda profile, store, policy, root_dir: (
+                _run_profile_cycle(profile, args, store, policy, root_dir)
             ),
-            remaining_profile_rest_seconds=lambda profile_uuid, rest_seconds: (
-                _remaining_profile_rest_seconds(
-                    store.profile_last_run_at(profile_uuid),
-                    rest_seconds,
-                )
-            ),
+            stop_requested=_STOP_EVENT.is_set,
+            monotonic=time.monotonic,
+            sleep=time.sleep,
             log=lambda message: print(message, flush=True),
-            log_schedule=lambda profile, schedule: _log_profile_schedule(
-                profile,
-                schedule,
-                burst_limit=args.recovery_burst_cycles,
-            ),
         ),
-        stop_requested=_STOP_EVENT.is_set,
-        monotonic=time.monotonic,
-        sleep=time.sleep,
     )
 
 
-def _enabled_profiles(args) -> list[ProfileConfig]:
-    return [
-        profile
-        for profile in _load_profiles(Path(args.profiles_json))
-        if profile.enabled
-    ]
-
-
-def _profile_rest_seconds(args) -> float:
-    return profile_rest_seconds(
-        cycle_sleep_seconds=args.cycle_sleep,
-        profile_rest_minutes=args.profile_rest_minutes,
-    )
-
-
-def _profile_schedule_policy(args) -> RecoverySchedulePolicy:
-    return recovery_schedule_policy(
-        cycle_sleep_seconds=args.cycle_sleep,
-        profile_rest_minutes=args.profile_rest_minutes,
-        recovery_burst_cycles=args.recovery_burst_cycles,
-        recovery_burst_rest_minutes=args.recovery_burst_rest_minutes,
-        infrastructure_retry_minutes=args.infrastructure_retry_minutes,
-    )
+_calibration_policy = calibration_policy_from_args
+_profile_rest_seconds = profile_rest_seconds_from_args
+_profile_schedule_policy = schedule_policy_from_args
 
 
 def _log_profile_schedule(
@@ -332,23 +188,11 @@ def _log_profile_schedule(
     *,
     burst_limit: int,
 ) -> None:
-    if schedule.kind == "recovery_burst":
-        delay = (
-            "immediately"
-            if schedule.rest_seconds <= 0
-            else f"in {schedule.rest_seconds / 60:.1f}m"
-        )
-        print(
-            f"[{profile.display_name}] recovery="
-            f"{schedule.recovery_attempt}/{burst_limit}; "
-            f"validation collect {delay}",
-            flush=True,
-        )
-        return
-    print(
-        f"[{profile.display_name}] schedule={schedule.kind} "
-        f"rest={schedule.rest_seconds / 60:.1f}m",
-        flush=True,
+    log_profile_schedule(
+        profile,
+        schedule,
+        burst_limit=burst_limit,
+        log=lambda message: print(message, flush=True),
     )
 
 
