@@ -5,7 +5,11 @@ from .accounting import (
     offer_funnel_action_ok,
     should_stop_after_target_result,
 )
-from .adapters import JsonCalibrationTargetPool
+from .adapters import (
+    CalibrationProcessEnvironment,
+    JsonCalibrationTargetPool,
+    build_calibration_command,
+)
 from .adapters.playwright import (
     click_like,
     follow_advertiser,
@@ -76,6 +80,7 @@ __all__ = [
     "CalibrationIntensityPolicy",
     "CalibrationPlan",
     "CalibrationPolicy",
+    "CalibrationProcessEnvironment",
     "CalibrationRunResult",
     "CalibrationService",
     "CalibrationTarget",
@@ -89,6 +94,7 @@ __all__ = [
     "OfferIdentity",
     "baseline_from_history",
     "browse_offer_page",
+    "build_calibration_command",
     "calibration_goals_met",
     "calibration_target_ok",
     "click_like",

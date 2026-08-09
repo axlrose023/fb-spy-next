@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2279,6 +2279,37 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12L
+выполняется revert одного отдельного коммита.
+
+#### 12M. Calibration process invocation
+
+Результат:
+
+- calibrator subprocess argv contract вынесен из legacy orchestrator в owning
+  `facebook/calibration/adapters/invocation_command.py`;
+- executable, Octo host/port и headless mode передаются immutable
+  `CalibrationProcessEnvironment`; parser options описаны
+  `CalibrationCommandOptions` protocol без импорта argparse и global settings;
+- legacy `_calibrator_command` сохранён wrapper и по-прежнему разрешает
+  settings/CLI overrides в composition layer;
+- exact argv order, timing clamps, target offset/limit, interaction overrides,
+  minimum-success fallback, positive/negative boolean flags, identity path,
+  allowlisted domains, comment templates, country/no-country mode, ads sources и
+  headless flag не изменились;
+- calibration intensity planning, timeout calculation, target pool, process execution,
+  summary/effectiveness evaluation и recovery coordinator на этом подэтапе не
+  менялись;
+- добавлено 3 focused tests; invocation adapter имеет 100% coverage по
+  строкам и веткам; focused calibration/orchestration regression: 68 tests;
+  полный regression: 689 tests;
+- legacy orchestrator сократился с 1647 до 1563 строки; invocation adapter
+  составляет 175 строк;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12M
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

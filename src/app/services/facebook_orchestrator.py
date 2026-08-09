@@ -29,7 +29,9 @@ from app.facebook.adapters.octo import (
 from app.facebook.calibration import (
     CalibrationIntensityPolicy,
     CalibrationPlan,
+    CalibrationProcessEnvironment,
     JsonCalibrationTargetPool,
+    build_calibration_command,
     calibration_pool_name,
     effective_target_goal,
     is_direct_calibration_target,
@@ -1090,112 +1092,26 @@ def _calibrator_command(
     min_interactions: int | None = None,
 ) -> list[str]:
     config = get_config()
-    octo_host = args.octo_host or config.facebook.octo_host
-    octo_port = args.octo_port or config.facebook.octo_port
-    command = [
-        config.facebook.runner_python,
-        "-m",
-        "app.services.facebook_calibrator",
-        "--octo-host",
-        octo_host,
-        "--octo-port",
-        str(octo_port),
-        "--octo-profile-uuid",
-        profile.octo_profile_uuid,
-        "--limit",
-        str(target_limit if target_limit is not None else args.calibration_limit),
-        "--target-offset",
-        str(max(0, target_offset)),
-        "--view-seconds",
-        str(args.calibration_view_seconds),
-        "--pause-between-targets",
-        str(args.calibration_pause),
-        "--locate-timeout-ms",
-        str(round(max(0.0, args.calibration_locate_timeout) * 1000)),
-        "--timeout-ms",
-        str(round(max(0.0, args.calibration_page_timeout) * 1000)),
-        "--landing-view-seconds",
-        str(max(0.0, args.calibration_landing_view_seconds)),
-        "--landing-timeout-ms",
-        str(round(max(0.0, args.calibration_landing_timeout) * 1000)),
-        "--session-minutes",
-        str(max(0.0, args.calibration_session_minutes)),
-        "--prelander-max-scrolls",
-        str(max(0, args.calibration_prelander_max_scrolls)),
-        "--quiz-max-questions",
-        str(max(0, args.calibration_quiz_max_questions)),
-        "--offer-submit-mode",
-        str(args.calibration_offer_submit_mode),
-        "--offer-success-wait-seconds",
-        str(max(0.0, args.calibration_offer_success_wait_seconds)),
-        "--max-retained-offer-tabs",
-        str(max(1, args.calibration_max_retained_offer_tabs)),
-        "--reaction-rate",
-        str(args.calibration_reaction_rate),
-        "--follow-rate",
-        str(args.calibration_follow_rate),
-        "--comment-every",
-        str(args.calibration_comment_every),
-        "--max-reactions",
-        str(
-            max_reactions
-            if max_reactions is not None
-            else args.calibration_max_reactions
+    return build_calibration_command(
+        profile,
+        args,
+        run_dir,
+        ads_paths,
+        country,
+        CalibrationProcessEnvironment(
+            executable=config.facebook.runner_python,
+            octo_host=args.octo_host or config.facebook.octo_host,
+            octo_port=args.octo_port or config.facebook.octo_port,
+            octo_headless=_octo_headless(args),
         ),
-        "--max-follows",
-        str(max_follows if max_follows is not None else args.calibration_max_follows),
-        "--max-comments",
-        str(
-            max_comments if max_comments is not None else args.calibration_max_comments
-        ),
-        "--min-interactions",
-        str(
-            min_interactions
-            if min_interactions is not None
-            else args.calibration_min_interactions
-        ),
-        "--min-successful-targets",
-        str(
-            min_successful_targets
-            if min_successful_targets is not None
-            else CalibrationPolicy().min_successful_calibration_targets
-        ),
-        "--run-dir",
-        str(run_dir),
-        "--target-health-json",
-        str(run_dir.parent / "calibration_target_health.json"),
-    ]
-    command.append(
-        "--visit-landing" if args.calibration_visit_landing else "--no-visit-landing"
+        target_offset=target_offset,
+        target_limit=target_limit,
+        min_successful_targets=min_successful_targets,
+        max_reactions=max_reactions,
+        max_follows=max_follows,
+        max_comments=max_comments,
+        min_interactions=min_interactions,
     )
-    command.append(
-        "--offer-funnel" if args.calibration_offer_funnel else "--no-offer-funnel"
-    )
-    command.append(
-        "--direct-offer-fallback"
-        if args.calibration_direct_offer_fallback
-        else "--no-direct-offer-fallback"
-    )
-    command.append(
-        "--repeat-targets-until-deadline"
-        if args.calibration_repeat_targets_until_deadline
-        else "--no-repeat-targets-until-deadline"
-    )
-    if args.calibration_offer_identity_json:
-        command.extend(["--offer-identity-json", args.calibration_offer_identity_json])
-    for domain in args.calibration_offer_submit_allow_domain:
-        command.extend(["--offer-submit-allow-domain", domain])
-    for template in args.calibration_comment_template:
-        command.extend(["--comment-template", template])
-    if profile.no_country_filter:
-        command.append("--no-country-filter")
-    elif country:
-        command.extend(["--country", country])
-    for ads_path in ads_paths:
-        command.extend(["--ads-json", str(ads_path)])
-    if _octo_headless(args):
-        command.append("--octo-headless")
-    return command
 
 
 def _octo_headless(args) -> bool:
