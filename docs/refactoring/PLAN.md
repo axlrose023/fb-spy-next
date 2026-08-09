@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G8 завершен
+Статус: `IN_PROGRESS` — этап 14G9 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G8 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G9 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3620,6 +3620,37 @@ Octo runtime и старый репозиторий не менялись. Rollb
 legacy-wrapper cleanup выполняются следующими независимыми units. Production
 server, live Octo runtime и старый репозиторий не менялись. Rollback 14G8
 выполняется revert одного отдельного коммита.
+
+#### 14G9. Orchestrator maintenance commands
+
+Результат:
+
+- `evaluate` и `seed-baseline` flow вынесены в 104-строчный
+  `facebook.orchestration.commands.maintenance` с typed immutable requests и
+  общими state/output hooks;
+- metrics loading, recovery-context exclusion для standalone evaluate,
+  `CalibrationPolicy`, baseline quality gate, state write и JSON serialization
+  теперь находятся в canonical command module;
+- evaluate сохраняет exit code `10` при `should_calibrate` и `0` иначе;
+  seed сохраняет `1` с двумя diagnostic outputs для плохого run и `0` с
+  serialized baseline после успешной записи;
+- exact `ensure_ascii=False`, indent `2`, diagnostic text и прежние flush
+  значения сохранены через output port;
+- legacy handlers стали только `argparse.Namespace -> request` adapters и
+  используют общий `_maintenance_command_hooks`; legacy orchestrator сокращен
+  с 908 до 895 строк;
+- добавлено 3 end-to-end command contracts на реальных artifacts/state: два
+  zero-ad окна, rejected baseline и successful baseline; focused regression:
+  171 тест, полный regression: 885 тестов;
+- wheel содержит canonical maintenance module; Ruff, strict mypy, stage-scoped
+  pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: выполняется inventory и безопасный cleanup
+оставшегося legacy wrapper, затем финальные 14G contracts. Production server,
+live Octo runtime и старый репозиторий не менялись. Rollback 14G9 выполняется
+revert одного отдельного коммита.
 
 Перед удалением:
 

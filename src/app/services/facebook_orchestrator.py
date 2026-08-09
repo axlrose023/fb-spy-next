@@ -45,7 +45,6 @@ from app.facebook.orchestration import (
     CollectionPipelineState,
     OrchestrationStateStore,
     ProfileCycleSchedule,
-    ProfileEvaluationService,
     calibration_allows_followup,
     calibration_pass_target_cap,
     calibration_passes_for_cycle,
@@ -81,12 +80,15 @@ from app.facebook.orchestration.commands import (
     CollectionCommandHooks,
     CollectionCommandRequest,
     CommandHandlers,
+    EvaluateCommandRequest,
+    MaintenanceCommandHooks,
     ProfileCycleCommandHooks,
     ProfileCycleCommandRequest,
     PublicDiscoveryCommandRequest,
     RunCommandHooks,
     RuntimeDiscoveryHooks,
     RuntimeDiscoveryRequest,
+    SeedBaselineCommandRequest,
     build_parser,
     calibration_policy_from_args,
     log_profile_schedule,
@@ -95,9 +97,11 @@ from app.facebook.orchestration.commands import (
     run_calibration_command,
     run_collection_command,
     run_command,
+    run_evaluate_command,
     run_profile_cycle_command,
     run_public_discovery_command,
     run_runtime_discovery,
+    run_seed_baseline_command,
     schedule_policy_from_args,
 )
 from app.facebook.orchestration.commands import dispatch as _dispatch_command
@@ -116,8 +120,6 @@ from app.facebook.profiles.adapters import JsonProfileCatalog
 from app.services.facebook.health import (
     CalibrationDecision,
     CalibrationPolicy,
-    collect_run_metrics,
-    is_good_baseline_candidate,
 )
 from app.settings import get_config
 
@@ -648,56 +650,41 @@ def _request_orchestrator_stop(_signum, _frame) -> None:
 
 
 def _evaluate(args) -> int:
-    policy = CalibrationPolicy()
-    store = StateStore(Path(args.state_json))
-    metrics = collect_run_metrics(
-        args.run_dir,
-        expected_country=args.expected_country or None,
-        return_code=args.return_code,
-        default_elapsed_seconds=args.default_elapsed_seconds,
-        default_scrolls=args.default_scrolls,
-        calibration_targets_available=args.calibration_targets,
+    return run_evaluate_command(
+        EvaluateCommandRequest(
+            state_path=Path(args.state_json),
+            run_dir=Path(args.run_dir),
+            profile_uuid=args.profile_uuid,
+            expected_country=args.expected_country or None,
+            return_code=args.return_code,
+            default_elapsed_seconds=args.default_elapsed_seconds,
+            default_scrolls=args.default_scrolls,
+            calibration_targets=args.calibration_targets,
+        ),
+        _maintenance_command_hooks(),
     )
-    decision = (
-        ProfileEvaluationService(store)
-        .evaluate(
-            args.profile_uuid,
-            metrics,
-            policy,
-            load_recovery_context=False,
-            exclude_run_dir=metrics.run_dir,
-        )
-        .decision
-    )
-    print(json.dumps(decision.to_dict(), ensure_ascii=False, indent=2))
-    return 0 if not decision.should_calibrate else 10
 
 
 def _seed_baseline(args) -> int:
-    policy = CalibrationPolicy()
-    metrics = collect_run_metrics(
-        args.run_dir,
-        expected_country=args.expected_country or None,
-        default_elapsed_seconds=args.default_elapsed_seconds,
-        default_scrolls=args.default_scrolls,
+    return run_seed_baseline_command(
+        SeedBaselineCommandRequest(
+            state_path=Path(args.state_json),
+            run_dir=Path(args.run_dir),
+            profile_uuid=args.profile_uuid,
+            label=args.label,
+            expected_country=args.expected_country or None,
+            default_elapsed_seconds=args.default_elapsed_seconds,
+            default_scrolls=args.default_scrolls,
+        ),
+        _maintenance_command_hooks(),
     )
-    if not is_good_baseline_candidate(metrics, policy):
-        print(
-            "Run is not a good baseline candidate. "
-            "Use a complete, geo-matched run with enough ads and targets.",
-            flush=True,
-        )
-        print(json.dumps(metrics.to_dict(), ensure_ascii=False, indent=2))
-        return 1
-    baseline = StateStore(Path(args.state_json)).seed_baseline(
-        args.profile_uuid,
-        metrics,
-        label=args.label,
-        expected_country=args.expected_country or None,
-        policy=policy,
+
+
+def _maintenance_command_hooks() -> MaintenanceCommandHooks:
+    return MaintenanceCommandHooks(
+        state_store=StateStore,
+        output=lambda message, flush: print(message, flush=flush),
     )
-    print(json.dumps(baseline.to_dict(), ensure_ascii=False, indent=2))
-    return 0
 
 
 class _PublicProfilesCompatibilitySource:
