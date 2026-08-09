@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -1988,6 +1988,38 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12C
+выполняется revert одного отдельного коммита.
+
+#### 12D. Lifecycle history и file state store
+
+Результат:
+
+- JSON state persistence, blocking process `flock`, atomic replace и profile state
+  queries вынесены из legacy orchestrator в
+  `facebook/orchestration/adapters/file_state_store.py`;
+- baseline history selection, healthy relevance validation и effective calibration
+  policy вынесены в pure `facebook/orchestration/lifecycle/history.py`; state
+  shape helpers отделены в `lifecycle/state.py`;
+- добавлены ISP-контракты `ProfileStateReader`, `ProfileStateWriter` и
+  `OrchestrationStateStore`; orchestration lifecycle больше не типизируется
+  через concrete file adapter;
+- legacy `StateStore`, `_baseline_from_run_records`,
+  `_is_healthy_relevance_result` и `_calibration_was_effective` сохранены как
+  exact aliases; JSON shape, retention по 100 records, schedule recovery и timestamp
+  precedence не изменились;
+- legacy orchestrator сократился с 2530 до 2202 строк; adapter остался
+  ниже architecture limit 300 строк;
+- добавлено 7 focused tests: malformed/missing state, unknown field
+  preservation, 100-record retention, seed baseline, legacy fallbacks и 24 concurrent
+  updates через 8 writers без lost writes;
+- focused orchestration regression: 103 tests; branch-aware coverage 96%,
+  `FileStateStore` coverage 97%; полный regression: 625 tests;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12D
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

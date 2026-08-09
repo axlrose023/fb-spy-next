@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import fcntl
 import json
 import math
 import os
@@ -37,19 +36,13 @@ from app.facebook.calibration import (
     plan_calibration_intensity,
 )
 from app.facebook.orchestration import (
+    OrchestrationStateStore,
     ProfileCycleSchedule,
     RecoverySchedulePolicy,
+    next_profile_schedule,
     profile_rest_seconds,
-    profile_resume_schedule,
     recovery_schedule_policy,
-    schedule_to_dict,
     select_due_profile_ids,
-)
-from app.facebook.orchestration import (
-    next_profile_schedule as _next_profile_schedule,
-)
-from app.facebook.orchestration import (
-    profile_state_recovery_active as _profile_state_recovery_active,
 )
 from app.facebook.orchestration import (
     recovery_evaluation_policy as _profile_evaluation_policy,
@@ -60,14 +53,21 @@ from app.facebook.orchestration import (
 from app.facebook.orchestration import (
     to_nonnegative_int as _nonnegative_int,
 )
-from app.facebook.orchestration.adapters import FileLock, profile_lock_path
+from app.facebook.orchestration.adapters import (
+    FileLock,
+    FileStateStore,
+    profile_lock_path,
+)
+from app.facebook.orchestration.lifecycle import (
+    baseline_from_run_records,
+    calibration_was_effective,
+    is_healthy_relevance_result,
+)
 from app.facebook.profiles import (
-    BaselineBuildOptions,
     DiscoveredProfile,
     Profile,
     ProfileDiscoveryService,
     ProfileService,
-    build_metric_baseline,
 )
 from app.facebook.profiles.adapters import JsonProfileCatalog
 from app.services.facebook.calibration import (
@@ -77,13 +77,11 @@ from app.services.facebook.calibration import (
 from app.services.facebook.health import (
     CalibrationDecision,
     CalibrationPolicy,
-    MetricBaseline,
     RunMetrics,
     baseline_from_history,
     collect_run_metrics,
     evaluate_calibration_need,
     is_good_baseline_candidate,
-    metrics_from_dict,
 )
 from app.settings import get_config
 
@@ -94,298 +92,11 @@ _STOP_EVENT = threading.Event()
 ProfileConfig = Profile
 
 
-class StateStore:
-    def __init__(self, path: Path):
-        self.path = path
-        self._lock = threading.Lock()
-
-    @contextmanager
-    def _process_lock(self):
-        lock_path = self.path.with_suffix(self.path.suffix + ".lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            yield
-        finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
-
-    def load(self) -> dict[str, Any]:
-        if not self.path.exists():
-            return {"profiles": {}}
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"profiles": {}}
-
-    def save(self, state: dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        tmp.replace(self.path)
-
-    def record_profile_run(
-        self,
-        profile: ProfileConfig,
-        metrics: RunMetrics,
-        decision: CalibrationDecision,
-        *,
-        calibration: dict[str, Any] | None = None,
-        calibrations: list[dict[str, Any]] | None = None,
-        policy: CalibrationPolicy,
-        schedule_policy: RecoverySchedulePolicy | None = None,
-        infrastructure_retry_required: bool = False,
-    ) -> ProfileCycleSchedule:
-        with self._lock, self._process_lock():
-            state = self.load()
-            profile_state = state.setdefault("profiles", {}).setdefault(
-                profile.octo_profile_uuid,
-                {
-                    "octo_profile_uuid": profile.octo_profile_uuid,
-                    "label": profile.label,
-                    "expected_country": profile.expected_country,
-                    "runs": [],
-                    "calibrations": [],
-                },
-            )
-            profile_state["label"] = profile.label
-            profile_state["expected_country"] = profile.expected_country
-            runs = profile_state.setdefault("runs", [])
-            baseline_candidate = is_good_baseline_candidate(metrics, policy) and (
-                decision.baseline.sample_count < policy.baseline_min_samples
-                or decision.status == "healthy"
-            )
-            trusted_baseline = (
-                profile.quality_guard
-                and not decision.baseline.trusted
-                and baseline_candidate
-                and _is_healthy_relevance_result(metrics, policy)
-            )
-            runs.append(
-                {
-                    "at": utc_now(),
-                    "run_dir": metrics.run_dir,
-                    "baseline_candidate": baseline_candidate,
-                    "trusted_baseline": trusted_baseline,
-                    "metrics": metrics.to_dict(),
-                    "decision": decision.to_dict(),
-                }
-            )
-            del runs[:-100]
-            calibration_records = list(calibrations or [])
-            if calibration and not calibration_records:
-                calibration_records.append(calibration)
-            if calibration_records:
-                stored_calibrations = profile_state.setdefault("calibrations", [])
-                stored_calibrations.extend(calibration_records)
-                del stored_calibrations[:-100]
-            last_calibration = (
-                calibration_records[-1] if calibration_records else calibration
-            )
-            schedule = _next_profile_schedule(
-                previous_burst_count=_nonnegative_int(
-                    profile_state.get("recovery_burst_count")
-                ),
-                previous_recovery_active=_profile_state_recovery_active(profile_state),
-                metrics=metrics,
-                decision=decision,
-                calibration=last_calibration,
-                infrastructure_retry_required=infrastructure_retry_required,
-                policy=schedule_policy
-                or RecoverySchedulePolicy(
-                    normal_rest_seconds=0.0,
-                    burst_limit=3,
-                    burst_rest_seconds=0.0,
-                    infrastructure_retry_seconds=300.0,
-                ),
-            )
-            profile_state["recovery_burst_count"] = schedule.recovery_burst_count
-            profile_state["last_schedule"] = schedule_to_dict(schedule)
-            baseline = _baseline_from_run_records(runs, policy)
-            profile_state["baseline"] = baseline.to_dict()
-            profile_state["updated_at"] = utc_now()
-            self.save(state)
-            return schedule
-
-    def seed_baseline(
-        self,
-        profile_uuid: str,
-        metrics: RunMetrics,
-        *,
-        label: str = "",
-        expected_country: str | None = None,
-        policy: CalibrationPolicy,
-    ) -> MetricBaseline:
-        with self._lock, self._process_lock():
-            state = self.load()
-            profile_state = state.setdefault("profiles", {}).setdefault(
-                profile_uuid,
-                {
-                    "octo_profile_uuid": profile_uuid,
-                    "label": label,
-                    "expected_country": expected_country,
-                    "runs": [],
-                    "calibrations": [],
-                },
-            )
-            runs = profile_state.setdefault("runs", [])
-            runs.append(
-                {
-                    "at": utc_now(),
-                    "run_dir": metrics.run_dir,
-                    "seed_baseline": True,
-                    "baseline_candidate": True,
-                    "metrics": metrics.to_dict(),
-                }
-            )
-            del runs[:-100]
-            baseline = _baseline_from_run_records(runs, policy)
-            profile_state["baseline"] = baseline.to_dict()
-            profile_state["updated_at"] = utc_now()
-            self.save(state)
-            return baseline
-
-    def profile_history(
-        self, profile_uuid: str
-    ) -> tuple[list[RunMetrics], MetricBaseline, list[str]]:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            runs = [
-                metrics_from_dict(item["metrics"])
-                for item in profile_state.get("runs", [])
-                if isinstance(item.get("metrics"), dict)
-                and not item.get("seed_baseline")
-            ]
-            baseline = MetricBaseline.from_dict(profile_state.get("baseline"))
-            calibrations = [
-                str(item.get("finished_at") or item.get("started_at") or item.get("at"))
-                for item in profile_state.get("calibrations", [])
-                if _calibration_was_effective(item)
-                and (
-                    item.get("finished_at") or item.get("started_at") or item.get("at")
-                )
-            ]
-            return runs, baseline, calibrations
-
-    def profile_calibration_attempts(self, profile_uuid: str) -> list[str]:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            return [
-                str(item.get("finished_at") or item.get("started_at") or item.get("at"))
-                for item in profile_state.get("calibrations", [])
-                if item.get("finished_at") or item.get("started_at") or item.get("at")
-            ]
-
-    def profile_calibration_target_offset(self, profile_uuid: str) -> int:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            consumed = 0
-            for item in profile_state.get("calibrations", []):
-                summary = (
-                    item.get("summary") if isinstance(item.get("summary"), dict) else {}
-                )
-                value = (
-                    summary.get("visited")
-                    or item.get("target_limit")
-                    or item.get("target_goal")
-                    or CalibrationPolicy().min_successful_calibration_targets
-                )
-                try:
-                    consumed += max(1, int(value))
-                except (TypeError, ValueError):
-                    consumed += CalibrationPolicy().min_successful_calibration_targets
-            return consumed
-
-    def profile_last_run_at(self, profile_uuid: str) -> str | None:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            for item in reversed(profile_state.get("runs", [])):
-                if item.get("seed_baseline"):
-                    continue
-                value = item.get("at")
-                if not value and isinstance(item.get("metrics"), dict):
-                    value = item["metrics"].get("finished_at")
-                if value:
-                    return str(value)
-            return None
-
-    def profile_recovery_burst_count(self, profile_uuid: str) -> int:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            return _nonnegative_int(profile_state.get("recovery_burst_count"))
-
-    def profile_recovery_evaluation_active(self, profile_uuid: str) -> bool:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            return _profile_state_recovery_active(profile_state)
-
-    def profile_resume_schedule(
-        self,
-        profile_uuid: str,
-        *,
-        default_rest_seconds: float,
-    ) -> ProfileCycleSchedule:
-        with self._lock, self._process_lock():
-            profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            return profile_resume_schedule(
-                profile_state,
-                default_rest_seconds=default_rest_seconds,
-            )
-
-
-def _is_healthy_relevance_result(
-    metrics: RunMetrics,
-    policy: CalibrationPolicy,
-) -> bool:
-    return bool(
-        metrics.target_source == "relevance"
-        and metrics.relevance_known
-        and metrics.relevance_coverage is not None
-        and metrics.relevance_coverage >= policy.min_relevance_coverage
-        and metrics.relevant_rate is not None
-        and metrics.relevant_rate >= policy.minimum_healthy_relevant_rate
-        and int(metrics.relevant_ads or 0) >= policy.minimum_healthy_relevant_ads
-    )
-
-
-def _baseline_from_run_records(
-    records: list[dict[str, Any]],
-    policy: CalibrationPolicy,
-) -> MetricBaseline:
-    by_run_dir: dict[str, RunMetrics] = {}
-    for item in records:
-        raw_metrics = item.get("metrics")
-        if not isinstance(raw_metrics, dict):
-            continue
-        metrics = metrics_from_dict(raw_metrics)
-        explicitly_eligible = item.get("seed_baseline") or item.get(
-            "baseline_candidate"
-        )
-        legacy_record = "baseline_candidate" not in item
-        if not explicitly_eligible and not (
-            legacy_record and is_good_baseline_candidate(metrics, policy)
-        ):
-            continue
-        by_run_dir.pop(metrics.run_dir, None)
-        by_run_dir[metrics.run_dir] = metrics
-    baseline = build_metric_baseline(
-        list(by_run_dir.values()),
-        BaselineBuildOptions(
-            max_samples=policy.baseline_window,
-            min_healthy_relevant_rate=policy.minimum_healthy_relevant_rate,
-            min_healthy_relevant_ads=policy.minimum_healthy_relevant_ads,
-        ),
-    )
-    trusted_dirs = {
-        str(item.get("run_dir") or "")
-        for item in records
-        if item.get("seed_baseline") or item.get("trusted_baseline")
-    }
-    trusted = bool(trusted_dirs.intersection(baseline.source_run_dirs))
-    return replace(baseline, trusted=trusted)
+StateStore = FileStateStore
+_baseline_from_run_records = baseline_from_run_records
+_calibration_was_effective = calibration_was_effective
+_is_healthy_relevance_result = is_healthy_relevance_result
+_next_profile_schedule = next_profile_schedule
 
 
 def main() -> int:
@@ -822,7 +533,10 @@ def _calibration_policy(args) -> CalibrationPolicy:
 
 
 def _run_once(
-    args, store: StateStore, policy: CalibrationPolicy, root_dir: Path
+    args,
+    store: OrchestrationStateStore,
+    policy: CalibrationPolicy,
+    root_dir: Path,
 ) -> int:
     enabled_profiles = _enabled_profiles(args)
     if not enabled_profiles:
@@ -849,7 +563,7 @@ def _run_once(
 
 def _run_continuously(
     args,
-    store: StateStore,
+    store: OrchestrationStateStore,
     policy: CalibrationPolicy,
     root_dir: Path,
 ) -> int:
@@ -1043,7 +757,7 @@ def _discover_profiles(args, *, fail_fast: bool) -> None:
 def _run_profile_cycle(
     profile: ProfileConfig,
     args,
-    store: StateStore,
+    store: OrchestrationStateStore,
     policy: CalibrationPolicy,
     root_dir: Path,
 ) -> ProfileCycleSchedule:
@@ -1065,7 +779,7 @@ def _profile_cycle_guard(profile: ProfileConfig, args, root_dir: Path):
 def _run_profile_cycle_locked(
     profile: ProfileConfig,
     args,
-    store: StateStore,
+    store: OrchestrationStateStore,
     policy: CalibrationPolicy,
     root_dir: Path,
 ) -> ProfileCycleSchedule:
@@ -2248,19 +1962,6 @@ def _load_profiles(path: Path) -> list[ProfileConfig]:
 
 def _persist_profile_country(path: Path, profile_uuid: str, country: str) -> None:
     ProfileService(JsonProfileCatalog(path)).adopt_country(profile_uuid, country)
-
-
-def _calibration_was_effective(raw: dict[str, Any]) -> bool:
-    if "effective" in raw:
-        return bool(raw.get("effective"))
-    summary = raw.get("summary") if isinstance(raw.get("summary"), dict) else {}
-    return (
-        raw.get("return_code") == 0
-        and summary.get("status") == "completed"
-        and int(summary.get("ok") or 0)
-        >= CalibrationPolicy().min_successful_calibration_targets
-        and summary.get("interaction_goal_met") is True
-    )
 
 
 def _count_calibration_targets(
