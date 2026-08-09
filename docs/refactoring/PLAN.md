@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2210,6 +2210,42 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12J
+выполняется revert одного отдельного коммита.
+
+#### 12K. Calibration target pool
+
+Результат:
+
+- relevance compatibility forms, direct Facebook post/direct offer validation,
+  stable pool naming и fresh-first deduplication вынесены в pure
+  `facebook/calibration/planning/pool_rules.py`;
+- discovery fresh/profile/geo/configured pool sources, quarantine-aware target count,
+  malformed JSON fail-closed behavior и atomic pool writes вынесены в
+  `facebook/calibration/adapters/json_target_pool.py`;
+- `JsonCalibrationTargetPool` получает saved-target и quarantine loaders как
+  ports; adapter не импортирует legacy `app.services` и не создаёт
+  circular dependency с calibration public API;
+- legacy `_count_calibration_targets`, `_calibration_ads_paths`,
+  `_update_calibration_pools`, relevance helpers и safe-name helper сохранены
+  wrappers/aliases; target order, pool JSON shape, limit 1000 и relevant-only invariant
+  не изменились;
+- adapters, создаваемые legacy wrapper для каждого call, получают
+  один process-wide lock; concurrency test двух profile updates подтверждает,
+  что shared geo-pool не теряет записи;
+- добавлено 18 focused tests; pool rules и JSON adapter имеют 100%
+  coverage по строкам и веткам; focused calibration/orchestration regression:
+  83 tests; полный regression: 681 test;
+- первый full run обнаружил unrelated probabilistic assertion в media URL
+  test: random HMAC token случайно содержал substring `s3`; isolated rerun и
+  повторные full runs прошли, media production code не менялся;
+- legacy orchestrator сократился с 1851 до 1731 строки; pool rules
+  составляют 79, JSON adapter — 152 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12K
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

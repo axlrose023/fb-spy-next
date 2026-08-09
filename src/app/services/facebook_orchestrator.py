@@ -14,7 +14,6 @@ import signal
 import subprocess
 import threading
 import time
-import urllib.parse
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -30,7 +29,11 @@ from app.facebook.adapters.octo import (
 from app.facebook.calibration import (
     CalibrationIntensityPolicy,
     CalibrationPlan,
+    JsonCalibrationTargetPool,
+    calibration_pool_name,
     effective_target_goal,
+    is_direct_calibration_target,
+    is_relevant_ad,
     plan_calibration_intensity,
 )
 from app.facebook.collection import interest_safety_violations
@@ -1616,24 +1619,7 @@ def _count_calibration_targets(
     collect_dir: Path,
     root_dir: Path | None = None,
 ) -> int:
-    ads_paths = _calibration_ads_paths(profile, collect_dir, root_dir)
-    if not ads_paths:
-        return 0
-    country = None if profile.no_country_filter else profile.expected_country
-    try:
-        return len(
-            load_saved_facebook_targets_from_ads_json(
-                ads_paths,
-                country=country,
-                limit=10_000,
-                include_direct_offers=True,
-                excluded_urls=quarantined_facebook_post_urls(
-                    collect_dir.parent / "calibration_target_health.json"
-                ),
-            )
-        )
-    except Exception:
-        return 0
+    return _calibration_target_pool().count(profile, collect_dir, root_dir)
 
 
 def _calibration_ads_paths(
@@ -1641,38 +1627,7 @@ def _calibration_ads_paths(
     collect_dir: Path,
     root_dir: Path | None = None,
 ) -> list[Path]:
-    paths: list[Path] = []
-    fresh = collect_dir / "ads.relevant.json"
-    if fresh.exists() and _has_direct_relevant_ads(fresh):
-        paths.append(fresh)
-    active_root = root_dir or (
-        collect_dir.parents[2] if len(collect_dir.parents) >= 3 else None
-    )
-    pool_candidates = [collect_dir.parent / "calibration_pool.json"]
-    if active_root and profile.expected_country:
-        pool_candidates.append(
-            active_root
-            / "calibration_pools"
-            / f"{_safe_name(profile.expected_country)}.json"
-        )
-    for candidate in pool_candidates:
-        if (
-            candidate.exists()
-            and candidate not in paths
-            and _has_direct_relevant_ads(candidate)
-        ):
-            paths.append(candidate)
-    for value in profile.calibration_ads_json:
-        path = Path(value).expanduser()
-        relevant_variant = path.with_name("ads.relevant.json")
-        candidate = relevant_variant if relevant_variant.exists() else path
-        if (
-            candidate.exists()
-            and candidate not in paths
-            and _has_direct_relevant_ads(candidate)
-        ):
-            paths.append(candidate)
-    return paths
+    return _calibration_target_pool().source_paths(profile, collect_dir, root_dir)
 
 
 def _update_calibration_pools(
@@ -1680,103 +1635,28 @@ def _update_calibration_pools(
     collect_dir: Path,
     root_dir: Path,
 ) -> None:
-    fresh = collect_dir / "ads.relevant.json"
-    fresh_ads = _load_json(fresh, default=[])
-    if not isinstance(fresh_ads, list):
-        fresh_ads = []
-    pool_paths = [collect_dir.parent / "calibration_pool.json"]
-    if profile.expected_country:
-        pool_paths.append(
-            root_dir
-            / "calibration_pools"
-            / f"{_safe_name(profile.expected_country)}.json"
-        )
-    with _POOL_FILE_LOCK:
-        for pool_path in pool_paths:
-            previous = _load_json(pool_path, default=[])
-            previous_ads = previous if isinstance(previous, list) else []
-            combined = [
-                item
-                for item in [*fresh_ads, *previous_ads]
-                if isinstance(item, dict) and _ad_is_direct_calibration_target(item)
-            ]
-            unique: list[dict[str, Any]] = []
-            seen: set[str] = set()
-            for index, item in enumerate(combined):
-                key = str(
-                    item.get("facebook_post_url")
-                    or item.get("fb_ad_id")
-                    or item.get("landing_clean")
-                    or item.get("landing_full")
-                    or item.get("screenshot")
-                    or f"item:{index}"
-                )
-                if key in seen:
-                    continue
-                seen.add(key)
-                unique.append(item)
-                if len(unique) >= 1000:
-                    break
-            _write_json(pool_path, unique)
+    _calibration_target_pool().update(profile, collect_dir, root_dir)
 
 
 def _has_relevant_ads(path: Path) -> bool:
-    payload = _load_json(path, default=[])
-    if not isinstance(payload, list):
-        return False
-    for raw in payload:
-        if isinstance(raw, dict) and _ad_is_relevant(raw):
-            return True
-    return False
+    return _calibration_target_pool().has_relevant_ads(path)
 
 
 def _has_direct_relevant_ads(path: Path) -> bool:
-    payload = _load_json(path, default=[])
-    return isinstance(payload, list) and any(
-        isinstance(raw, dict) and _ad_is_direct_calibration_target(raw)
-        for raw in payload
+    return _calibration_target_pool().has_direct_relevant_ads(path)
+
+
+_ad_is_direct_calibration_target = is_direct_calibration_target
+_ad_is_relevant = is_relevant_ad
+_safe_name = calibration_pool_name
+
+
+def _calibration_target_pool() -> JsonCalibrationTargetPool:
+    return JsonCalibrationTargetPool(
+        load_saved_facebook_targets_from_ads_json,
+        quarantined_facebook_post_urls,
+        lock=_POOL_FILE_LOCK,
     )
-
-
-def _ad_is_direct_calibration_target(raw: dict[str, Any]) -> bool:
-    post_url = str(raw.get("facebook_post_url") or "")
-    try:
-        parsed = urllib.parse.urlparse(post_url)
-    except ValueError:
-        return False
-    host = (parsed.hostname or "").casefold()
-    facebook_host = host == "facebook.com" or host.endswith(".facebook.com")
-    query = urllib.parse.parse_qs(parsed.query)
-    direct_path = "/posts/" in parsed.path
-    direct_query = (
-        parsed.path.rstrip("/").endswith(("story.php", "permalink.php"))
-        and bool((query.get("story_fbid") or [""])[0])
-        and bool((query.get("id") or [""])[0])
-    )
-    direct_post = facebook_host and (direct_path or direct_query)
-    direct_offer = str(raw.get("landing_full") or raw.get("landing_clean") or "")
-    try:
-        offer = urllib.parse.urlparse(direct_offer)
-        usable_offer = offer.scheme in {"http", "https"} and bool(offer.hostname)
-    except ValueError:
-        usable_offer = False
-    return _ad_is_relevant(raw) and (direct_post or usable_offer)
-
-
-def _ad_is_relevant(raw: dict[str, Any]) -> bool:
-    relevance = raw.get("relevance")
-    return (
-        raw.get("relevant") is True
-        or (isinstance(relevance, dict) and relevance.get("result") == "relevant")
-        or (isinstance(relevance, str) and relevance.casefold() == "relevant")
-    )
-
-
-def _safe_name(value: str) -> str:
-    name = "".join(
-        char.lower() if char.isascii() and char.isalnum() else "_" for char in value
-    )
-    return "_".join(part for part in name.split("_") if part) or "unknown"
 
 
 def _octo_local_get(host: str, port: int, path: str) -> dict | list:
