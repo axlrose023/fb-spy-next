@@ -65,8 +65,15 @@ from app.facebook.orchestration import (
 from app.facebook.orchestration.adapters import (
     FileLock,
     FileStateStore,
+    OctoProcessEnvironment,
     ProcessRegistry,
+    PythonProcessEnvironment,
     SubprocessCommandRunner,
+    build_backend_import_command,
+    build_collector_command,
+    build_isolated_landing_resolver_command,
+    build_relevance_classifier_command,
+    build_relevant_enricher_command,
     profile_lock_path,
     signal_process_group,
     write_log_line,
@@ -991,49 +998,7 @@ def _interest_safe_collection_violations(run_dir: Path) -> list[str]:
 
 
 def _collector_command(profile: ProfileConfig, args, run_dir: Path) -> list[str]:
-    config = get_config()
-    octo_host = args.octo_host or config.facebook.octo_host
-    octo_port = args.octo_port or config.facebook.octo_port
-    command = [
-        config.facebook.runner_python,
-        "-m",
-        config.facebook.runner_module,
-        "--minutes",
-        str(args.collect_minutes),
-        "--collect-scrolls",
-        str(args.collect_scrolls),
-        "--resolve-max",
-        str(args.resolve_max),
-        "--scroll-px",
-        str(args.scroll_px),
-        "--max-ads-per-view",
-        str(args.max_ads_per_view),
-        "--landing-archive-timeout",
-        str(args.landing_archive_timeout),
-        "--landing-archive-max-resources",
-        str(args.landing_archive_max_resources),
-        "--video-max-seconds",
-        str(args.video_max_seconds),
-        "--octo-host",
-        octo_host,
-        "--octo-port",
-        str(octo_port),
-        "--octo-profile-uuid",
-        profile.octo_profile_uuid,
-        "--run-dir",
-        str(run_dir),
-    ]
-    if args.debug:
-        command.append("--debug")
-    if args.interest_safe_collection:
-        command.append("--passive-collect")
-    if args.no_video_recording:
-        command.append("--no-video-recording")
-    if args.no_landing_archives:
-        command.append("--no-landing-archives")
-    if _octo_headless(args):
-        command.append("--octo-headless")
-    return command
+    return build_collector_command(profile, args, run_dir, _octo_environment(args))
 
 
 def _relevance_classifier_command(
@@ -1043,21 +1008,13 @@ def _relevance_classifier_command(
     source: Path | None = None,
     include_video: bool = False,
 ) -> list[str]:
-    config = get_config()
-    command = [
-        config.facebook.runner_python,
-        "-m",
-        "app.services.facebook_relevance_classifier",
-        "--run-dir",
-        str(run_dir),
-    ]
-    if stage != "standard":
-        command.extend(["--stage", stage])
-    if source is not None:
-        command.extend(["--source", str(source)])
-    if include_video:
-        command.append("--include-video")
-    return command
+    return build_relevance_classifier_command(
+        run_dir,
+        _python_environment(),
+        stage=stage,
+        source=source,
+        include_video=include_video,
+    )
 
 
 def _relevant_enricher_command(
@@ -1067,41 +1024,13 @@ def _relevant_enricher_command(
     *,
     source: Path | None = None,
 ) -> list[str]:
-    config = get_config()
-    octo_host = args.octo_host or config.facebook.octo_host
-    octo_port = args.octo_port or config.facebook.octo_port
-    command = [
-        config.facebook.runner_python,
-        "-m",
-        "app.services.facebook_ad_enricher",
-        "--run-dir",
-        str(run_dir),
-        "--octo-host",
-        octo_host,
-        "--octo-port",
-        str(octo_port),
-        "--octo-profile-uuid",
-        profile.octo_profile_uuid,
-        "--timeout-ms",
-        str(max(1, round(args.calibration_page_timeout * 1000))),
-        "--locate-timeout-ms",
-        str(max(0, round(args.calibration_locate_timeout * 1000))),
-        "--video-max-seconds",
-        str(args.video_max_seconds),
-        "--landing-archive-timeout",
-        str(args.landing_archive_timeout),
-        "--landing-archive-max-resources",
-        str(args.landing_archive_max_resources),
-    ]
-    if source is not None:
-        command.extend(["--source", str(source)])
-    if args.no_video_recording:
-        command.append("--no-record-videos")
-    if args.no_landing_archives:
-        command.append("--no-resolve-landings")
-    if _octo_headless(args):
-        command.append("--octo-headless")
-    return command
+    return build_relevant_enricher_command(
+        profile,
+        args,
+        run_dir,
+        _octo_environment(args),
+        source=source,
+    )
 
 
 def _isolated_landing_resolver_command(
@@ -1109,31 +1038,12 @@ def _isolated_landing_resolver_command(
     args,
     run_dir: Path,
 ) -> list[str]:
-    config = get_config()
-    octo_host = args.octo_host or config.facebook.octo_host
-    octo_port = args.octo_port or config.facebook.octo_port
-    command = [
-        config.facebook.runner_python,
-        "-m",
-        "app.services.facebook_isolated_landing_resolver",
-        "--run-dir",
-        str(run_dir),
-        "--octo-host",
-        octo_host,
-        "--octo-port",
-        str(octo_port),
-        "--octo-profile-uuid",
-        profile.octo_profile_uuid,
-        "--timeout-ms",
-        str(max(1, round(args.calibration_landing_timeout * 1000))),
-        "--landing-ready-seconds",
-        str(args.landing_archive_timeout),
-        "--landing-archive-max-resources",
-        str(args.landing_archive_max_resources),
-    ]
-    if _octo_headless(args):
-        command.append("--octo-headless")
-    return command
+    return build_isolated_landing_resolver_command(
+        profile,
+        args,
+        run_dir,
+        _octo_environment(args),
+    )
 
 
 def _relevance_classification_enabled(args) -> bool:
@@ -1146,16 +1056,22 @@ def _backend_import_command(
     profile: ProfileConfig,
     ads_json_path: Path,
 ) -> list[str]:
+    return build_backend_import_command(profile, ads_json_path, _python_environment())
+
+
+def _python_environment() -> PythonProcessEnvironment:
+    return PythonProcessEnvironment(executable=get_config().facebook.runner_python)
+
+
+def _octo_environment(args) -> OctoProcessEnvironment:
     config = get_config()
-    return [
-        config.facebook.runner_python,
-        "-m",
-        "app.services.facebook_db_importer",
-        "--ads-json",
-        str(ads_json_path),
-        "--title",
-        f"{profile.display_name} - {ads_json_path.parent.name}",
-    ]
+    return OctoProcessEnvironment(
+        executable=config.facebook.runner_python,
+        collector_module=config.facebook.runner_module,
+        host=args.octo_host or config.facebook.octo_host,
+        port=args.octo_port or config.facebook.octo_port,
+        headless=_octo_headless(args),
+    )
 
 
 def _calibrator_command(

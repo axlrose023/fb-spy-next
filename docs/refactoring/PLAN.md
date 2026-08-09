@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2246,6 +2246,39 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12K
+выполняется revert одного отдельного коммита.
+
+#### 12L. Collection pipeline process commands
+
+Результат:
+
+- collector, relevance classifier, active enricher, isolated resolver и backend
+  importer argv builders вынесены из legacy orchestrator в четыре маленьких
+  `facebook/orchestration/adapters` modules;
+- executable и resolved Octo connection передаются через immutable
+  `PythonProcessEnvironment`/`OctoProcessEnvironment`; command builders не
+  импортируют global settings и не знают о composition root;
+- collector/enrichment options описаны узкими typed protocols; legacy
+  argparse namespace удовлетворяет им структурно без зависимости
+  adapters от argparse;
+- legacy `_collector_command`, `_relevance_classifier_command`,
+  `_relevant_enricher_command`, `_isolated_landing_resolver_command` и
+  `_backend_import_command` сохранены wrappers; module names, exact flag order,
+  timeout clamping, optional flags, source paths и titles не изменились;
+- settings/default/CLI override resolution осталось в legacy composition layer;
+  subprocess runner, process registry, command timeouts и calibration invocation на этом
+  подэтапе не менялись;
+- добавлено 5 focused tests; все четыре command adapter modules имеют
+  100% coverage по строкам и веткам; focused collection/orchestration regression:
+  101 test; полный regression: 686 tests;
+- legacy orchestrator сократился с 1731 до 1647 строки; environment,
+  collector, relevance и import adapters составляют 16, 71, 120 и 23 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12L
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
