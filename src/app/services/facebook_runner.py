@@ -31,22 +31,13 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
-import json
 import os
 import random
 import re
-import signal
-import sys
 import time
 import traceback
-from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote_plus
-
-from playwright.sync_api import sync_playwright
 
 from app.browser import (
     BrowserOperationDeadlineExceeded as _OperationDeadlineExceeded,
@@ -72,6 +63,7 @@ from app.facebook.collection import (
 from app.facebook.collection import (
     CollectedAd as Ad,
 )
+from app.facebook.collection import commands as collection_commands
 from app.facebook.collection import (
     utc_now as collection_utc_now,
 )
@@ -94,6 +86,7 @@ from app.facebook.collection.adapters.playwright import (
 from app.facebook.collection.adapters.playwright import (
     passive_media_guard_stats as _passive_media_guard_stats,
 )
+from app.facebook.collection.cli import artifacts as collection_artifacts
 from app.facebook.enrichment.landing.adapters import (
     playwright as landing_playwright,
 )
@@ -155,10 +148,9 @@ _screenshot_has_blank_media = collection_playwright.screenshot_has_blank_media
 save_ad_screenshot = collection_playwright.save_ad_screenshot
 has_video_creative = collection_playwright.has_video_creative
 _pause_all_videos = collection_playwright.pause_all_videos
-BROWSER_OPERATION_TIMEOUT_REASONS = frozenset({
-    "resolve_timeout",
-    "video_timeout",
-})
+BROWSER_OPERATION_TIMEOUT_REASONS = (
+    collection_artifacts.BROWSER_OPERATION_TIMEOUT_REASONS
+)
 BAD_DOMAINS = COLLECTION_BAD_DOMAINS
 DETECT_JS = COLLECTION_DETECT_JS
 PASSIVE_MEDIA_GUARD_INSTALL_JS = COLLECTION_PASSIVE_MEDIA_GUARD_INSTALL_JS
@@ -248,87 +240,15 @@ def rewrite_cdp_endpoint_host(ws_endpoint: str, octo_host: str) -> str:
     return _rewrite_cdp_endpoint_host(ws_endpoint, octo_host)
 
 
-def _write_ads(path: Path, ads: dict[str, Ad]) -> None:
-    payload = json.dumps([asdict(a) for a in ads.values()],
-                         ensure_ascii=False, indent=2)
-    _write_text_atomic(path, payload)
-
-
-def _write_json_atomic(path: Path, payload: dict | list) -> None:
-    _write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2))
-
-
-def _write_text_atomic(path: Path, payload: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(payload, encoding="utf-8")
-    tmp.replace(path)
-
-
-def _write_run_meta(run_dir: Path, payload: dict) -> None:
-    _write_json_atomic(run_dir / "run_meta.json", payload)
-
-
-def _fast_exit_after_browser_operation_timeout(run_dir: Path) -> None:
-    """Avoid a wedged Playwright shutdown after SIGALRM interrupted its driver."""
-    try:
-        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    reason = str(summary.get("stop_reason") or "")
-    if reason not in BROWSER_OPERATION_TIMEOUT_REASONS:
-        return
-    print(
-        f"[runner] {reason} artifacts saved; exiting before Playwright cleanup",
-        flush=True,
-    )
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os._exit(0)
-
-
-def _octo_start_failure_reason(error: BaseException) -> str:
-    if "profiles.proxy_error" in str(error):
-        return "octo_proxy_error"
-    return "octo_start_error"
-
-
-def _write_octo_start_failure(
-    run_dir: Path,
-    *,
-    profile_uuid: str,
-    octo_host: str,
-    octo_port: int,
-    octo_headless: bool,
-    requested_minutes: float,
-    started_at: str,
-    elapsed_seconds: float,
-    error: BaseException,
-) -> str:
-    reason = _octo_start_failure_reason(error)
-    finished_at = utc_now()
-    _write_run_meta(run_dir, {
-        "collector_metric_version": COLLECTOR_METRIC_VERSION,
-        "octo_profile_uuid": profile_uuid,
-        "octo_host": octo_host,
-        "octo_port": octo_port,
-        "octo_headless": octo_headless,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "start_failure": reason,
-    })
-    _write_json_atomic(run_dir / "summary.json", {
-        "collector_metric_version": COLLECTOR_METRIC_VERSION,
-        "requested_minutes": requested_minutes,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "elapsed_seconds": max(0.0, elapsed_seconds),
-        "scrolls": 0,
-        "refreshes": 0,
-        "captured_candidates": 0,
-        "stop_reason": reason,
-    })
-    return reason
+_write_ads = collection_artifacts.write_ads
+_write_json_atomic = collection_artifacts.write_json_atomic
+_write_text_atomic = collection_artifacts.write_text_atomic
+_write_run_meta = collection_artifacts.write_run_meta
+_fast_exit_after_browser_operation_timeout = (
+    collection_artifacts.fast_exit_after_browser_operation_timeout
+)
+_octo_start_failure_reason = collection_artifacts.octo_start_failure_reason
+_write_octo_start_failure = collection_artifacts.write_octo_start_failure
 
 
 def _ad_summary(ads: dict[str, Ad]) -> dict:
@@ -808,193 +728,7 @@ def collect(page, ctx, run_dir: Path, *, minutes: float, max_scrolls: int,
 
 
 # ── main ──────────────────────────────────────────────────────────────────
-def main(argv: Sequence[str] | None = None) -> int:
-    global OCTO_API
-    global OCTO_HEADLESS
-    global OCTO_PROFILE_UUID
-
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--minutes", type=float, default=10.0,
-                    help="Collection budget in minutes (default 10).")
-    ap.add_argument("--collect-scrolls", type=int, default=10000,
-                    help="Hard cap on feed scrolls.")
-    ap.add_argument("--resolve-max", type=int, default=200,
-                    help="Max link-ads to click-resolve for the full URL.")
-    ap.add_argument("--scroll-px", type=int, default=520,
-                    help="Mouse-wheel pixels per feed step; lower means more overlap (default 520).")
-    ap.add_argument("--max-ads-per-view", type=int, default=1,
-                    help="Max newly captured ads to process before scrolling again (default 1).")
-    ap.add_argument("--no-resolve", action="store_true",
-                    help="Collect only, never click (no full landing URLs).")
-    ap.add_argument(
-        "--passive-collect",
-        action="store_true",
-        help=(
-            "Interest-safe scan: never click CTAs/comments or start videos. "
-            "Relevant ads can be enriched in a separate post-classification step."
-        ),
-    )
-    ap.add_argument("--no-shots", action="store_true",
-                    help="Skip per-ad screenshots.")
-    ap.add_argument("--no-video-recording", action="store_true",
-                    help="Do not record detected video creatives.")
-    ap.add_argument("--video-max-seconds", type=float, default=30.0,
-                    help="Maximum seconds to record per video creative (hard-capped at 45).")
-    ap.add_argument("--video-fps", type=int, default=8,
-                    help="Frame rate for recorded video creatives (default 8).")
-    ap.add_argument("--no-landing-archives", action="store_true",
-                    help="Do not save zip archives of resolved landing pages.")
-    ap.add_argument("--landing-archive-timeout", type=float, default=20.0,
-                    help="HTTP timeout for landing archive fetches (default 20s).")
-    ap.add_argument("--landing-archive-max-resources", type=int, default=120,
-                    help="Maximum linked resources per landing archive.")
-    ap.add_argument("--debug", action="store_true",
-                    help="Save maximum debug artifacts: trace, events, DOM, viewports, resolve shots.")
-    ap.add_argument("--out", default="fb_spy/results",
-                    help="Output directory root.")
-    ap.add_argument("--run-dir", default="",
-                    help="Exact output directory for this run. Overrides --out.")
-    ap.add_argument("--octo-host", default="127.0.0.1",
-                    help="Octo Browser Local API host (default 127.0.0.1).")
-    ap.add_argument("--octo-port", type=int, default=58888,
-                    help="Octo Browser Local API port (default 58888).")
-    ap.add_argument("--octo-profile-uuid", default=OCTO_PROFILE_UUID,
-                    help="Octo Browser profile UUID to start/use.")
-    ap.add_argument("--octo-headless", action="store_true",
-                    help="Start Octo browser profiles without a visible window.")
-    ap.add_argument("--topic", default="",
-                    help="Optional Facebook mobile search topic to scroll instead of the home feed.")
-    args = ap.parse_args(argv)
-
-    signal.signal(signal.SIGINT, _request_stop)
-    signal.signal(signal.SIGTERM, _request_stop)
-
-    OCTO_API = f"http://{args.octo_host}:{args.octo_port}"
-    OCTO_PROFILE_UUID = args.octo_profile_uuid
-    OCTO_HEADLESS = args.octo_headless
-    feed_url = "https://m.facebook.com/"
-    if args.topic.strip():
-        feed_url = f"https://m.facebook.com/search/top/?q={quote_plus(args.topic.strip())}"
-
-    if args.run_dir.strip():
-        run_dir = Path(args.run_dir)
-    else:
-        run_dir = Path(args.out) / datetime.now().strftime("run_%Y%m%d_%H%M%S")
-    run_dir.mkdir(parents=True, exist_ok=True)
-    debug = DebugRecorder(run_dir, args.debug, clock=utc_now)
-    runner_started_at = utc_now()
-    runner_started_monotonic = time.monotonic()
-    try:
-        ws, conn = get_cdp_endpoint()
-        ws = rewrite_cdp_endpoint_host(ws, args.octo_host)
-        profile_country = normalize_country(conn.get("country"))
-        print(f"[octo] CDP {ws}  ip={conn.get('ip')} country={profile_country}")
-        _write_run_meta(run_dir, {
-            "collector_metric_version": COLLECTOR_METRIC_VERSION,
-            "octo_profile_uuid": args.octo_profile_uuid,
-            "octo_host": args.octo_host,
-            "octo_port": args.octo_port,
-            "octo_headless": args.octo_headless,
-            "octo_ip": conn.get("ip"),
-            "profile_country": profile_country,
-            "connection_data": conn,
-            "started_at": runner_started_at,
-        })
-        debug.event("octo_connected", ws=ws, connection=conn)
-
-        with sync_playwright() as p:
-            b = p.chromium.connect_over_cdp(ws)
-            ctx = b.contexts[0]
-            debug.attach_context(ctx)
-            page = None
-            if not args.topic.strip():
-                page = next((pg for pg in ctx.pages if _is_fb_feed_url(pg.url)), None)
-            if page is None:
-                page = ctx.new_page()
-            interrupted = False
-            try:
-                ads = collect(page, ctx, run_dir, minutes=args.minutes,
-                              max_scrolls=args.collect_scrolls, shots=not args.no_shots,
-                              do_resolve=not args.no_resolve and not args.passive_collect,
-                              resolve_max=args.resolve_max,
-                              scroll_px=args.scroll_px,
-                              debug=debug if args.debug else None,
-                              feed_url=feed_url,
-                              country=profile_country,
-                              archive_landings=not args.no_landing_archives,
-                              landing_archive_timeout=args.landing_archive_timeout,
-                              landing_archive_max_resources=args.landing_archive_max_resources,
-                              record_videos=(
-                                  not args.no_video_recording
-                                  and not args.passive_collect
-                              ),
-                              video_max_seconds=args.video_max_seconds,
-                              video_fps=args.video_fps,
-                              max_ads_per_view=args.max_ads_per_view,
-                              resolve_post_urls=not args.passive_collect,
-                              interest_safe_mode=args.passive_collect)
-                out = run_dir / "ads.json"
-                _write_ads(out, ads)
-                if args.passive_collect:
-                    neutralize_profile_pages(page, ctx)
-                _fast_exit_after_browser_operation_timeout(run_dir)
-            except BaseException as exc:
-                interrupted = isinstance(exc, KeyboardInterrupt)
-                debug.event("fatal", error=repr(exc), traceback=traceback.format_exc(),
-                            page_url=DebugRecorder._page_url(page),
-                            pages=[DebugRecorder._page_url(pg) for pg in ctx.pages])
-                if not interrupted:
-                    debug.screenshot(page, "errors/fatal.png")
-                raise
-            finally:
-                if interrupted or STOP_REQUESTED:
-                    debug.event("debug_cleanup_skipped", reason="keyboard_interrupt")
-                else:
-                    debug.finish_context(ctx)
-                    debug.event(
-                        "browser_left_active_for_followup",
-                        passive_collect=args.passive_collect,
-                        page_url=DebugRecorder._page_url(page),
-                    )
-
-        n = len(ads)
-        by_type: dict[str, int] = {}
-        resolved = 0
-        for a in ads.values():
-            by_type[a.ad_type] = by_type.get(a.ad_type, 0) + 1
-            if a.landing_full:
-                resolved += 1
-        print("\n=== DONE ===")
-        print(f"unique ads: {n}  by_type: {by_type}")
-        print(f"full landing resolved: {resolved}")
-        print(f"results: {run_dir}/ads.json")
-        if args.debug:
-            print(f"debug: {run_dir}/debug/")
-        return 0
-    except OctoApiError as exc:
-        reason = _write_octo_start_failure(
-            run_dir,
-            profile_uuid=args.octo_profile_uuid,
-            octo_host=args.octo_host,
-            octo_port=args.octo_port,
-            octo_headless=args.octo_headless,
-            requested_minutes=args.minutes,
-            started_at=runner_started_at,
-            elapsed_seconds=time.monotonic() - runner_started_monotonic,
-            error=exc,
-        )
-        debug.event("main_failed", error=repr(exc))
-        print(f"[octo error:{reason}] {exc}", file=sys.stderr, flush=True)
-        if args.debug:
-            print(f"debug: {run_dir}/debug/", file=sys.stderr, flush=True)
-        return 2
-    except BaseException as exc:
-        debug.event("main_failed", error=repr(exc), traceback=traceback.format_exc())
-        raise
-    finally:
-        debug.close()
-
+main = collection_commands.main
 
 if __name__ == "__main__":
     raise SystemExit(main())

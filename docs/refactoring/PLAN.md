@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F7 завершен
+Статус: `IN_PROGRESS` — этап 14F8 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F7 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F8 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3246,6 +3246,48 @@ revert одного отдельного коммита.
 Этап 14F остается `IN_PROGRESS`: collection CLI composition переносится
 следующим независимым commit/revert unit. Production server, Octo runtime и
 старый репозиторий не менялись. Rollback 14F7 выполняется revert одного
+отдельного коммита.
+
+#### 14F8. Collection CLI composition
+
+Результат:
+
+- collect parser, canonical command entrypoint, run-directory/topic
+  configuration и Playwright browser-session composition перенесены в owning
+  `facebook.collection.commands`/`facebook.collection.cli`;
+- все аргументы, defaults, порядок options, RawDescription formatter и полный
+  help payload сохранены; hashes legacy `python -m ...facebook_runner --help`
+  и общего `facebook-spy --help` не изменились;
+- public Facebook command gateway теперь направляет `collect` в canonical
+  module; legacy runner экспортирует тот же `main` function object, поэтому
+  orchestrator/settings со старым module path продолжают работать;
+- выбор существующей Facebook feed page, обязательная новая page для topic,
+  CDP connect, debug attach/finalize, passive-page neutralization и
+  interrupt/fatal cleanup сохранены в прежнем порядке;
+- CLI mapping сохраняет interest-safe overrides: passive collection не
+  разрешает CTA landing, video recording или permalink resolution; topic URL
+  по-прежнему кодируется через `quote_plus`;
+- atomic ads/JSON/meta writes, browser-timeout fast exit и machine-readable
+  Octo start failure перенесены в отдельный CLI artifacts module; legacy helper
+  exports являются identity-compatible aliases;
+- cross-module page neutralization опубликована через public
+  `facebook.enrichment` API; direct import чужого landing adapter устранен
+  architecture gate;
+- runner уменьшен с 1 000 до 734 строк; оставшиеся переходные imports
+  canonical CLI -> runner локализованы в `commands.py`/`runtime.py` и нужны
+  только для feed loop, Octo connection bridge и stop state следующего 14F9;
+- добавлено 3 focused characterization contracts для passive topic run,
+  artifacts/entrypoint identity и Octo proxy failure; CLI, collection,
+  enrichment, runner, architecture/contracts и strict mypy проходят; полный
+  regression: 850 тестов;
+- canonical implementation-файлы имеют от 19 до 158 строк; wheel содержит
+  collection command/CLI package; Ruff, stage-scoped pre-commit, frontend
+  production build и gitleaks проходят; frontend source/lock не менялись;
+  `npm audit` сохраняет известные 6 findings (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: feed loop и Octo/stop bridge переносятся
+следующим независимым commit/revert unit 14F9. Production server, Octo runtime
+и старый репозиторий не менялись. Rollback 14F8 выполняется revert одного
 отдельного коммита.
 
 Перед удалением:

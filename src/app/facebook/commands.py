@@ -17,7 +17,7 @@ class CommandSpec:
 
 
 COMMANDS = (
-    CommandSpec("collect", "app.services.facebook_runner", "Collect feed ads."),
+    CommandSpec("collect", "app.facebook.collection.commands", "Collect feed ads."),
     CommandSpec(
         "orchestrate",
         "app.services.facebook_orchestrator",

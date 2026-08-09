@@ -1,5 +1,5 @@
 from .landing import external_landing_url, parse_landing
-from .landing.adapters.playwright import resolve_in_view
+from .landing.adapters.playwright import neutralize_profile_pages, resolve_in_view
 from .media import (
     LandingArchiveResult,
     archive_filename,
@@ -30,6 +30,7 @@ __all__ = [
     "external_landing_url",
     "facebook_post_identity_from_url",
     "normalized_facebook_post_url",
+    "neutralize_profile_pages",
     "parse_landing",
     "resolve_in_view",
     "resolve_facebook_post_url",
