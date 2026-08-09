@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from app.services.facebook.relevance import FacebookAdRelevanceFilter
+from app.facebook.relevance import configured_relevance_service
 from app.settings import get_config
 from app.tiq import broker
 
@@ -27,7 +27,7 @@ async def analyze_facebook_ad_relevance(
     )
     try:
         config = get_config()
-        relevance_filter = FacebookAdRelevanceFilter.from_config(config)
+        relevance_filter = configured_relevance_service(config)
         result = await relevance_filter.analyze_raw_ad(raw, Path(run_dir))
         payload = {
             "index": index,

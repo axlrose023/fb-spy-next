@@ -1367,7 +1367,7 @@ Server, Octo и production runtime не менялись. Старый репо�
 
 ### Этап 8. `facebook/relevance`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-09
 
 Источники:
 
@@ -1423,6 +1423,48 @@ facebook/relevance/
 - отсутствие профильного landing navigation;
 - provider timeout/rate limit/empty response;
 - prompt snapshot меняется только осознанно.
+
+Результат:
+
+- создан публичный `facebook/relevance` с отдельными contracts, models,
+  exceptions и `RelevanceService`; concrete provider не попадает во внутренние
+  слои;
+- parsing model JSON, deterministic scope guards, prefilter uncertainty policy,
+  prompt construction и artifact lookup разделены на небольшие файлы без
+  generic `utils/services/shared` каталогов;
+- исходные четыре prompt-варианта сохранены побайтно; их SHA-256 закреплены
+  contract-тестом и совпадают с состоянием до переноса;
+- сохранен порядок evidence fallback: video может подтвердить relevance, затем
+  combined/single screenshots, затем metadata; отрицательный video result не
+  блокирует последующую проверку;
+- нутра/health, pure gambling, branded broker/prop-firm, enterprise tech,
+  gaming и generic redirect exclusions остались deterministic и покрыты
+  characterization fixtures;
+- `uncertain` разрешен только для prefilter и переводится в `hold`; `deny` и
+  unresolved `hold` не могут попасть в authenticated-profile enrichment;
+- isolated evidence разделен на URL/SSRF policy, network/context isolation,
+  anonymous Facebook post matching, landing capture и browser coordinator;
+  сохранены cookie audit, private/meta request blocking и fail-closed summary;
+- Gemini SDK перенесен в adapter; timeout, rate-limit и прочие provider errors
+  преобразуются в module exceptions, а исходный SDK exception подавляется,
+  чтобы response body, prompt или credential не попадали в traceback/logs;
+- importer и Taskiq используют новый публичный factory; старые relevance,
+  Gemini, classifier и isolated-resolver paths оставлены только минимальными
+  compatibility facade/CLI entrypoints для текущего orchestrator contract;
+- удалены вторые копии prompt, rules, classifier workflow, Gemini client и
+  isolated browser implementation: legacy-файлы сокращены примерно с 2 800
+  строк до тонких wrappers;
+- focused relevance suite: 104 теста, statement coverage нового модуля 71%;
+  расширенный relevance/CLI/architecture gate: 135 тестов;
+- полный regression выполнен тремя независимыми группами: 205 + 302 + 10
+  Playwright tests, итого 517; объединенное statement coverage `src/app` — 74%;
+- Ruff, strict mypy для 35 relevance files, pre-commit, architecture/size/import
+  guards, CLI contracts, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; полный `npm audit` по-прежнему сообщает
+  известные 6 findings (3 moderate, 3 high), не относящиеся к backend refactor.
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback
+выполняется revert одного коммита этапа 8.
 
 ### Этап 9. `facebook/enrichment`
 

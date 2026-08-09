@@ -29,7 +29,7 @@ from app.ad_library.media import MediaStorage
 from app.ad_library.media.configuration import configured_storage
 from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
-from app.services.facebook.relevance import FacebookAdRelevanceFilter
+from app.facebook.relevance import configured_relevance_service
 from app.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -369,7 +369,7 @@ class _QueuedRelevance:
 class FacebookAdsImporter:
     def __init__(self, config: Config, media_storage: MediaStorage | None = None):
         self.config = config
-        self.relevance_filter = FacebookAdRelevanceFilter.from_config(config)
+        self.relevance_filter = configured_relevance_service(config)
         self.media_storage = media_storage or configured_storage(config)
         self.ad_mapper = AdMapper(
             AdMappingPolicy(
