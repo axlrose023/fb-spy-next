@@ -4,7 +4,8 @@ import math
 
 from playwright.async_api import Browser, Playwright, async_playwright
 
-from app.settings import PlaywrightConfig, get_config
+from app.browser.settings import PlaywrightConfig
+from app.settings import get_config
 
 logger = logging.getLogger(__name__)
 

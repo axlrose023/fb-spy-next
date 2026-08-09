@@ -2,7 +2,8 @@ import logging
 
 from fake_useragent import UserAgent
 
-from app.settings import UserAgentConfig, get_config
+from app.browser.settings import UserAgentConfig
+from app.settings import get_config
 
 logger = logging.getLogger(__name__)
 

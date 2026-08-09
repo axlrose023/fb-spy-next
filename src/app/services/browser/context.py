@@ -3,7 +3,8 @@ import random
 
 from playwright.async_api import Browser, BrowserContext
 
-from app.settings import ViewportConfig, get_config
+from app.browser.settings import ViewportConfig
+from app.settings import get_config
 
 from .useragent import UserAgentProvider
 

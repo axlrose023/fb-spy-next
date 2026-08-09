@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13H завершен
+Статус: `IN_PROGRESS` — этап 13I завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A–13H COMPLETE`)
+Статус: `IN_PROGRESS` (`13A–13I COMPLETE`)
 
 Изменения:
 
@@ -2772,6 +2772,38 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13H
+выполняется revert одного отдельного коммита.
+
+#### 13I. Settings ownership
+
+Результат:
+
+- API, JWT, media storage, Postgres/Redis, browser/viewport/user-agent,
+  Facebook и Gemini config models перенесены в одинаковые owning-module
+  `settings.py`; поля, типы, defaults и validators сохранены;
+- `app.settings` остался compatibility facade и composition model: прежние
+  imports всех config classes, `Config`, `PathsConfig`, `get_config`, URL
+  properties и cross-module secret validation не изменились;
+- `APP__` prefix, nested `__` delimiter и имена всех env sections/fields
+  сохранены; отдельный contract проверяет nested env parsing каждой секции;
+- normalized default-config SHA до и после переноса совпадает точно:
+  `d5449e32824d4818671d5d8106df2201476f64027de3cab61db7e7a96c3ddd91`;
+- browser services теперь импортируют собственные config types из
+  `app.browser.settings`, сохраняя cached root `get_config` fallback;
+- eager package exports `app.browser` и `app.clients` заменены эквивалентными
+  lazy exports, чтобы root settings мог импортировать owning models без cycles;
+  object identity и оба порядка импорта защищены focused subprocess tests;
+- добавлено 6 focused settings contracts: public re-exports, exact defaults,
+  env names, lazy object identity и два reverse import-order cases; canonical
+  settings layer проходит strict mypy, architecture/contracts проходят; полный
+  regression: 770 tests;
+- root `settings.py` сократился с 284 до 117 строк; owning settings files имеют
+  от 6 до 80 строк; wheel содержит все восемь settings modules;
+- Ruff, stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13I
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover
