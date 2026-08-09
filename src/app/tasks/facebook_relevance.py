@@ -7,7 +7,7 @@ from typing import Any
 
 from app.facebook.relevance import configured_relevance_service
 from app.settings import get_config
-from app.tiq import broker
+from app.worker import broker
 
 logger = logging.getLogger(__name__)
 

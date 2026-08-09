@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13A завершен
+Статус: `IN_PROGRESS` — этап 13B завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A COMPLETE`)
+Статус: `IN_PROGRESS` (`13A, 13B COMPLETE`)
 
 Изменения:
 
@@ -2576,6 +2576,31 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13A
+выполняется revert одного отдельного коммита.
+
+#### 13B. Taskiq worker entrypoint
+
+Результат:
+
+- Redis result backend, stream broker, scheduler, logging и Dishka assembly
+  перенесены из legacy `app/tiq.py` в canonical `app/worker.py`;
+- task delivery modules теперь регистрируют decorators через
+  `app.worker.broker`; application/domain modules не импортируют worker runtime;
+- `app.tiq` сокращён до compatibility export тех же `broker`, `scheduler`,
+  `container`, `redis_async_result` и `config` objects;
+- существующие compose commands `app.tiq:broker` и `app.tiq:scheduler` не
+  менялись; import order `app.tasks`/`app.tiq` использует один cached worker
+  module и не создаёт второй broker;
+- добавлен contract test object identity и регистрации обеих задач в canonical
+  broker; architecture guardrail теперь считает `app.worker` outer composition
+  module; полный regression: 747 tests;
+- worker entrypoint составляет 51 строку, legacy `tiq.py` — 3 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock и compose files не менялись; `npm audit` сохраняет
+  известные 6 findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13B
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover

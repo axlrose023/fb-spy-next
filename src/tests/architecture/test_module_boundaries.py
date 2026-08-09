@@ -46,6 +46,7 @@ OUTER_APP_MODULES = {
     "app.settings",
     "app.tasks",
     "app.tiq",
+    "app.worker",
 }
 GENERIC_NAMES = {"common", "helpers", "services", "shared", "utils"}
 

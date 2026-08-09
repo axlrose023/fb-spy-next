@@ -1,6 +1,6 @@
 import logging
 
-from app.tiq import broker
+from app.worker import broker
 
 logger = logging.getLogger(__name__)
 
