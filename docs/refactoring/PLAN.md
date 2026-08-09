@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2117,6 +2117,38 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12G
+выполняется revert одного отдельного коммита.
+
+#### 12H. Recovery calibration coordinator
+
+Результат:
+
+- multi-pass recovery lifecycle вынесен в
+  `facebook/orchestration/lifecycle/recovery.py`; intensity/tier planning остались
+  в owning `facebook/calibration` module;
+- `RecoveryCycleCoordinator` получает pass executor, stop-check и follow-up
+  logger как callbacks; он не зависит от argparse, Playwright, filesystem и
+  concrete calibrator command;
+- в module также перенесены recovery pass count, meaningful-improvement,
+  rolling 24-hour budget, target split, consumed-target и follow-up policies;
+- target offset обновляется по фактически visited targets; для трёх
+  проходов по 10 и начального offset 7 тест подтверждает offsets
+  `7, 17, 27` без повторного использования targets;
+- infrastructure error, failed status, zero consumption, stop request, daily limit
+  и insufficient target pool останавливают последующие проходы как и
+  раньше;
+- legacy helper names сохранены exact aliases; profile-cycle command order,
+  record shape, `pass_index`, `planned_passes` и follow-up log не изменились;
+- добавлено 8 focused tests; recovery module coverage 92%; focused
+  orchestration regression: 132 tests, coverage 96%; полный regression: 654 tests;
+- legacy orchestrator сократился с 2062 до 1938 строк; recovery module
+  составляет 174 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12H
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

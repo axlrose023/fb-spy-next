@@ -5,7 +5,18 @@ from .contracts import (
     ProfileStateReader,
     ProfileStateWriter,
 )
-from .lifecycle import CalibrationTransition, CollectionPipelineState
+from .lifecycle import (
+    CalibrationTransition,
+    CollectionPipelineState,
+    RecoveryCycleCoordinator,
+    RecoveryCycleResult,
+    calibration_allows_followup,
+    calibration_pass_target_cap,
+    calibration_passes_for_cycle,
+    calibration_targets_consumed,
+    relevance_result_meaningfully_improved,
+    remaining_daily_calibration_attempts,
+)
 from .models import (
     OrchestrationState,
     ProfileCycleSchedule,
@@ -40,6 +51,10 @@ from .serialization import (
 __all__ = [
     "available_profile_slots",
     "CalibrationTransition",
+    "calibration_allows_followup",
+    "calibration_pass_target_cap",
+    "calibration_passes_for_cycle",
+    "calibration_targets_consumed",
     "CommandRunner",
     "CollectionPipelineState",
     "OrchestrationState",
@@ -51,6 +66,10 @@ __all__ = [
     "ProfileStateReader",
     "ProfileStateWriter",
     "RecoverySchedulePolicy",
+    "RecoveryCycleCoordinator",
+    "RecoveryCycleResult",
+    "relevance_result_meaningfully_improved",
+    "remaining_daily_calibration_attempts",
     "SchedulerConfig",
     "SchedulerHooks",
     "orchestration_state_from_dict",

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import signal
 import subprocess
@@ -18,7 +17,7 @@ import time
 import urllib.parse
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,12 +39,19 @@ from app.facebook.orchestration import (
     OrchestrationStateStore,
     ProfileCycleSchedule,
     ProfileScheduler,
+    RecoveryCycleCoordinator,
     RecoverySchedulePolicy,
     SchedulerConfig,
     SchedulerHooks,
+    calibration_allows_followup,
+    calibration_pass_target_cap,
+    calibration_passes_for_cycle,
+    calibration_targets_consumed,
     next_profile_schedule,
     profile_rest_seconds,
     recovery_schedule_policy,
+    relevance_result_meaningfully_improved,
+    remaining_daily_calibration_attempts,
 )
 from app.facebook.orchestration import (
     recovery_evaluation_policy as _profile_evaluation_policy,
@@ -84,7 +90,6 @@ from app.services.facebook.calibration import (
 from app.services.facebook.health import (
     CalibrationDecision,
     CalibrationPolicy,
-    RunMetrics,
     baseline_from_history,
     collect_run_metrics,
     evaluate_calibration_need,
@@ -103,6 +108,12 @@ _baseline_from_run_records = baseline_from_run_records
 _calibration_was_effective = calibration_was_effective
 _is_healthy_relevance_result = is_healthy_relevance_result
 _next_profile_schedule = next_profile_schedule
+_calibration_allows_followup = calibration_allows_followup
+_calibration_pass_target_cap = calibration_pass_target_cap
+_calibration_passes_for_cycle = calibration_passes_for_cycle
+_calibration_targets_consumed = calibration_targets_consumed
+_relevance_result_meaningfully_improved = relevance_result_meaningfully_improved
+_remaining_daily_calibration_attempts = remaining_daily_calibration_attempts
 
 
 def main() -> int:
@@ -945,56 +956,38 @@ def _run_profile_cycle_locked(
     )
     calibration_records: list[dict[str, Any]] = []
     if calibration_transition is CalibrationTransition.RUN:
-        calibration_passes = _calibration_passes_for_cycle(
-            profile,
-            metrics,
-            history,
-            recovery_active=recovery_evaluation_active,
-        )
-        calibration_passes = min(
-            calibration_passes,
-            _remaining_daily_calibration_attempts(
+        recovery_result = RecoveryCycleCoordinator().run(
+            planned_passes=_calibration_passes_for_cycle(
+                profile,
+                metrics,
+                history,
+                recovery_active=recovery_evaluation_active,
+            ),
+            remaining_daily_attempts=_remaining_daily_calibration_attempts(
                 calibration_attempt_timestamps,
                 limit=policy.max_calibrations_per_24h,
             ),
-        )
-        remaining_targets = target_count
-        for pass_index in range(calibration_passes):
-            if (
-                _STOP_EVENT.is_set()
-                or remaining_targets < policy.min_calibration_targets
-            ):
-                break
-            target_limit_cap = _calibration_pass_target_cap(
-                remaining_targets,
-                passes_left=calibration_passes - pass_index,
-                min_targets=policy.min_calibration_targets,
-            )
-            calibration_record = _run_calibration(
+            available_targets=target_count,
+            target_offset=calibration_target_offset,
+            min_targets=policy.min_calibration_targets,
+            stop_requested=_STOP_EVENT.is_set,
+            execute_pass=lambda target_offset, target_limit_cap: _run_calibration(
                 profile,
                 args,
                 collect_dir,
                 root_dir,
                 decision=decision,
-                target_offset=calibration_target_offset,
+                target_offset=target_offset,
                 target_limit_cap=target_limit_cap,
-            )
-            calibration_record["pass_index"] = pass_index + 1
-            calibration_record["planned_passes"] = calibration_passes
-            calibration_records.append(calibration_record)
-            consumed = _calibration_targets_consumed(calibration_record)
-            calibration_target_offset += consumed
-            remaining_targets = max(0, remaining_targets - consumed)
-            if pass_index + 1 >= calibration_passes:
-                break
-            if not _calibration_allows_followup(calibration_record):
-                break
-            print(
+            ),
+            log_followup=lambda pass_number, planned_passes, remaining_targets: print(
                 f"[{profile.display_name}] recovery did not improve; "
-                f"calibration pass {pass_index + 2}/{calibration_passes} "
+                f"calibration pass {pass_number}/{planned_passes} "
                 f"with {remaining_targets} unused targets",
                 flush=True,
-            )
+            ),
+        )
+        calibration_records = list(recovery_result.records)
     elif calibration_transition is CalibrationTransition.SKIP_PIPELINE_FAILED:
         print(
             f"[{profile.display_name}] calibration skipped: collection pipeline failed",
@@ -1390,123 +1383,6 @@ def _calibration_plan(
 
 def _effective_calibration_target_goal(plan: CalibrationPlan) -> int:
     return effective_target_goal(plan)
-
-
-def _calibration_passes_for_cycle(
-    profile: ProfileConfig,
-    metrics: RunMetrics,
-    history: list[RunMetrics],
-    *,
-    recovery_active: bool,
-) -> int:
-    configured = max(1, profile.failed_recovery_calibration_passes)
-    if configured == 1 or not recovery_active:
-        return 1
-    previous = next(
-        (
-            item
-            for item in reversed(history)
-            if item.target_source == "relevance"
-            and item.relevance_known
-            and item.relevance_classified_ads > 0
-            and (
-                not metrics.profile_uuid
-                or not item.profile_uuid
-                or metrics.profile_uuid == item.profile_uuid
-            )
-        ),
-        None,
-    )
-    if previous is None:
-        return 1
-    return (
-        1 if _relevance_result_meaningfully_improved(metrics, previous) else configured
-    )
-
-
-def _relevance_result_meaningfully_improved(
-    current: RunMetrics,
-    previous: RunMetrics,
-) -> bool:
-    current_relevant = int(current.relevant_ads or 0)
-    previous_relevant = int(previous.relevant_ads or 0)
-    count_gain = current_relevant - previous_relevant
-    required_count_gain = max(2, math.ceil(previous_relevant * 0.20))
-    if count_gain >= required_count_gain:
-        return True
-    if (
-        current.relevant_rate is not None
-        and previous.relevant_rate is not None
-        and current.relevant_rate >= previous.relevant_rate + 0.05
-    ):
-        return True
-    return bool(
-        current.target_per_hour is not None
-        and previous.target_per_hour is not None
-        and previous.target_per_hour > 0
-        and current.target_per_hour >= previous.target_per_hour * 1.20
-    )
-
-
-def _remaining_daily_calibration_attempts(
-    timestamps: list[str],
-    *,
-    limit: int,
-    now: datetime | None = None,
-) -> int:
-    now_dt = now or datetime.now(UTC)
-    since = now_dt - timedelta(hours=24)
-    recent = 0
-    for value in timestamps:
-        try:
-            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=UTC)
-        if parsed >= since:
-            recent += 1
-    return max(0, max(1, limit) - recent)
-
-
-def _calibration_pass_target_cap(
-    remaining_targets: int,
-    *,
-    passes_left: int,
-    min_targets: int,
-) -> int:
-    remaining = max(0, remaining_targets)
-    passes = max(1, passes_left)
-    minimum = max(1, min_targets)
-    if passes == 1 or remaining < passes * minimum:
-        return remaining
-    return max(minimum, math.ceil(remaining / passes))
-
-
-def _calibration_targets_consumed(calibration: dict[str, Any]) -> int:
-    summary = (
-        calibration.get("summary")
-        if isinstance(calibration.get("summary"), dict)
-        else {}
-    )
-    value = summary.get("visited") or calibration.get("target_limit") or 0
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _calibration_allows_followup(calibration: dict[str, Any]) -> bool:
-    summary = (
-        calibration.get("summary")
-        if isinstance(calibration.get("summary"), dict)
-        else {}
-    )
-    return bool(
-        summary.get("status") in {"completed", "dry_run"}
-        and not summary.get("infrastructure_error")
-        and _calibration_targets_consumed(calibration) > 0
-    )
 
 
 def _run_calibration(
