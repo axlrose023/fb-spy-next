@@ -7,12 +7,12 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import Error as PlaywrightError
 
-from app.services import facebook_runner
-from app.services.facebook.landing_archive import (
+from app.facebook.enrichment import (
     archive_landing_page_from_browser,
     save_landing_screenshot_from_browser,
     wait_for_landing_page_ready,
 )
+from app.services import facebook_runner
 
 from ..evidence.policy import isolated_external_url
 from .anonymous_post import resolve_from_anonymous_post
@@ -115,18 +115,14 @@ def reuse_resolution(
         "anonymous_facebook_navigation_started": False,
         "isolated_click_attempted": False,
         "source": (
-            source_result.get("source")
-            if isinstance(source_result, dict)
-            else "reused"
+            source_result.get("source") if isinstance(source_result, dict) else "reused"
         ),
         "source_row_index": source_row_index,
         "landing_resolved": bool(target.get("landing_full")),
         "landing_screenshot_saved": bool(target.get("landing_screenshot")),
         "landing_archive_saved": bool(target.get("landing_archive")),
         "source_status": (
-            source_result.get("status")
-            if isinstance(source_result, dict)
-            else None
+            source_result.get("status") if isinstance(source_result, dict) else None
         ),
         "meta_requests_blocked": 0,
         "private_requests_blocked": 0,
@@ -165,9 +161,7 @@ def _capture_direct_landing(
     if not final_url:
         raise RuntimeError(f"unsafe landing redirect: {issue}")
     clean, utm, ad_id = facebook_runner.parse_landing(final_url)
-    resolved.update(
-        {"landing_full": final_url, "landing_clean": clean, "utm": utm}
-    )
+    resolved.update({"landing_full": final_url, "landing_clean": clean, "utm": utm})
     if ad_id and not resolved.get("fb_ad_id"):
         resolved["fb_ad_id"] = ad_id
     screenshot = save_landing_screenshot_from_browser(

@@ -60,16 +60,16 @@ from app.facebook.adapters.octo import (
 from app.facebook.adapters.octo import (
     rewrite_cdp_endpoint_host as _rewrite_cdp_endpoint_host,
 )
+from app.facebook.enrichment import (
+    archive_landing_page_from_browser,
+    save_landing_screenshot_from_browser,
+    wait_for_landing_page_ready,
+)
 from app.facebook.profiles import (
     ProfileSourceError,
 )
 from app.facebook.profiles import (
     normalize_country as _normalize_country,
-)
-from app.services.facebook.landing_archive import (
-    archive_landing_page_from_browser,
-    save_landing_screenshot_from_browser,
-    wait_for_landing_page_ready,
 )
 
 # Playwright waits for document.fonts.ready before every screenshot. Some ad

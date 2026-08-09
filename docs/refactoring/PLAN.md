@@ -1468,7 +1468,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 9. `facebook/enrichment`
 
-Статус: `PENDING`
+Статус: `COMPLETE`
 
 Источники:
 
@@ -1492,24 +1492,35 @@ relevant-only части facebook_runner.py
 
 ```text
 facebook/enrichment/
+  __init__.py
   service.py
   models.py
   contracts.py
   exceptions.py
   post/
-    resolver.py
+    matching.py
     urls.py
-  landing/
-    service.py
-    policy.py
   media/
     screenshot.py
-    video.py
-    archive.py
+    archive/
+      service.py
+      models.py
+      policy.py
+      naming.py
+      html.py
+      rewriter.py
+      resources.py
+      http_capture.py
+      browser_capture.py
+      browser_index.py
+      writer.py
   adapters/playwright/
     post.py
     landing.py
     capture.py
+    video.py
+    mapping.py
+    runtime.py
 ```
 
 Критические тесты:
@@ -1521,6 +1532,41 @@ facebook/enrichment/
 - вкладки закрываются после каждого ad;
 - partial artifact failure не теряет весь result;
 - output совместим с ad ingestion.
+
+Результат:
+
+- `RelevantAd.from_raw` и `EnrichmentService` образуют fail-closed boundary:
+  `deny`/`hold` отклоняются до вызова browser executor, а `prepare()` явно
+  маркирует их `blocked_by_relevance_gate` без активных действий;
+- дедупликация candidate, gate summary и invariant
+  `active_actions_on_blocked_ads` вынесены из CLI в чистый application service;
+- direct Facebook post URL validation и строгий metadata matching отделены от
+  Playwright; неоднозначное совпадение по feed fail-closed;
+- permalink recovery, post capture, video recording, CTA/landing resolution и
+  browser lifecycle разделены на небольшие Playwright adapters; вкладка всегда
+  паузится и закрывается в `finally`, а частичный failure сохраняется в result;
+- landing capture сохраняет прежний browser-first contract с HTTP fallback,
+  cookie/user-agent transfer, limits, resource rejection, HTML/CSS rewrite,
+  MHTML, DOM и full-page screenshot; monolith разделен на policy, parser,
+  rewriter, HTTP/browser capture и ZIP writer;
+- `facebook_runner.py` и relevance landing adapter используют публичный
+  `app.facebook.enrichment` API; старые `facebook_ad_enricher.py` и
+  `facebook/landing_archive.py` оставлены тонкими CLI/compatibility facades;
+- прежние CLI flags, orchestrator module path, JSON field names, archive format,
+  output paths и ad ingestion contract сохранены;
+- добавлено 15 focused tests для gate/executor boundary, post matching, cleanup,
+  archive validity/resource policy и no-candidate/no-browser path;
+- focused enrichment/legacy suite: 51 тест, statement coverage нового модуля
+  72%; отдельный legacy regression gate: 82 теста;
+- полный regression выполнен тремя независимыми группами: 215 + 302 + 10,
+  итого 528 тестов; Ruff, strict mypy для 32 enrichment files, architecture,
+  size/import guards, CLI contracts, frontend production build и gitleaks
+  проходят;
+- frontend source/lock не менялись; `npm audit` по-прежнему сообщает известные
+  6 findings (3 moderate, 3 high), не относящиеся к backend refactor.
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback
+выполняется revert одного коммита этапа 9.
 
 ### Этап 10. `facebook/collection`
 

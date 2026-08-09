@@ -1,12 +1,10 @@
-"""Compatibility facade for the Facebook enrichment media module."""
-
-import httpx
-
-from app.facebook.enrichment import (
+from .archive import (
     LandingArchiveResult,
     archive_filename,
     archive_landing_http,
     archive_landing_page_from_browser,
+)
+from .screenshot import (
     save_landing_screenshot_from_browser,
     wait_for_landing_page_ready,
 )
@@ -16,7 +14,6 @@ __all__ = [
     "archive_filename",
     "archive_landing_http",
     "archive_landing_page_from_browser",
-    "httpx",
     "save_landing_screenshot_from_browser",
     "wait_for_landing_page_ready",
 ]

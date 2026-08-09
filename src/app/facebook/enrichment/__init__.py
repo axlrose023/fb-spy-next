@@ -1,8 +1,4 @@
-"""Compatibility facade for the Facebook enrichment media module."""
-
-import httpx
-
-from app.facebook.enrichment import (
+from .media import (
     LandingArchiveResult,
     archive_filename,
     archive_landing_http,
@@ -10,13 +6,18 @@ from app.facebook.enrichment import (
     save_landing_screenshot_from_browser,
     wait_for_landing_page_ready,
 )
+from .models import EnrichmentOptions, EnrichmentResult, RelevantAd
+from .service import EnrichmentService
 
 __all__ = [
     "LandingArchiveResult",
+    "EnrichmentOptions",
+    "EnrichmentResult",
+    "EnrichmentService",
+    "RelevantAd",
     "archive_filename",
     "archive_landing_http",
     "archive_landing_page_from_browser",
-    "httpx",
     "save_landing_screenshot_from_browser",
     "wait_for_landing_page_ready",
 ]
