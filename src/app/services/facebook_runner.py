@@ -44,7 +44,6 @@ import sys
 import time
 import traceback
 from collections.abc import Sequence
-from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime
 from io import BytesIO
@@ -54,6 +53,10 @@ from urllib.parse import quote_plus
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from app.browser import (
+    BrowserOperationDeadlineExceeded as _OperationDeadlineExceeded,
+)
+from app.browser import hard_deadline as _hard_deadline
 from app.facebook.adapters.octo import (
     OctoHttpClient,
     OctoProfileSessionManager,
@@ -168,41 +171,6 @@ def _request_stop(signum, _frame) -> None:
     global STOP_REQUESTED
     STOP_REQUESTED = True
     raise KeyboardInterrupt(f"signal {signum}")
-
-
-class _OperationDeadlineExceeded(BaseException):
-    pass
-
-
-@contextmanager
-def _hard_deadline(seconds: float, label: str):
-    """Interrupt a blocking sync browser call on Unix without stopping the run."""
-    if seconds <= 0 or not hasattr(signal, "SIGALRM"):
-        yield
-        return
-
-    previous_handler = signal.getsignal(signal.SIGALRM)
-    previous_timer = signal.setitimer(signal.ITIMER_REAL, 0)
-    started = time.monotonic()
-
-    def expire(_signum, _frame) -> None:
-        raise _OperationDeadlineExceeded(label)
-
-    signal.signal(signal.SIGALRM, expire)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
-        remaining, interval = previous_timer
-        if remaining > 0:
-            elapsed = time.monotonic() - started
-            signal.setitimer(
-                signal.ITIMER_REAL,
-                max(1e-6, remaining - elapsed),
-                interval,
-            )
 
 
 class _TeeStream:

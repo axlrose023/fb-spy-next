@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from app.browser import hard_deadline
 from app.services import facebook_runner
 
 from ...models import EnrichmentOptions
@@ -20,7 +21,7 @@ def resolve_landing(
     options: EnrichmentOptions,
 ) -> None:
     timeout_seconds = max(30.0, options.landing_archive_timeout * 2 + 15.0)
-    with facebook_runner._hard_deadline(
+    with hard_deadline(
         timeout_seconds,
         f"allowed landing enrichment: {ad.displayed_domain}",
     ):

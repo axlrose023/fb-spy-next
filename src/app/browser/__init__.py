@@ -4,16 +4,22 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .context import ContextFactory
+    from .deadline import BrowserOperationDeadlineExceeded, hard_deadline
     from .ioc import browser_provider, browser_provider_available
     from .pool import BrowserPool
     from .useragent import UserAgentProvider
 
 _EXPORTS = {
+    "BrowserOperationDeadlineExceeded": (
+        "deadline",
+        "BrowserOperationDeadlineExceeded",
+    ),
     "BrowserPool": ("pool", "BrowserPool"),
     "ContextFactory": ("context", "ContextFactory"),
     "UserAgentProvider": ("useragent", "UserAgentProvider"),
     "browser_provider": ("ioc", "browser_provider"),
     "browser_provider_available": ("ioc", "browser_provider_available"),
+    "hard_deadline": ("deadline", "hard_deadline"),
 }
 
 __all__ = list(_EXPORTS)

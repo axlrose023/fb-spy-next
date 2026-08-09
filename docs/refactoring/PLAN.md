@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14E завершен
+Статус: `IN_PROGRESS` — этап 14F1 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A, 14B, 14C, 14D, 14E COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3014,6 +3014,33 @@ Production server, Octo runtime и старый репозиторий не ме
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 14E
 выполняется revert одного отдельного коммита.
+
+#### 14F1. Browser operation deadline
+
+Результат:
+
+- Unix SIGALRM deadline для блокирующих sync browser-операций перенесен из
+  2 349-строчного `services.facebook_runner` в 41-строчный
+  `app.browser.deadline`;
+- публичные `hard_deadline` и `BrowserOperationDeadlineExceeded` сохраняют
+  no-op для отключенного/неподдерживаемого timer, наследование от
+  `BaseException`, label ошибки и восстановление предыдущих signal handler,
+  remaining timeout и interval;
+- enrichment landing adapter переключен на public `app.browser` API, а runner
+  сохраняет identity-compatible private aliases для существующих collectors и
+  тестов; runtime stop reasons `resolve_timeout`/`video_timeout` не менялись;
+- добавлено 4 focused contracts для реального interrupt, disabled deadline,
+  nested timer restoration и alias identity; runner/enrichment regression,
+  architecture/contracts и strict mypy проходят; полный regression: 796 тестов;
+- wheel содержит canonical deadline и обновленные consumers; Ruff,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+  frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: DebugRecorder, navigation, post/landing,
+video/media и collection CLI composition переносятся следующими независимыми
+commit/revert units. Production server, Octo runtime и старый репозиторий не
+менялись. Rollback 14F1 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 
