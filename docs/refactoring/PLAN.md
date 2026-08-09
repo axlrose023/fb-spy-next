@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `PENDING`
+Статус: `IN_PROGRESS` (`12A COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -1912,6 +1912,33 @@ facebook/orchestration/
 - один упавший профиль не останавливает остальные;
 - calibration result определяет следующий переход;
 - Saudi/disabled profile policy сохраняется конфигурацией, а не hardcode.
+
+#### 12A. State models и serialization
+
+Результат:
+
+- `RecoverySchedulePolicy`, `ProfileCycleSchedule`, typed `ProfileState` и
+  `OrchestrationState` определены в framework-free orchestration models;
+- schedule/profile/root state parsing и serialization вынесены в отдельный
+  pure module; неизвестные legacy root/profile fields сохраняются при
+  round-trip, malformed values декодируются в прежние safe defaults;
+- `StateStore` делегирует сериализацию `last_schedule`, resume parsing,
+  nonnegative integer coercion и recovery-active detection новому публичному
+  API; file locking, history retention, baseline и scheduling policy не
+  менялись;
+- прежние import names из `app.services.facebook_orchestrator` сохранены, JSON
+  shape `last_schedule` не изменён, orchestrator CLI contracts проходят;
+- 2000 randomized resume/recovery cases совпали с legacy-реализацией без
+  расхождений; добавлено 15 focused state/serialization tests;
+- focused branch coverage orchestration state package — 91%; полный regression:
+  270 + 312 + 10, итого 592 теста;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12A
+выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
 

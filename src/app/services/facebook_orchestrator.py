@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.parse
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -35,6 +35,18 @@ from app.facebook.calibration import (
     CalibrationPlan,
     effective_target_goal,
     plan_calibration_intensity,
+)
+from app.facebook.orchestration import (
+    ProfileCycleSchedule,
+    RecoverySchedulePolicy,
+    profile_resume_schedule,
+    schedule_to_dict,
+)
+from app.facebook.orchestration import (
+    profile_state_recovery_active as _profile_state_recovery_active,
+)
+from app.facebook.orchestration import (
+    to_nonnegative_int as _nonnegative_int,
 )
 from app.facebook.profiles import (
     BaselineBuildOptions,
@@ -67,23 +79,6 @@ _ACTIVE_PROCESS_LOCK = threading.Lock()
 _ACTIVE_PROCESSES: set[subprocess.Popen] = set()
 _STOP_EVENT = threading.Event()
 ProfileConfig = Profile
-
-
-@dataclass(frozen=True)
-class RecoverySchedulePolicy:
-    normal_rest_seconds: float
-    burst_limit: int
-    burst_rest_seconds: float
-    infrastructure_retry_seconds: float
-
-
-@dataclass(frozen=True)
-class ProfileCycleSchedule:
-    kind: str
-    rest_seconds: float
-    recovery_burst_count: int = 0
-    recovery_attempt: int | None = None
-    recovery_active: bool = False
 
 
 class FileLock:
@@ -220,7 +215,7 @@ class StateStore:
                 ),
             )
             profile_state["recovery_burst_count"] = schedule.recovery_burst_count
-            profile_state["last_schedule"] = asdict(schedule)
+            profile_state["last_schedule"] = schedule_to_dict(schedule)
             baseline = _baseline_from_run_records(runs, policy)
             profile_state["baseline"] = baseline.to_dict()
             profile_state["updated_at"] = utc_now()
@@ -347,58 +342,10 @@ class StateStore:
     ) -> ProfileCycleSchedule:
         with self._lock, self._process_lock():
             profile_state = self.load().get("profiles", {}).get(profile_uuid, {})
-            raw = profile_state.get("last_schedule")
-            if not isinstance(raw, dict):
-                return ProfileCycleSchedule(
-                    kind="normal",
-                    rest_seconds=max(0.0, default_rest_seconds),
-                    recovery_burst_count=_nonnegative_int(
-                        profile_state.get("recovery_burst_count")
-                    ),
-                )
-            try:
-                rest_seconds = max(0.0, float(raw.get("rest_seconds", 0.0)))
-            except (TypeError, ValueError):
-                rest_seconds = max(0.0, default_rest_seconds)
-            recovery_attempt = raw.get("recovery_attempt")
-            return ProfileCycleSchedule(
-                kind=str(raw.get("kind") or "normal"),
-                rest_seconds=rest_seconds,
-                recovery_burst_count=_nonnegative_int(
-                    raw.get(
-                        "recovery_burst_count",
-                        profile_state.get("recovery_burst_count"),
-                    )
-                ),
-                recovery_attempt=(
-                    _nonnegative_int(recovery_attempt)
-                    if recovery_attempt is not None
-                    else None
-                ),
-                recovery_active=bool(
-                    raw.get("recovery_active")
-                    or raw.get("kind") in {"recovery_burst", "recovery_burst_rest"}
-                ),
+            return profile_resume_schedule(
+                profile_state,
+                default_rest_seconds=default_rest_seconds,
             )
-
-
-def _nonnegative_int(value: Any) -> int:
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _profile_state_recovery_active(profile_state: dict[str, Any]) -> bool:
-    if _nonnegative_int(profile_state.get("recovery_burst_count")) > 0:
-        return True
-    schedule = profile_state.get("last_schedule")
-    if not isinstance(schedule, dict):
-        return False
-    return bool(
-        schedule.get("recovery_active")
-        or schedule.get("kind") in {"recovery_burst", "recovery_burst_rest"}
-    )
 
 
 def _next_profile_schedule(
