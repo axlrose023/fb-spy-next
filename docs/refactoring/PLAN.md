@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13C завершен
+Статус: `IN_PROGRESS` — этап 13D завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A, 13B, 13C COMPLETE`)
+Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D COMPLETE`)
 
 Изменения:
 
@@ -2626,6 +2626,32 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13C
+выполняется revert одного отдельного коммита.
+
+#### 13D. Accounts IoC provider
+
+Результат:
+
+- JWT codec, password verifier, user repository, `AuthService` и `UserService`
+  factories перенесены из root IoC в owning `app/accounts/ioc.py`;
+- APP/REQUEST scopes, token TTL construction, `AccountUserReader` adapter и
+  service constructor arguments сохранены без изменений;
+- `AccountsProvider` подключается после `DatabaseProvider`, поэтому user
+  repository использует тот же request-scoped session;
+- composition dependencies опубликованы через public `accounts.auth` и
+  `accounts.users` package API; новый provider не импортирует internal paths
+  соседних functional modules;
+- добавлен root-container graph test всех пяти account dependencies без SQL;
+  focused accounts/API regression: 44 tests; manual strict mypy и architecture
+  public-import guardrail проходят; полный regression: 749 tests;
+- root `ioc.py` сократился с 219 до 169 строк; accounts provider составляет
+  56 строк, focused test — 33 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13D
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover
