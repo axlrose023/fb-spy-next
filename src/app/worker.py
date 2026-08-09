@@ -6,7 +6,7 @@ from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
 
 from app.ioc import get_async_container
-from app.services.logging import setup_logging
+from app.observability import setup_logging
 from app.settings import get_config
 
 config = get_config()

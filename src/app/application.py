@@ -9,7 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api import register_routers
 from app.ioc import get_async_container
-from app.services.logging import setup_logging
+from app.observability import setup_logging
 from app.settings import get_config
 
 config = get_config()

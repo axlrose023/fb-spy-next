@@ -9,10 +9,12 @@ pytestmark = pytest.mark.architecture
 
 SRC_ROOT = Path(__file__).parents[2]
 PRODUCTION_ROOTS = tuple(
-    SRC_ROOT / "app" / name for name in ("accounts", "ad_library", "facebook")
+    SRC_ROOT / "app" / name
+    for name in ("accounts", "ad_library", "facebook", "observability")
 )
 TEST_ROOTS = tuple(
-    SRC_ROOT / "tests" / name for name in ("accounts", "ad_library", "facebook")
+    SRC_ROOT / "tests" / name
+    for name in ("accounts", "ad_library", "facebook", "observability")
 )
 SIZE_EXCEPTIONS: dict[str, tuple[int, str]] = {}
 

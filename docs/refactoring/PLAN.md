@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13 завершен
+Статус: `IN_PROGRESS` — этап 14A завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `PENDING`
+Статус: `IN_PROGRESS` (`14A COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -2849,6 +2849,32 @@ Closure inventory после этапа 13:
 Octo runtime и старый репозиторий на этапе 14 также не меняются. Manual Octo,
 production schema migration и server smoke выполняются только после отдельного
 разрешения пользователя и не блокируют локальный архитектурный перенос.
+
+#### 14A. Observability logging
+
+Результат:
+
+- logging setup перенесён в `app.observability.logging`, а signed media token
+  redaction — в отдельный `app.observability.redaction`;
+- debug/prod formats, root/access filters, HTTP/S3 SDK warning levels и exact
+  token regex сохранены без изменения;
+- FastAPI application и Taskiq worker переключены на public
+  `app.observability` API; production import count `app.services.logging`
+  уменьшен до нуля;
+- `app.services.logging` сокращён с 50 до 5 строк и оставлен identity-preserving
+  compatibility facade на один release;
+- observability добавлен в architecture, file-size и test-kind guardrails;
+  старые logging tests перенесены к владельцу и дополнены facade identity test;
+- 3 focused tests и architecture/API/worker regression проходят; canonical
+  observability layer проходит strict mypy; полный regression: 771 test;
+- implementation разделён на 29-строчный setup и 25-строчную redaction policy;
+  wheel содержит canonical modules и compatibility facade;
+- Ruff, stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 14A
+выполняется revert одного отдельного коммита.
 
 Перед удалением:
 
