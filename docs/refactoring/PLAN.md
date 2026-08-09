@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2181,6 +2181,35 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12I
+выполняется revert одного отдельного коммита.
+
+#### 12J. Interest-safe artifact invariant
+
+Результат:
+
+- проверка passive collection summary, active-action counters, media guard и
+  запрещённых active artifacts вынесена из orchestrator в owning
+  `facebook/collection/artifacts/safety.py`;
+- pure `interest_safety_violations` принимает уже загруженные summary и
+  ads, не зависит от filesystem, argparse, subprocess и orchestration state;
+- legacy `_interest_safe_collection_violations` сохранен как тонкий
+  file-loading wrapper; public collection API экспортирует новую policy без
+  импорта internal path;
+- exact violation names, order, missing-summary short circuit, malformed counter
+  coercion и fail-closed behavior не изменились; pipeline block code `4`, log и
+  `interest_safety.json` shape остались прежними;
+- добавлено 6 focused tests для valid, missing, malformed и forbidden-artifact
+  cases; safety policy coverage 100% по строкам и веткам;
+- focused collection/orchestration regression: 102 tests; полный regression:
+  663 tests;
+- legacy orchestrator сократился с 1901 до 1851 строки; safety policy
+  составляет 69 строк;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12J
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

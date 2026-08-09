@@ -1,4 +1,4 @@
-from .artifacts import ArtifactPolicy
+from .artifacts import ArtifactPolicy, interest_safety_violations
 from .candidates import CandidateRegistry
 from .deduplication import (
     creative_identity,
@@ -20,6 +20,7 @@ __all__ = [
     "ad_summary",
     "creative_identity",
     "is_lazy_video_image",
+    "interest_safety_violations",
     "normalize_fingerprint_text",
     "utc_now",
 ]

@@ -33,6 +33,7 @@ from app.facebook.calibration import (
     effective_target_goal,
     plan_calibration_intensity,
 )
+from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
     CalibrationTransition,
     CollectionPipelineState,
@@ -57,9 +58,6 @@ from app.facebook.orchestration import (
 )
 from app.facebook.orchestration import (
     remaining_profile_rest_seconds as _remaining_profile_rest_seconds,
-)
-from app.facebook.orchestration import (
-    to_nonnegative_int as _nonnegative_int,
 )
 from app.facebook.orchestration.adapters import (
     FileLock,
@@ -984,57 +982,9 @@ def _run_profile_cycle_locked(
 
 
 def _interest_safe_collection_violations(run_dir: Path) -> list[str]:
-    violations: list[str] = []
     summary = _load_json(run_dir / "summary.json", default={})
-    if not isinstance(summary, dict):
-        return ["missing_summary"]
-    if summary.get("interest_safe_mode") is not True:
-        violations.append("safe_mode_not_confirmed")
-    if summary.get("resolve_enabled") is not False:
-        violations.append("landing_resolution_enabled")
-
-    active_actions = summary.get("active_actions")
-    expected_actions = (
-        "cta_click_attempts",
-        "video_play_attempts",
-        "comment_open_attempts",
-    )
-    if not isinstance(active_actions, dict):
-        violations.append("missing_active_action_audit")
-    else:
-        for action in expected_actions:
-            if action not in active_actions:
-                violations.append(f"missing_{action}")
-            elif _nonnegative_int(active_actions.get(action)) != 0:
-                violations.append(f"nonzero_{action}")
-
-    media_guard = summary.get("passive_media_guard")
-    if not isinstance(media_guard, dict):
-        violations.append("missing_passive_media_guard")
-    else:
-        for field in (
-            "installed",
-            "init_script_installed",
-            "media_route_installed",
-        ):
-            if media_guard.get(field) is not True:
-                violations.append(f"media_guard_{field}_false")
-
     ads = _load_json(run_dir / "ads.json", default=None)
-    if not isinstance(ads, list):
-        violations.append("missing_ads_file")
-        return violations
-    forbidden_artifacts = (
-        "landing_full",
-        "landing_clean",
-        "landing_screenshot",
-        "landing_archive",
-        "video",
-    )
-    for artifact in forbidden_artifacts:
-        if any(isinstance(raw, dict) and bool(raw.get(artifact)) for raw in ads):
-            violations.append(f"passive_ad_contains_{artifact}")
-    return violations
+    return interest_safety_violations(summary, ads)
 
 
 def _collector_command(profile: ProfileConfig, args, run_dir: Path) -> list[str]:
