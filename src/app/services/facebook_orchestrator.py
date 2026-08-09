@@ -32,6 +32,7 @@ from app.facebook.calibration import (
     CalibrationProcessEnvironment,
     JsonCalibrationTargetPool,
     build_calibration_command,
+    build_calibration_pass_record,
     calibration_pool_name,
     calibration_timeout_seconds,
     effective_target_goal,
@@ -1212,36 +1213,16 @@ def _run_calibration(
             ),
         )
     summary = _load_json(calibration_dir / "summary.json", default={})
-    successful_targets = int(summary.get("ok") or 0)
-    effective_target_goal = _effective_calibration_target_goal(plan)
-    effective = (
-        summary.get("status") == "completed"
-        and successful_targets >= effective_target_goal
-        and summary.get("interaction_goal_met") is True
+    return build_calibration_pass_record(
+        run_dir=calibration_dir,
+        return_code=code,
+        summary=summary,
+        ads_paths=ads_paths,
+        plan=plan,
+        targets_available=available_targets,
+        pass_targets_available=available_for_pass,
+        now=utc_now,
     )
-    return {
-        "at": utc_now(),
-        "run_dir": str(calibration_dir),
-        "return_code": code,
-        "summary": summary,
-        "started_at": summary.get("started_at"),
-        "finished_at": summary.get("finished_at") or utc_now(),
-        "ads_json": [str(path) for path in ads_paths],
-        "effective": effective,
-        "successful_targets": successful_targets,
-        "tier": plan.tier,
-        "target_limit": plan.target_limit,
-        "targets_available": available_targets,
-        "pass_targets_available": available_for_pass,
-        "target_goal": plan.target_goal,
-        "effective_target_goal": effective_target_goal,
-        "interaction_limits": {
-            "max_reactions": plan.max_reactions,
-            "max_follows": plan.max_follows,
-            "max_comments": plan.max_comments,
-            "min_interactions": plan.min_interactions,
-        },
-    }
 
 
 def _run_command(

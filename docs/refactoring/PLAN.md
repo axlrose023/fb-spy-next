@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2337,6 +2337,35 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12N
+выполняется revert одного отдельного коммита.
+
+#### 12O. Calibration pass outcome
+
+Результат:
+
+- calibration summary interpretation и persisted pass record construction вынесены
+  из process-running legacy function в pure
+  `facebook/calibration/execution/pass_outcome.py`;
+- `build_calibration_pass_record` принимает run artifacts, plan, availability
+  и injected clock; filesystem, subprocess, argparse и settings в module не проникают;
+- exact record keys, nested interaction limits, ads path order, integer coercion,
+  deep-recovery effective target goal и literal `interaction_goal_met is True`
+  сохранились;
+- clock вызывается один раз при готовом `finished_at` и второй раз
+  только для missing timestamp fallback, как в legacy implementation;
+- `_run_calibration` по-прежнему владеет directory creation, target
+  selection, planning, process command/execution и summary loading; он делегирует
+  только outcome construction;
+- добавлено 3 focused tests; pass outcome module имеет 100% statement coverage;
+  focused calibration/orchestration regression: 68 tests; полный regression: 696 tests;
+- legacy orchestrator сократился с 1539 до 1520 строки; pass outcome module
+  составляет 52 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12O
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
