@@ -88,6 +88,7 @@ from app.facebook.collection.adapters.playwright import (
     PASSIVE_MEDIA_GUARD_INSTALL_JS as COLLECTION_PASSIVE_MEDIA_GUARD_INSTALL_JS,
 )
 from app.facebook.collection.adapters.playwright import (
+    DebugRecorder,
     FeedReader,
     install_passive_media_guard,
     prepare_passive_media_guard,
@@ -171,169 +172,6 @@ def _request_stop(signum, _frame) -> None:
     global STOP_REQUESTED
     STOP_REQUESTED = True
     raise KeyboardInterrupt(f"signal {signum}")
-
-
-class _TeeStream:
-    def __init__(self, *streams):
-        self.streams = streams
-
-    def write(self, data):
-        for stream in self.streams:
-            stream.write(data)
-        return len(data)
-
-    def flush(self):
-        for stream in self.streams:
-            stream.flush()
-
-    def isatty(self):
-        return any(getattr(stream, "isatty", lambda: False)() for stream in self.streams)
-
-
-class DebugRecorder:
-    def __init__(self, run_dir: Path, enabled: bool):
-        self.enabled = enabled
-        self.root = run_dir / "debug"
-        self._events = None
-        self._run_log = None
-        self._stdout = None
-        self._stderr = None
-        self._attached_pages: set[int] = set()
-        self._event_counts: dict[str, int] = {}
-        if not enabled:
-            return
-        for name in ("ads", "errors", "resolve", "viewports"):
-            (self.root / name).mkdir(parents=True, exist_ok=True)
-        self._events = (self.root / "events.jsonl").open("a", encoding="utf-8", buffering=1)
-        self._run_log = (self.root / "run.log").open("a", encoding="utf-8", buffering=1)
-        self._stdout, self._stderr = sys.stdout, sys.stderr
-        sys.stdout = _TeeStream(sys.stdout, self._run_log)
-        sys.stderr = _TeeStream(sys.stderr, self._run_log)
-        self.event("debug_started")
-
-    def event(self, kind: str, **data) -> None:
-        if not self.enabled or not self._events:
-            return
-        payload = self._compact({"at": utc_now(), "kind": kind, **data})
-        try:
-            self._events.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-        except Exception:
-            pass
-
-    @classmethod
-    def _compact(cls, value):
-        if isinstance(value, str):
-            return value if len(value) <= 1600 else value[:1600] + "...<truncated>"
-        if isinstance(value, dict):
-            return {str(k): cls._compact(v) for k, v in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [cls._compact(v) for v in value[:100]]
-        return value
-
-    def limited_event(self, group: str, limit: int, kind: str, **data) -> None:
-        count = self._event_counts.get(group, 0) + 1
-        self._event_counts[group] = count
-        if count <= limit:
-            self.event(kind, **data)
-        elif count == limit + 1:
-            self.event("events_suppressed", group=group, limit=limit)
-
-    def attach_context(self, ctx) -> None:
-        if not self.enabled:
-            return
-        try:
-            ctx.tracing.start(screenshots=True, snapshots=True, sources=True)
-            self.event("trace_started")
-        except Exception as exc:
-            self.event("trace_start_failed", error=repr(exc))
-        for page in list(ctx.pages):
-            self.attach_page(page)
-        ctx.on("page", self.attach_page)
-
-    def attach_page(self, page) -> None:
-        if not self.enabled or id(page) in self._attached_pages:
-            return
-        self._attached_pages.add(id(page))
-        self.event("page_attached", url=self._page_url(page))
-        page.on("console", lambda msg: self.limited_event("console", 120,
-            "console", level=msg.type, text=msg.text, page_url=self._page_url(page)))
-        page.on("pageerror", lambda exc: self.event(
-            "page_error", error=repr(exc), page_url=self._page_url(page)))
-        page.on("requestfailed", lambda req: self.limited_event("network", 160,
-            "request_failed", method=req.method, url=req.url,
-            failure=req.failure, page_url=self._page_url(page)))
-        page.on("response", lambda resp: self._record_bad_response(page, resp))
-
-    def _record_bad_response(self, page, response) -> None:
-        try:
-            if response.status >= 400:
-                self.limited_event("network", 160, "http_error", status=response.status,
-                                   method=response.request.method, url=response.url,
-                                   page_url=self._page_url(page))
-        except Exception:
-            pass
-
-    @staticmethod
-    def _page_url(page) -> str:
-        try:
-            return page.url
-        except Exception:
-            return ""
-
-    def screenshot(self, page, relative: str, *, full_page: bool = False) -> None:
-        if not self.enabled:
-            return
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            page.screenshot(path=str(path), full_page=full_page, timeout=8000)
-        except Exception as exc:
-            self.event("debug_screenshot_failed", path=relative, error=repr(exc),
-                       page_url=self._page_url(page))
-
-    def write_json(self, relative: str, payload) -> None:
-        if not self.enabled:
-            return
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str),
-                            encoding="utf-8")
-        except Exception as exc:
-            self.event("debug_json_failed", path=relative, error=repr(exc))
-
-    def write_text(self, relative: str, value: str) -> None:
-        if not self.enabled:
-            return
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            path.write_text(value, encoding="utf-8")
-        except Exception as exc:
-            self.event("debug_text_failed", path=relative, error=repr(exc))
-
-    def finish_context(self, ctx) -> None:
-        if not self.enabled:
-            return
-        try:
-            self.event("debug_event_counts", counts=self._event_counts)
-            ctx.tracing.stop(path=str(self.root / "trace.zip"))
-            self.event("trace_stopped")
-        except Exception as exc:
-            self.event("trace_stop_failed", error=repr(exc))
-
-    def close(self) -> None:
-        if not self.enabled:
-            return
-        self.event("debug_finished")
-        if self._stdout is not None:
-            sys.stdout = self._stdout
-        if self._stderr is not None:
-            sys.stderr = self._stderr
-        if self._events:
-            self._events.close()
-        if self._run_log:
-            self._run_log.close()
 
 
 # ── Octo Local API ────────────────────────────────────────────────────────
@@ -2199,7 +2037,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         run_dir = Path(args.out) / datetime.now().strftime("run_%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
-    debug = DebugRecorder(run_dir, args.debug)
+    debug = DebugRecorder(run_dir, args.debug, clock=utc_now)
     runner_started_at = utc_now()
     runner_started_monotonic = time.monotonic()
     try:

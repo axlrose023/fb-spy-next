@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F1 завершен
+Статус: `IN_PROGRESS` — этап 14F2 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F2 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3041,6 +3041,35 @@ Production server, Octo runtime и старый репозиторий не ме
 video/media и collection CLI composition переносятся следующими независимыми
 commit/revert units. Production server, Octo runtime и старый репозиторий не
 менялись. Rollback 14F1 выполняется revert одного отдельного коммита.
+
+#### 14F2. Collection runtime diagnostics
+
+Результат:
+
+- DebugRecorder и stdout/stderr tee перенесены из legacy runner в owning
+  `facebook.collection.adapters.playwright.debug_recorder`; runner уменьшен с
+  2 317 до 2 155 строк после последовательных 14F1/14F2 units;
+- debug directory layout, append-only events, 1 600-character/string и
+  100-item/list bounds, grouped event suppression, run log tee, screenshots,
+  JSON/text artifacts и best-effort failure semantics сохранены;
+- Playwright tracing, existing/new page attachment, console/page/network
+  callbacks, HTTP error recording, duplicate page guard и context finish events
+  сохранены без изменения;
+- recorder получил только optional clock dependency для детерминированности;
+  runner передает прежний `utc_now`, а `facebook_runner.DebugRecorder` сохраняет
+  object identity с canonical class;
+- добавлено 4 focused contracts для disabled mode, artifact/event/output
+  lifecycle, tracing/network hooks и alias identity; collection/runner,
+  architecture/contracts и strict mypy проходят; полный regression: 800 тестов;
+- canonical adapter имеет 237 строк и остается ниже adapter limit; wheel
+  содержит его и обновленный runner; Ruff, stage-scoped pre-commit, frontend
+  production build и gitleaks проходят; frontend source/lock не менялись;
+  `npm audit` сохраняет известные 6 findings (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: navigation, post/landing, video/media и
+collection CLI composition переносятся следующими независимыми commit/revert
+units. Production server, Octo runtime и старый репозиторий не менялись.
+Rollback 14F2 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

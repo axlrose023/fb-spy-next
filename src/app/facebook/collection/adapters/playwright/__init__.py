@@ -1,3 +1,4 @@
+from .debug_recorder import DebugRecorder
 from .detector import BAD_DOMAINS, DETECT_JS
 from .feed_reader import SCROLL_JS, FeedReader
 from .passive_media import (
@@ -11,6 +12,7 @@ from .passive_media import (
 __all__ = [
     "BAD_DOMAINS",
     "DETECT_JS",
+    "DebugRecorder",
     "FeedReader",
     "PASSIVE_MEDIA_GUARD_INSTALL_JS",
     "SCROLL_JS",
