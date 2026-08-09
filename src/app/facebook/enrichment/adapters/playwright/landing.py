@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from app.browser import hard_deadline
-from app.services import facebook_runner
+from app.facebook.collection import CollectedAd
+from app.facebook.enrichment.landing.adapters.playwright import resolve_in_view
 
 from ...models import EnrichmentOptions
 
@@ -12,7 +13,7 @@ from ...models import EnrichmentOptions
 def resolve_landing(
     page: Any,
     context: Any,
-    ad: facebook_runner.Ad,
+    ad: CollectedAd,
     element_id: str,
     *,
     post_url: str,
@@ -25,7 +26,7 @@ def resolve_landing(
         timeout_seconds,
         f"allowed landing enrichment: {ad.displayed_domain}",
     ):
-        facebook_runner.resolve_in_view(
+        resolve_in_view(
             page,
             context,
             ad,

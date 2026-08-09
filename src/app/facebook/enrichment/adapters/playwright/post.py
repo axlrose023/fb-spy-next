@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.facebook.enrichment.landing.adapters.playwright import (
+    neutralize_profile_pages,
+)
 from app.facebook.navigation import goto_with_retry
 from app.services import facebook_runner
 
@@ -64,7 +67,7 @@ def recover_allowed_post_url(
         recovery["error"] = repr(exc)
         return "", recovery
     finally:
-        facebook_runner.neutralize_profile_pages(page, context)
+        neutralize_profile_pages(page, context)
 
 
 def page_has_feed_element(page: Any, element_id: str) -> bool:

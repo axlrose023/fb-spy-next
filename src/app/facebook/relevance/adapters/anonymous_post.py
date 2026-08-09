@@ -7,7 +7,7 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.calibration import CalibrationTarget
-from app.facebook.enrichment import parse_landing
+from app.facebook.enrichment import parse_landing, resolve_in_view
 from app.facebook.navigation import facebook_login_required
 from app.services import facebook_runner
 
@@ -177,7 +177,7 @@ def resolve_from_anonymous_post(
         facebook_post_url=post_url,
     )
     result["isolated_click_attempted"] = True
-    facebook_runner.resolve_in_view(
+    resolve_in_view(
         page,
         context,
         ad,

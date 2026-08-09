@@ -9,6 +9,9 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
+from app.facebook.enrichment.landing.adapters.playwright import (
+    neutralize_profile_pages,
+)
 from app.services import facebook_runner
 from app.settings import get_config
 
@@ -197,7 +200,7 @@ def _write_completed(
     error: str | None = None,
 ) -> dict[str, Any]:
     write_json(paths["output"], rows)
-    summary = service.summary(rows, status=status)
+    summary: dict[str, Any] = service.summary(rows, status=status)
     if error:
         summary["error"] = error
     write_json(paths["summary"], summary)
@@ -228,4 +231,4 @@ def neutralize_context(context: Any) -> None:
             page.close(run_before_unload=False)
         except PlaywrightError:
             pass
-    facebook_runner.neutralize_profile_pages(keep, context)
+    neutralize_profile_pages(keep, context)

@@ -209,7 +209,7 @@ def test_allowed_post_url_is_recovered_from_neutralized_feed_history(
 
     monkeypatch.setattr(enrichment_post, "resolve_facebook_post_url", resolve)
     monkeypatch.setattr(
-        facebook_runner,
+        enrichment_post,
         "neutralize_profile_pages",
         lambda *_args: neutralized.append(True),
     )

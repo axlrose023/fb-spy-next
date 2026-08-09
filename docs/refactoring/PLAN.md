@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F4 завершен
+Статус: `IN_PROGRESS` — этап 14F5 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F4 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F5 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3143,6 +3143,40 @@ revert одного отдельного коммита.
 collection CLI composition переносятся следующими независимыми commit/revert
 units. Production server, Octo runtime и старый репозиторий не менялись.
 Rollback 14F4 выполняется revert одного отдельного коммита.
+
+#### 14F5. Active landing capture
+
+Результат:
+
+- active CTA/landing runtime перенесен из legacy runner в owning
+  `facebook.enrichment.landing.adapters.playwright` и разделен на CTA selector,
+  capture coordinator, artifact capture, diagnostics и tab/profile cleanup;
+- неизменный CTA DOM script, повторное позиционирование после `0.8s`,
+  `expect_page`/same-tab fallback, redirect settle `1s`, external URL extraction
+  и recovered-tab scan сохранены в прежнем порядке;
+- landing parse/update, screenshot-before-archive, fallback screenshot path,
+  independent best-effort screenshot/archive errors и debug events сохранены;
+- финальное закрытие landing tab, очистка лишних вкладок, Escape, возврат в
+  Facebook feed и profile neutralization до `about:blank` сохранены без
+  изменения;
+- enrichment и relevance consumers используют owning API; production-вызовов
+  active landing helpers через `facebook_runner` больше нет;
+- runner сохраняет identity-compatible aliases для CTA script, landing capture,
+  tab cleanup и profile neutralization, но собственных реализаций больше не
+  содержит; runner уменьшен с 1 889 до 1 616 строк;
+- добавлено 5 focused contracts для new-tab capture/artifacts, same-tab timeout
+  recovery, missing CTA, profile cleanup и legacy alias identity; active
+  landing, enrichment, relevance, runner, architecture/contracts и strict mypy
+  проходят; полный regression: 833 теста;
+- canonical production-файлы имеют от 23 до 206 строк; wheel содержит весь
+  landing adapter package; Ruff, stage-scoped pre-commit, frontend production
+  build и gitleaks проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет известные 6 findings (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: video/media и collection CLI composition
+переносятся следующими независимыми commit/revert units. Production server,
+Octo runtime и старый репозиторий не менялись. Rollback 14F5 выполняется revert
+одного отдельного коммита.
 
 Перед удалением:
 

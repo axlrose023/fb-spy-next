@@ -1,4 +1,5 @@
 from .landing import external_landing_url, parse_landing
+from .landing.adapters.playwright import resolve_in_view
 from .media import (
     LandingArchiveResult,
     archive_filename,
@@ -30,6 +31,7 @@ __all__ = [
     "facebook_post_identity_from_url",
     "normalized_facebook_post_url",
     "parse_landing",
+    "resolve_in_view",
     "resolve_facebook_post_url",
     "save_landing_screenshot_from_browser",
     "wait_for_landing_page_ready",

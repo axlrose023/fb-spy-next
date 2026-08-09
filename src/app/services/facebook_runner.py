@@ -100,10 +100,8 @@ from app.facebook.collection.adapters.playwright import (
 from app.facebook.collection.adapters.playwright import (
     pause_all_videos as _pause_all_videos,
 )
-from app.facebook.enrichment import (
-    archive_landing_page_from_browser,
-    save_landing_screenshot_from_browser,
-    wait_for_landing_page_ready,
+from app.facebook.enrichment.landing.adapters import (
+    playwright as landing_playwright,
 )
 from app.facebook.profiles import (
     ProfileSourceError,
@@ -150,6 +148,10 @@ _normalized_facebook_post_url = (
     facebook_enrichment.normalized_facebook_post_url
 )
 resolve_facebook_post_url = facebook_enrichment.resolve_facebook_post_url
+SCROLL_CTA_JS = landing_playwright.SCROLL_CTA_JS
+_close_landing_tabs = landing_playwright.close_landing_tabs
+neutralize_profile_pages = landing_playwright.neutralize_profile_pages
+resolve_in_view = landing_playwright.resolve_in_view
 BROWSER_OPERATION_TIMEOUT_REASONS = frozenset({
     "resolve_timeout",
     "video_timeout",
@@ -437,58 +439,6 @@ async (elementId) => {
 """
 
 
-# Scroll a specific link ad's CTA to viewport center and return fresh coords.
-SCROLL_CTA_JS = r"""
-(payload) => {
-  const GLYPHS=[0xF17E1,0xF078B];
-  const DOMAIN_RE=/^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
-  const PUA=c=>(c>=0xE000&&c<=0xF8FF)||(c>=0xF0000);
-  const strip=s=>[...(s||'')].filter(ch=>!PUA(ch.codePointAt(0))).join('').replace(/\s+/g,' ').trim();
-  const domain = typeof payload === 'string' ? payload : payload.domain;
-  const elementId = typeof payload === 'string' ? '' : (payload.element_id || '');
-  for (const old of document.querySelectorAll('[data-fbspy-cta]')) delete old.dataset.fbspyCta;
-  const hasGlyph=s=>{for(const sp of s.querySelectorAll('span')){if(!(sp.getAttribute('style')||'').includes('#8a8d91'))continue;for(const ch of(sp.innerText||''))if(GLYPHS.includes(ch.codePointAt(0)))return true;}return false;};
-  const words=s=>strip(s).split(/\s+/).filter(Boolean).length;
-  const numericLike=s=>/^[\d\s.,+]+([KkMmBb])?$/.test(strip(s).replace(/\s+/g,''));
-  const okText=s=>{const tx=strip(s);return tx.length>=2&&tx.length<=42&&words(tx)>=1&&words(tx)<=5&&/[\p{L}]/u.test(tx)&&!/\d/.test(tx)&&!numericLike(tx)&&!DOMAIN_RE.test(tx)&&!/[a-z0-9-]+\.[a-z]{2,}/i.test(tx);};
-  const engagementTop=root=>{let top=Infinity;for(const el of root.querySelectorAll('a,[role="button"],[role="link"],[data-action-id]')){const r=el.getBoundingClientRect();const tx=strip(el.innerText);if(r.width>=40&&r.height>=20&&numericLike(tx))top=Math.min(top,r.top);}return top;};
-  const bestButton=(root,maxTop=Infinity)=>{let best=null;for(const el of root.querySelectorAll('a,[role="button"],[role="link"],[data-action-id]')){const r=el.getBoundingClientRect();const tx=strip(el.innerText);if(r.top>=maxTop)continue;if(r.width<50||r.height<20||r.height>90||!okText(tx))continue;const score=r.top*10+r.width;if(!best||score>best.score)best={el,score};}return best&&best.el;};
-  const markTarget=(target,kind)=>{if(!target)return null;target.scrollIntoView({block:'center'});target.dataset.fbspyCta='1';const r=target.getBoundingClientRect();return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2),kind};};
-  if(elementId){
-    const marked=document.querySelector(`[data-fbspy-click-target="${elementId}"]`);
-    if(marked)return markTarget(marked,'detected_target');
-  }
-  const roots = [];
-  if (elementId) {
-    const exact = document.querySelector(`[data-fbspy-id="${elementId}"]`);
-    if (exact) roots.push(exact);
-  }
-  if (!roots.length) roots.push(...document.querySelectorAll('div'));
-  for(const el of roots){
-    const t=el.innerText||'';if(t.length<80||t.length>3500)continue;if(!el.querySelector('img')&&!el.querySelector('video'))continue;
-    if(el.getBoundingClientRect().width<300)continue;
-    if(!hasGlyph(el))continue;
-    for(const d of el.querySelectorAll('div')){
-      if(hasGlyph(d))continue;
-      const dl=(d.innerText||'').split("\n").map(x=>x.trim()).filter(Boolean);
-      if(dl.length>=2&&DOMAIN_RE.test(dl[0])){
-        const dom=dl[0].replace(/^https?:\/\//,'').split('/')[0].toLowerCase();
-        if(dom!==domain)continue;
-        let target=bestButton(d, engagementTop(el));
-        if(!target){
-          for(let node=d,depth=0;node&&node!==el&&depth<5;node=node.parentElement,depth++){
-            if(node.matches('a,[role="button"],[role="link"],[data-action-id]')){target=node;break;}
-          }
-        }
-        return markTarget(target,target===d?'link_card':'structural_target');
-      }
-    }
-  }
-  return null;
-}
-"""
-
-
 def _screenshot_has_blank_media(path: Path) -> bool:
     """Best-effort screenshot QA: detect a large blank media placeholder."""
     try:
@@ -732,27 +682,6 @@ def _pause_ad_video(page, element_id: str | None) -> None:
             """,
             element_id,
         )
-    except Exception:
-        pass
-
-
-def neutralize_profile_pages(page, ctx) -> None:
-    """Leave the persistent profile without a visible ad or playing media."""
-    try:
-        page.evaluate(
-            """
-            () => {
-              for (const video of document.querySelectorAll("video")) {
-                try { video.pause(); video.muted = true; } catch (_) {}
-              }
-            }
-            """
-        )
-    except Exception:
-        pass
-    _close_landing_tabs(ctx, keep=page)
-    try:
-        page.goto("about:blank", wait_until="commit", timeout=5000)
     except Exception:
         pass
 
@@ -1033,208 +962,6 @@ def _encode_video_frames(
         return False, (completed.stderr or completed.stdout or "ffmpeg_failed")[-1000:]
     tmp_path.replace(output_path)
     return output_path.exists() and output_path.stat().st_size > 0, "ok"
-
-
-# ── Click-resolve a link ad that is CURRENTLY in view ───────────────────────
-def resolve_in_view(page, ctx, ad: Ad, btn: dict | None, element_id: str | None,
-                    run_dir: Path,
-                    debug: DebugRecorder | None = None, debug_id: int = 0,
-                    feed_url: str = "https://m.facebook.com/",
-                    archive_landing: bool = True,
-                    landing_archive_timeout: float = 20.0,
-                    landing_archive_max_resources: int = 120) -> None:
-    """Scroll the ad's CTA into view, click it, capture the full landing URL.
-    Saves the landing tab url after it settles, then closes that tab and
-    recovers. ad data is already stored, so failure here loses nothing."""
-    prefix = f"resolve/{debug_id:04d}"
-    if debug:
-        debug.event("resolve_start", debug_id=debug_id, advertiser=ad.advertiser,
-                    domain=ad.displayed_domain, element_id=element_id,
-                    feed_url=DebugRecorder._page_url(page),
-                    pages=[DebugRecorder._page_url(p) for p in ctx.pages])
-        debug.screenshot(page, f"{prefix}_before.png")
-    # Clean slate: close every extra tab so the landing opened by THIS click is
-    # unambiguous. Keep only the FB feed page we are driving.
-    _close_landing_tabs(ctx, keep=page)
-    # The CTA coords from detection may be off-screen (below viewport). Scroll
-    # the ad's domain card to center, then re-read fresh button coords.
-    payload = {"domain": ad.displayed_domain, "element_id": element_id or ""}
-    fresh = page.evaluate(SCROLL_CTA_JS, payload)
-    if not fresh:
-        if debug:
-            debug.event("resolve_no_cta", debug_id=debug_id, payload=payload)
-            debug.screenshot(page, f"{prefix}_no_cta.png")
-        return
-    time.sleep(0.8)
-    fresh = page.evaluate(SCROLL_CTA_JS, payload) or fresh
-    # The landing opens in a NEW tab. ctx.expect_page() is the reliable way to
-    # capture it (a manual ctx.pages poll races the async tab registration).
-    full = None
-    new_page = None
-    try:
-        with ctx.expect_page(timeout=8000) as new_info:
-            page.locator('[data-fbspy-cta="1"]').first.click(
-                timeout=1500, no_wait_after=True,
-            )
-        new_page = new_info.value
-        try:
-            new_page.wait_for_load_state("domcontentloaded", timeout=12000)
-        except Exception:
-            pass
-        time.sleep(1.0)               # let the redirect chain settle
-        u = new_page.url
-        full = _external_landing_url(u)
-        if debug:
-            debug.event("resolve_new_page", debug_id=debug_id, url=u,
-                        external=full, pages=[DebugRecorder._page_url(p) for p in ctx.pages])
-            debug.screenshot(new_page, f"{prefix}_landing.png")
-    except Exception as exc:
-        # Some mobile ad clicks navigate the current tab instead of opening a
-        # new page. Capture that URL too, then _recover_feed() will bring us
-        # back to the feed. If it stayed on Facebook, this was just an in-FB
-        # overlay/form and there is no external landing to record.
-        try:
-            time.sleep(1.0)
-            u = page.url
-            full = _external_landing_url(u)
-        except Exception:
-            pass
-        if not full:
-            for candidate in reversed(list(ctx.pages)):
-                if candidate == page or DebugRecorder._page_url(candidate).startswith("devtools"):
-                    continue
-                candidate_url = DebugRecorder._page_url(candidate)
-                recovered = _external_landing_url(candidate_url)
-                if recovered:
-                    new_page, full = candidate, recovered
-                    if debug:
-                        debug.event("resolve_recovered_page", debug_id=debug_id,
-                                    url=candidate_url, external=full)
-                        debug.screenshot(candidate, f"{prefix}_recovered_landing.png")
-                    break
-        if debug:
-            if full:
-                debug.event("resolve_click_timeout_recovered", debug_id=debug_id,
-                            timeout=repr(exc), external=full,
-                            feed_url=DebugRecorder._page_url(page),
-                            pages=[DebugRecorder._page_url(p) for p in ctx.pages])
-            else:
-                debug.event("resolve_click_error", debug_id=debug_id, error=repr(exc),
-                            traceback=traceback.format_exc(),
-                            feed_url=DebugRecorder._page_url(page),
-                            pages=[DebugRecorder._page_url(p) for p in ctx.pages])
-                debug.screenshot(page, f"{prefix}_click_error.png")
-    if full:
-        clean, utm, ad_id = parse_landing(full)
-        ad.landing_full, ad.landing_clean, ad.utm = full, clean, utm
-        ad.fb_ad_id = ad_id or ad.fb_ad_id
-        archive_page = new_page
-        if archive_page is None and not _is_fb_feed_url(DebugRecorder._page_url(page)):
-            archive_page = page
-        screenshot_path = None
-        if archive_page is not None:
-            try:
-                wait_for_landing_page_ready(
-                    archive_page,
-                    timeout_seconds=landing_archive_timeout,
-                )
-                screenshot_path = save_landing_screenshot_from_browser(
-                    archive_page,
-                    run_dir,
-                    source_index=debug_id,
-                    domain=ad.displayed_domain,
-                    url=full,
-                    timeout_seconds=landing_archive_timeout,
-                    wait_until_ready=False,
-                )
-                if screenshot_path:
-                    ad.landing_screenshot = screenshot_path
-                    if debug:
-                        debug.event(
-                            "landing_screenshot_saved",
-                            debug_id=debug_id,
-                            screenshot=screenshot_path,
-                        )
-            except Exception as exc:
-                print(
-                    f"  landing screenshot failed {ad.displayed_domain}: {exc!r}",
-                    flush=True,
-                )
-                if debug:
-                    debug.event(
-                        "landing_screenshot_failed",
-                        debug_id=debug_id,
-                        error=repr(exc),
-                    )
-        if archive_landing and archive_page is not None:
-            try:
-                archive_path = archive_landing_page_from_browser(
-                    archive_page,
-                    run_dir,
-                    source_index=debug_id,
-                    domain=ad.displayed_domain,
-                    url=full,
-                    timeout_seconds=landing_archive_timeout,
-                    max_resources=landing_archive_max_resources,
-                    wait_until_ready=False,
-                    fallback_screenshot_path=(
-                        run_dir / screenshot_path if screenshot_path else None
-                    ),
-                )
-                if archive_path:
-                    ad.landing_archive = archive_path
-                    print(
-                        f"  archived {ad.displayed_domain} -> {archive_path}",
-                        flush=True,
-                    )
-                    if debug:
-                        debug.event(
-                            "landing_archived",
-                            debug_id=debug_id,
-                            archive=archive_path,
-                        )
-            except Exception as exc:
-                print(
-                    f"  archive failed {ad.displayed_domain}: {exc!r}",
-                    flush=True,
-                )
-                if debug:
-                    debug.event(
-                        "landing_archive_failed",
-                        debug_id=debug_id,
-                        error=repr(exc),
-                    )
-    try:
-        if new_page and not new_page.is_closed():
-            new_page.close(run_before_unload=False)
-    except Exception:
-        pass
-    _close_landing_tabs(ctx, keep=page)
-    try:
-        page.keyboard.press("Escape")
-    except Exception:
-        pass
-    _recover_feed(page, feed_url=feed_url)
-    if debug:
-        debug.event("resolve_finish", debug_id=debug_id, full=ad.landing_full,
-                    clean=ad.landing_clean, fb_ad_id=ad.fb_ad_id,
-                    feed_url=DebugRecorder._page_url(page),
-                    pages=[DebugRecorder._page_url(p) for p in ctx.pages])
-        debug.screenshot(page, f"{prefix}_after.png")
-
-
-def _close_landing_tabs(ctx, keep=None) -> None:
-    """Close every tab except the driven feed page and devtools."""
-    for p in list(ctx.pages):
-        try:
-            if keep is not None and p == keep:
-                continue
-            u = p.url
-            if u.startswith("devtools"):
-                continue
-            p.close()
-        except Exception:
-            pass
 
 
 # ── Phase 1: collect (with inline resolve) ──────────────────────────────────
