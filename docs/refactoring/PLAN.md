@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13B завершен
+Статус: `IN_PROGRESS` — этап 13C завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A, 13B COMPLETE`)
+Статус: `IN_PROGRESS` (`13A, 13B, 13C COMPLETE`)
 
 Изменения:
 
@@ -2601,6 +2601,31 @@ Production server, Octo runtime и старый репозиторий не ме
   известные 6 findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13B
+выполняется revert одного отдельного коммита.
+
+#### 13C. Database IoC provider
+
+Результат:
+
+- request-scoped `AsyncSession` и `UnitOfWork` factories перенесены из root
+  composition file в owning `app/database/ioc.py`;
+- `DatabaseProvider` сохраняет прежние nested async context managers, scopes и
+  один shared session object для direct session injection и UnitOfWork;
+- root `get_async_container()` подключает provider явно после `AppProvider`;
+  configuration, feature services, browser provider и HTTP clients не менялись;
+- root IoC временно сохраняет `AsyncSession`/`UnitOfWork` type imports для
+  существующих feature factories; lifecycle и concrete `SessionFactory`
+  dependency из root удалены;
+- добавлен isolated Dishka test request-scope identity; API/OpenAPI contracts и
+  manual strict mypy нового provider/root проходят; полный regression: 748 tests;
+- root `ioc.py` сократился с 228 до 219 строк; database provider составляет
+  19 строк, focused test — 23 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13C
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover

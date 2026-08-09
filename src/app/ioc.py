@@ -20,7 +20,7 @@ from app.ad_library.media.configuration import configured_signer, configured_sto
 from app.ad_library.statistics import StatisticsService
 from app.ad_library.statistics.adapters import SqlAlchemyAdStatisticsReader
 from app.clients.providers import HttpClientsProvider
-from app.database.engine import SessionFactory
+from app.database.ioc import DatabaseProvider
 from app.database.uow import UnitOfWork
 from app.facebook.runs import RunDefaults, RunService
 from app.facebook.runs.adapters import (
@@ -47,16 +47,6 @@ class AppProvider(Provider):
     @provide(scope=Scope.APP)
     def get_config(self) -> Config:
         return get_config()
-
-    @provide(scope=Scope.REQUEST)
-    async def get_session(self) -> AsyncIterator[AsyncSession]:
-        async with SessionFactory() as session:
-            yield session
-
-    @provide(scope=Scope.REQUEST)
-    async def get_uow(self, session: AsyncSession) -> AsyncIterator[UnitOfWork]:
-        async with UnitOfWork(session) as uow:
-            yield uow
 
 
 class ServicesProvider(Provider):
@@ -220,6 +210,7 @@ if _BROWSER_PROVIDER_ENABLED:
 def get_async_container() -> AsyncContainer:
     providers: list[Provider] = [
         AppProvider(),
+        DatabaseProvider(),
         ServicesProvider(),
         HttpClientsProvider(),
     ]
