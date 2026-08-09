@@ -5,12 +5,14 @@ from .models import (
     RecoverySchedulePolicy,
 )
 from .scheduling import (
+    available_profile_slots,
     is_recovery_calibration_decision,
     next_profile_schedule,
     profile_rest_seconds,
     recovery_evaluation_policy,
     recovery_schedule_policy,
     remaining_profile_rest_seconds,
+    select_due_profile_ids,
 )
 from .serialization import (
     orchestration_state_from_dict,
@@ -25,6 +27,7 @@ from .serialization import (
 )
 
 __all__ = [
+    "available_profile_slots",
     "OrchestrationState",
     "ProfileCycleSchedule",
     "ProfileState",
@@ -43,5 +46,6 @@ __all__ = [
     "remaining_profile_rest_seconds",
     "schedule_from_dict",
     "schedule_to_dict",
+    "select_due_profile_ids",
     "to_nonnegative_int",
 ]

@@ -43,6 +43,7 @@ from app.facebook.orchestration import (
     profile_resume_schedule,
     recovery_schedule_policy,
     schedule_to_dict,
+    select_due_profile_ids,
 )
 from app.facebook.orchestration import (
     next_profile_schedule as _next_profile_schedule,
@@ -59,6 +60,7 @@ from app.facebook.orchestration import (
 from app.facebook.orchestration import (
     to_nonnegative_int as _nonnegative_int,
 )
+from app.facebook.orchestration.adapters import FileLock, profile_lock_path
 from app.facebook.profiles import (
     BaselineBuildOptions,
     DiscoveredProfile,
@@ -90,31 +92,6 @@ _ACTIVE_PROCESS_LOCK = threading.Lock()
 _ACTIVE_PROCESSES: set[subprocess.Popen] = set()
 _STOP_EVENT = threading.Event()
 ProfileConfig = Profile
-
-
-class FileLock:
-    def __init__(self, path: Path):
-        self.path = path
-        self.fd: int | None = None
-
-    def __enter__(self) -> FileLock:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o644)
-        try:
-            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            os.close(self.fd)
-            self.fd = None
-            raise RuntimeError(f"profile locked: {self.path}") from exc
-        os.ftruncate(self.fd, 0)
-        os.write(self.fd, str(os.getpid()).encode())
-        return self
-
-    def __exit__(self, _exc_type, _exc, _tb) -> None:
-        if self.fd is not None:
-            fcntl.flock(self.fd, fcntl.LOCK_UN)
-            os.close(self.fd)
-            self.fd = None
 
 
 class StateStore:
@@ -589,7 +566,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--calibration-offer-identity-json",
         default=os.getenv("FACEBOOK_CALIBRATION_OFFER_IDENTITY_JSON", ""),
     )
-    run.add_argument("--calibration-offer-success-wait-seconds", type=float, default=20.0)
+    run.add_argument(
+        "--calibration-offer-success-wait-seconds", type=float, default=20.0
+    )
     run.add_argument("--calibration-max-retained-offer-tabs", type=int, default=6)
     run.add_argument("--min-calibration-targets", type=int, default=2)
     run.add_argument("--calibration-cooldown-hours", type=float, default=1.0)
@@ -766,8 +745,7 @@ def _run(args) -> int:
             )
         if not args.calibration_offer_identity_json:
             raise ValueError(
-                "allowlisted offer submit requires "
-                "--calibration-offer-identity-json"
+                "allowlisted offer submit requires --calibration-offer-identity-json"
             )
     if args.min_calibration_targets < 1:
         raise ValueError("--min-calibration-targets must be at least 1")
@@ -949,17 +927,15 @@ def _run_continuously(
                 if args.max_cycles > 0 and completed_cycles >= args.max_cycles:
                     return 0
 
-            available = args.max_parallel - len(running)
-            due_profiles = sorted(
-                (
-                    profile
-                    for uuid, profile in profiles.items()
-                    if uuid not in running and next_due.get(uuid, 0.0) <= now
-                ),
-                key=lambda profile: next_due.get(profile.octo_profile_uuid, 0.0),
+            due_profile_ids = select_due_profile_ids(
+                profiles,
+                running_profile_ids=running,
+                next_due=next_due,
+                now=now,
+                max_parallel=args.max_parallel,
             )
-            for profile in due_profiles[:available]:
-                uuid = profile.octo_profile_uuid
+            for uuid in due_profile_ids:
+                profile = profiles[uuid]
                 running[uuid] = executor.submit(
                     _run_profile_cycle,
                     profile,
@@ -1077,7 +1053,7 @@ def _run_profile_cycle(
 
 @contextmanager
 def _profile_cycle_guard(profile: ProfileConfig, args, root_dir: Path):
-    lock_path = root_dir / "locks" / f"{profile.octo_profile_uuid}.lock"
+    lock_path = profile_lock_path(root_dir, profile.octo_profile_uuid)
     with FileLock(lock_path):
         try:
             yield
@@ -1109,10 +1085,13 @@ def _run_profile_cycle_locked(
     if collect_code == 0 and args.interest_safe_collection and not args.dry_run:
         safety_violations = _interest_safe_collection_violations(collect_dir)
         interest_safety_code = 4 if safety_violations else 0
-        _write_json(collect_dir / "interest_safety.json", {
-            "status": "violation" if safety_violations else "passed",
-            "violations": safety_violations,
-        })
+        _write_json(
+            collect_dir / "interest_safety.json",
+            {
+                "status": "violation" if safety_violations else "passed",
+                "violations": safety_violations,
+            },
+        )
         if safety_violations:
             print(
                 f"[{profile.display_name}] interest-safety invariant failed: "
@@ -1151,10 +1130,7 @@ def _run_profile_cycle_locked(
                         collect_dir / "isolated_resolution.log",
                         timeout_seconds=args.isolated_resolution_timeout,
                     )
-                    if (
-                        isolated_resolution_code == 0
-                        and not _STOP_EVENT.is_set()
-                    ):
+                    if isolated_resolution_code == 0 and not _STOP_EVENT.is_set():
                         gate_resolution_code = _run_command(
                             _relevance_classifier_command(
                                 collect_dir,
@@ -1235,10 +1211,13 @@ def _run_profile_cycle_locked(
         and not args.dry_run
         and not relevance_enabled
     ):
-        _write_json(collect_dir / "relevance_summary.json", {
-            "status": "disabled_in_interest_safe_collection",
-            "total": 0,
-        })
+        _write_json(
+            collect_dir / "relevance_summary.json",
+            {
+                "status": "disabled_in_interest_safe_collection",
+                "total": 0,
+            },
+        )
         print(
             f"[{profile.display_name}] safe collection has no relevance classifier; "
             "active enrichment and backend import are disabled",
@@ -1459,10 +1438,7 @@ def _interest_safe_collection_violations(run_dir: Path) -> list[str]:
         "video",
     )
     for artifact in forbidden_artifacts:
-        if any(
-            isinstance(raw, dict) and bool(raw.get(artifact))
-            for raw in ads
-        ):
+        if any(isinstance(raw, dict) and bool(raw.get(artifact)) for raw in ads):
             violations.append(f"passive_ad_contains_{artifact}")
     return violations
 
@@ -1743,9 +1719,7 @@ def _calibrator_command(
         else "--no-repeat-targets-until-deadline"
     )
     if args.calibration_offer_identity_json:
-        command.extend(
-            ["--offer-identity-json", args.calibration_offer_identity_json]
-        )
+        command.extend(["--offer-identity-json", args.calibration_offer_identity_json])
     for domain in args.calibration_offer_submit_allow_domain:
         command.extend(["--offer-submit-allow-domain", domain])
     for template in args.calibration_comment_template:
@@ -2087,8 +2061,7 @@ def _calibration_timeout_seconds(
         + args.calibration_locate_timeout
         + args.calibration_page_timeout
         + (
-            args.calibration_landing_view_seconds
-            + args.calibration_landing_timeout
+            args.calibration_landing_view_seconds + args.calibration_landing_timeout
             if args.calibration_visit_landing
             else 0.0
         )

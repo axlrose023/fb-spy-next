@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -1962,6 +1962,32 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12B
+выполняется revert одного отдельного коммита.
+
+#### 12C. Capacity и profile locks
+
+Результат:
+
+- расчет свободных slots и выбор due profiles вынесены в чистый
+  `facebook/orchestration/scheduling/capacity.py`;
+- capacity policy исключает уже запущенные profiles, сортирует по
+  oldest due time, сохраняет catalog order при равенстве и не превышает
+  `max_parallel`;
+- non-blocking POSIX profile lock вынесен в
+  `facebook/orchestration/adapters/file_lock.py`; lock path, PID ownership,
+  typed `ProfileLockError` и освобождение при exception проверяются отдельно;
+- legacy `FileLock` import и exact `profile locked: <path>` error сохранены;
+  continuous loop теперь делегирует выбор profiles новой policy;
+- добавлено 11 focused tests для capacity 1/5/10 и locking; 2000 randomized
+  valid scheduler states совпали с legacy-алгоритмом без расхождений;
+- focused orchestration regression: 96 tests, branch-aware coverage 94%; полный
+  regression: 618 tests;
+- Ruff, strict mypy, architecture/contracts, wheel build, frontend production
+  build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12C
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
