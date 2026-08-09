@@ -10,6 +10,8 @@ from typing import Any
 
 from ..models import CollectedAd, utc_now
 
+COLLECTOR_METRIC_VERSION = 2
+
 BROWSER_OPERATION_TIMEOUT_REASONS = frozenset(
     {
         "resolve_timeout",
@@ -60,7 +62,7 @@ def write_octo_start_failure(
     elapsed_seconds: float,
     error: BaseException,
     clock: Callable[[], str] = utc_now,
-    metric_version: int = 2,
+    metric_version: int = COLLECTOR_METRIC_VERSION,
 ) -> str:
     reason = octo_start_failure_reason(error)
     finished_at = clock()

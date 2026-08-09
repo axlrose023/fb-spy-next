@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -7,8 +8,10 @@ from typing import Any
 import pytest
 
 from app.facebook import commands as facebook_commands
+from app.facebook.adapters import OctoApiError
 from app.facebook.collection import commands as collection_commands
 from app.facebook.collection.cli import artifacts, runtime, session
+from app.facebook.profiles import ProfileConnection, ProfileSession
 from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
@@ -115,6 +118,50 @@ class FakeDebugRecorder:
         self.closed = True
 
 
+def test_collection_cli_maps_octo_runtime_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+    expected = ProfileSession(
+        "ws://127.0.0.1:9000/devtools/browser/id",
+        ProfileConnection(country="Spain"),
+    )
+
+    class FakeOctoRuntime:
+        def __init__(
+            self,
+            api_url: str,
+            profile_uuid: str,
+            *,
+            headless: bool,
+        ) -> None:
+            captured.update(
+                api_url=api_url,
+                profile_uuid=profile_uuid,
+                headless=headless,
+            )
+
+        def acquire(self) -> ProfileSession:
+            return expected
+
+    monkeypatch.setattr(runtime, "OctoLocalRuntime", FakeOctoRuntime)
+    args = argparse.Namespace(
+        octo_host="octo.internal",
+        octo_port=58889,
+        octo_profile_uuid="profile-42",
+        octo_headless=True,
+    )
+
+    result = runtime.acquire_octo_session(args)
+
+    assert result is expected
+    assert captured == {
+        "api_url": "http://octo.internal:58889",
+        "profile_uuid": "profile-42",
+        "headless": True,
+    }
+
+
 def test_collection_cli_maps_passive_topic_run_without_active_actions(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -126,14 +173,12 @@ def test_collection_cli_maps_passive_topic_run_without_active_actions(
     FakeDebugRecorder.instances.clear()
     monkeypatch.setattr(collection_commands.signal, "signal", lambda *_args: None)
     monkeypatch.setattr(
-        facebook_runner,
-        "get_cdp_endpoint",
-        lambda: ("ws://127.0.0.1:9999/devtools/browser/id", {"country": "Canada"}),
-    )
-    monkeypatch.setattr(
-        facebook_runner,
-        "rewrite_cdp_endpoint_host",
-        lambda endpoint, _host: endpoint,
+        runtime,
+        "acquire_octo_session",
+        lambda _args: ProfileSession(
+            "ws://127.0.0.1:9999/devtools/browser/id",
+            ProfileConnection(country="Canada"),
+        ),
     )
     monkeypatch.setattr(
         session,
@@ -211,10 +256,10 @@ def test_collection_cli_writes_octo_failure_and_returns_two(
     monkeypatch.setattr(collection_commands.signal, "signal", lambda *_args: None)
     monkeypatch.setattr(runtime, "DebugRecorder", FakeDebugRecorder)
     monkeypatch.setattr(
-        facebook_runner,
-        "get_cdp_endpoint",
-        lambda: (_ for _ in ()).throw(
-            facebook_runner.OctoApiError('HTTP 400 {"code":"profiles.proxy_error"}')
+        runtime,
+        "acquire_octo_session",
+        lambda _args: (_ for _ in ()).throw(
+            OctoApiError('HTTP 400 {"code":"profiles.proxy_error"}')
         ),
     )
     run_dir = tmp_path / "failed-run"

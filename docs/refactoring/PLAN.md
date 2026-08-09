@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F9 завершен
+Статус: `IN_PROGRESS` — этап 14F10 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F9 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G NEXT`)
 
 Closure inventory после этапа 13:
 
@@ -3328,6 +3328,44 @@ revert одного отдельного коммита.
 последний canonical CLI -> legacy runner import переносятся отдельным 14F10.
 Production server, Octo runtime и старый репозиторий не менялись.
 Rollback 14F9 выполняется revert одного отдельного коммита.
+
+#### 14F10. Octo collection runtime bridge
+
+Результат:
+
+- Octo HTTP/session composition вынесена в 91-строчный
+  `facebook.adapters.octo.runtime`; `OctoLocalRuntime` координирует
+  client, active/start/stop/acquire lifecycle и преобразование redacted
+  `ProfileSourceError` в прежний `OctoApiError` contract;
+- start flags, API timeouts `40s`/`150s`, two/three-second start/restart pauses,
+  active-profile reuse, restart при смене headless mode и CDP host rewrite не
+  менялись;
+- collection CLI создает immutable-per-run Octo runtime и получает
+  typed `ProfileSession`; mutable `facebook_runner.OCTO_*` больше не
+  используются collection path и не могут протечь между запусками;
+- `facebook.collection` и `facebook.adapters` больше не импортируют
+  `app.services.facebook_runner`; Octo API опубликован через public
+  `app.facebook.adapters` boundary;
+- collector metric version перенесен к owning collection artifacts;
+  `run_meta.json`, failure `summary.json` и legacy constant сохраняют
+  значение `2`;
+- runner сокращен с 229 до 225 строк и оставляет mutable globals,
+  `octo`/`get_cdp_endpoint` и exception identity только как compatibility
+  bridge для еще не перенесенных consumers;
+- добавлено 4 focused contracts: configured acquire, safe error mapping,
+  CLI args -> runtime mapping и legacy/public identity; architecture/contracts
+  и strict mypy проходят; полный regression: 857 тестов;
+- wheel содержит Octo runtime, canonical collection CLI и legacy facade;
+  CLI help hashes, Ruff, stage-scoped pre-commit, frontend production build и
+  gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные
+  6 findings (3 moderate, 3 high).
+
+Этап 14F завершен: runner implementations перенесены в owning modules,
+а оставшийся `facebook_runner.py` является переходным compatibility facade.
+Следующий независимый этап — 14G, orchestrator parser/composition. Production
+server, live Octo runtime и старый репозиторий не менялись. Rollback 14F10
+выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

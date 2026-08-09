@@ -8,8 +8,10 @@ from app.browser import BrowserOperationDeadlineExceeded, hard_deadline
 from app.facebook import enrichment as facebook_enrichment
 from app.facebook import navigation as facebook_navigation
 from app.facebook.adapters.octo import (
+    DEFAULT_OCTO_START_FLAGS,
+    OctoApiError,
     OctoHttpClient,
-    OctoProfileSessionManager,
+    OctoLocalRuntime,
 )
 from app.facebook.adapters.octo import (
     rewrite_cdp_endpoint_host as _rewrite_cdp_endpoint_host,
@@ -55,13 +57,8 @@ from app.facebook.profiles import (
 OCTO_API = "http://127.0.0.1:58888"   # Octo Local API; override with --octo-host/--octo-port
 OCTO_PROFILE_UUID = "replace-with-octo-profile-uuid"
 OCTO_HEADLESS = False
-COLLECTOR_METRIC_VERSION = 2
-OCTO_START_FLAGS = [
-    "--no-sandbox",
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-    "--remote-debugging-address=0.0.0.0",
-]
+COLLECTOR_METRIC_VERSION = collection_artifacts.COLLECTOR_METRIC_VERSION
+OCTO_START_FLAGS = list(DEFAULT_OCTO_START_FLAGS)
 STOP_REQUESTED = False
 _OperationDeadlineExceeded = BrowserOperationDeadlineExceeded
 _hard_deadline = hard_deadline
@@ -137,10 +134,6 @@ def _request_stop(signum, _frame) -> None:
 
 
 # ── Octo Local API ────────────────────────────────────────────────────────
-class OctoApiError(RuntimeError):
-    pass
-
-
 def octo(method: str, path: str, body: dict | None = None) -> dict | list:
     try:
         timeout = 150 if method == "POST" and path == "/api/profiles/start" else 40
@@ -167,10 +160,13 @@ class _RunnerOctoTransport:
         return octo(method, path, body)
 
 
-def _profile_sessions() -> OctoProfileSessionManager:
-    return OctoProfileSessionManager(
-        _RunnerOctoTransport(),
+def _profile_sessions() -> OctoLocalRuntime:
+    return OctoLocalRuntime(
+        OCTO_API,
+        OCTO_PROFILE_UUID,
+        headless=OCTO_HEADLESS,
         start_flags=OCTO_START_FLAGS,
+        client=_RunnerOctoTransport(),
         sleeper=time.sleep,
     )
 

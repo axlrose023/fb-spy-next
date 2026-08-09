@@ -1,5 +1,6 @@
 from .files import (
     BROWSER_OPERATION_TIMEOUT_REASONS,
+    COLLECTOR_METRIC_VERSION,
     fast_exit_after_browser_operation_timeout,
     octo_start_failure_reason,
     write_ads,
@@ -14,6 +15,7 @@ from .safety import interest_safety_violations
 __all__ = [
     "ArtifactPolicy",
     "BROWSER_OPERATION_TIMEOUT_REASONS",
+    "COLLECTOR_METRIC_VERSION",
     "fast_exit_after_browser_operation_timeout",
     "interest_safety_violations",
     "octo_start_failure_reason",

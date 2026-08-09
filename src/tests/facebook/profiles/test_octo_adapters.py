@@ -7,14 +7,19 @@ from typing import Any
 
 import pytest
 
+from app.facebook.adapters import OctoApiError as PublicOctoApiError
 from app.facebook.adapters.octo import (
+    DEFAULT_OCTO_START_FLAGS,
     OctoActiveProfileSource,
+    OctoApiError,
     OctoHttpClient,
+    OctoLocalRuntime,
     OctoProfileSessionManager,
     OctoPublicProfileSource,
     rewrite_cdp_endpoint_host,
 )
 from app.facebook.profiles import ProfileSourceError
+from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -130,6 +135,77 @@ def test_session_manager_restarts_wrong_mode_and_normalizes_connection() -> None
         "timeout": 120,
     }
     assert transport.calls[2][3] == 150
+
+
+def test_local_runtime_acquires_configured_profile() -> None:
+    transport = RecordingTransport(
+        [
+            [
+                {
+                    "uuid": "profile",
+                    "headless": True,
+                    "ws_endpoint": "ws://127.0.0.1/browser",
+                    "connection_data": {
+                        "country": "Canada",
+                        "ip": "203.0.113.9",
+                    },
+                }
+            ]
+        ]
+    )
+    runtime = OctoLocalRuntime(
+        "http://127.0.0.1:58888",
+        "profile",
+        headless=True,
+        client=transport,
+        sleeper=lambda _seconds: None,
+    )
+
+    session = runtime.acquire()
+
+    assert session.ws_endpoint == "ws://127.0.0.1/browser"
+    assert session.connection.country == "Canada"
+    assert session.connection.ip == "203.0.113.9"
+    assert transport.calls == [
+        ("GET", "/api/profiles/active", None, None),
+    ]
+
+
+def test_local_runtime_maps_profile_source_error() -> None:
+    class FailingTransport:
+        def request(
+            self,
+            method: str,
+            path: str,
+            body: dict[str, Any] | None = None,
+            *,
+            timeout_seconds: float | None = None,
+        ) -> dict[str, Any] | list[Any]:
+            del method, path, body, timeout_seconds
+            raise ProfileSourceError("redacted Octo failure")
+
+    runtime = OctoLocalRuntime(
+        "http://127.0.0.1:58888",
+        "profile",
+        client=FailingTransport(),
+    )
+
+    with pytest.raises(OctoApiError, match="redacted Octo failure") as captured:
+        runtime.acquire()
+
+    assert isinstance(captured.value.__cause__, ProfileSourceError)
+    assert DEFAULT_OCTO_START_FLAGS == (
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--remote-debugging-address=0.0.0.0",
+    )
+
+
+def test_legacy_runner_reuses_canonical_octo_contracts() -> None:
+    assert PublicOctoApiError is OctoApiError
+    assert facebook_runner.OctoApiError is OctoApiError
+    assert facebook_runner.OCTO_START_FLAGS == list(DEFAULT_OCTO_START_FLAGS)
 
 
 def test_active_source_returns_safe_discovery_shape() -> None:
