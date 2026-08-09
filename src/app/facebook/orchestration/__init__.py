@@ -55,6 +55,11 @@ from .serialization import (
     schedule_to_dict,
     to_nonnegative_int,
 )
+from .service import (
+    OrchestrationRunHooks,
+    OrchestrationRunRequest,
+    OrchestrationService,
+)
 from .validation import OrchestrationRunOptions, validate_orchestration_run_options
 
 __all__ = [
@@ -69,7 +74,10 @@ __all__ = [
     "CollectionPipelineRequest",
     "CollectionPipelineService",
     "CollectionPipelineState",
+    "OrchestrationRunHooks",
     "OrchestrationRunOptions",
+    "OrchestrationRunRequest",
+    "OrchestrationService",
     "OrchestrationState",
     "OrchestrationStateStore",
     "ProfileCycleHooks",

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 12S завершен
+Статус: `IN_PROGRESS` — этап 12 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P, 12Q, 12R, 12S COMPLETE`)
+Статус: `COMPLETE` (`12A–12T COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2498,6 +2498,36 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12S
+выполняется revert одного отдельного коммита.
+
+#### 12T. Orchestration service
+
+Результат:
+
+- application-level startup flow вынесен в
+  `facebook/orchestration/service.py` с immutable request и explicit run hooks;
+- `OrchestrationService` гарантирует exact sequence: successful profile
+  discovery, затем ровно один из one-shot или continuous scheduler entrypoint;
+- discovery exception пробрасывается без запуска scheduler и без изменения
+  return code; scheduler return codes передаются вызывающему коду без
+  преобразования;
+- service не знает argparse, paths, settings, state store, Octo, thread pool,
+  process runner и global stop event; legacy `_run` передаёт прежние `_run_once`
+  и `_run_continuously` как lazy callbacks;
+- stop-event reset, state/policy construction и run validation остались в
+  compatibility wrapper и сохраняют прежний порядок до service invocation;
+- добавлено 3 focused tests для one-shot, continuous и discovery failure;
+  service имеет 100% coverage по строкам и веткам; focused
+  service/orchestrator regression: 58 tests; полный regression: 745 tests;
+- service составляет 27 строк; legacy orchestrator временно вырос с 1367 до
+  1378 строк из-за explicit DI wiring, которое переносится в composition root
+  на этапе 13;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12T
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

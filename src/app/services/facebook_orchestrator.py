@@ -48,6 +48,9 @@ from app.facebook.orchestration import (
     CollectionPipelineRequest,
     CollectionPipelineService,
     CollectionPipelineState,
+    OrchestrationRunHooks,
+    OrchestrationRunRequest,
+    OrchestrationService,
     OrchestrationStateStore,
     ProfileCycleHooks,
     ProfileCycleRequest,
@@ -442,10 +445,18 @@ def _run(args) -> int:
     root_dir = Path(args.root_dir)
     policy = _calibration_policy(args)
     validate_orchestration_run_options(args)
-    _discover_profiles(args, fail_fast=True)
-    if not args.loop:
-        return _run_once(args, store, policy, root_dir)
-    return _run_continuously(args, store, policy, root_dir)
+    return OrchestrationService(
+        OrchestrationRunHooks(
+            discover_profiles=lambda: _discover_profiles(args, fail_fast=True),
+            run_once=lambda: _run_once(args, store, policy, root_dir),
+            run_continuously=lambda: _run_continuously(
+                args,
+                store,
+                policy,
+                root_dir,
+            ),
+        )
+    ).run(OrchestrationRunRequest(continuous=args.loop))
 
 
 def _calibration_policy(args) -> CalibrationPolicy:
