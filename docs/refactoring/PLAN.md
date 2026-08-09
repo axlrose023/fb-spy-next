@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 12Q завершен
+Статус: `IN_PROGRESS` — этап 12R завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P, 12Q COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N, 12O, 12P, 12Q, 12R COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2432,6 +2432,41 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12Q
+выполняется revert одного отдельного коммита.
+
+#### 12R. Profile cycle service
+
+Результат:
+
+- post-collection profile lifecycle вынесен из legacy function в
+  `facebook/orchestration/lifecycle/profile_cycle.py` с immutable request,
+  evaluator/writer ports и explicit side-effect hooks;
+- `ProfileCycleService` владеет exact sequence: profile evaluation, health
+  artifact/log, calibration transition, recovery pass planning/execution и
+  persisted profile schedule;
+- quality guard, history order, rolling daily attempt budget, target offset,
+  multi-pass split, follow-up log, failed-pipeline skip и
+  `infrastructure_retry_required` semantics сохранены;
+- service зависит от `ProfileEvaluator` и узкого `ProfileStateWriter`; он не
+  знает argparse, filesystem paths, JSON encoding, Octo, subprocess runner,
+  global stop event и concrete calibration command;
+- legacy `_run_profile_cycle_locked` по-прежнему владеет run directory,
+  collection pipeline, metrics, geo adoption и calibration pools, после чего
+  собирает service dependencies в composition wrapper;
+- добавлено 4 focused tests для healthy cycle, трёх recovery passes с offsets
+  `7/17/27`, failed pipeline и stop request; profile cycle service имеет 100%
+  coverage по строкам и веткам; focused lifecycle/orchestration regression:
+  79 tests; полный regression: 718 tests;
+- test doubles/builders вынесены в отдельный 165-строчный support module;
+  focused test module составляет 148 строк;
+- legacy orchestrator сократился с 1455 до 1418 строк; profile cycle service
+  составляет 132 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12R
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

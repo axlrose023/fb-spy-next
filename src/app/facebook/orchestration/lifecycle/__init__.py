@@ -10,6 +10,11 @@ from .history import (
     is_healthy_relevance_result,
 )
 from .pipeline import CalibrationTransition, CollectionPipelineState
+from .profile_cycle import (
+    ProfileCycleHooks,
+    ProfileCycleRequest,
+    ProfileCycleService,
+)
 from .recovery import (
     RecoveryCycleCoordinator,
     RecoveryCycleResult,
@@ -37,6 +42,9 @@ __all__ = [
     "CollectionPipelineState",
     "is_healthy_relevance_result",
     "new_profile_state",
+    "ProfileCycleHooks",
+    "ProfileCycleRequest",
+    "ProfileCycleService",
     "ProfileEvaluation",
     "ProfileEvaluationService",
     "RecoveryCycleCoordinator",

@@ -44,16 +44,17 @@ from app.facebook.calibration import (
 )
 from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
-    CalibrationTransition,
     CollectionPipelineHooks,
     CollectionPipelineRequest,
     CollectionPipelineService,
     CollectionPipelineState,
     OrchestrationStateStore,
+    ProfileCycleHooks,
+    ProfileCycleRequest,
     ProfileCycleSchedule,
+    ProfileCycleService,
     ProfileEvaluationService,
     ProfileScheduler,
-    RecoveryCycleCoordinator,
     RecoverySchedulePolicy,
     SchedulerConfig,
     SchedulerHooks,
@@ -772,79 +773,41 @@ def _run_profile_cycle_locked(
         default_elapsed_seconds=args.collect_minutes * 60,
         calibration_targets_available=target_count,
     )
-    evaluation = ProfileEvaluationService(store).evaluate(
-        profile.octo_profile_uuid,
-        metrics,
-        policy,
-        quality_guard=profile.quality_guard,
-    )
-    history = list(evaluation.history)
-    recovery_burst_count = evaluation.recovery_burst_count
-    recovery_evaluation_active = evaluation.recovery_active
-    calibration_attempt_timestamps = list(evaluation.calibration_attempt_timestamps)
-    calibration_target_offset = evaluation.calibration_target_offset
-    decision = evaluation.decision
-    _write_json(collect_dir / "health.json", decision.to_dict())
-    print(
-        f"[{profile.display_name}] health={decision.status} "
-        f"ads={metrics.ads_total} target={metrics.target_ads} "
-        f"recovery={recovery_burst_count}/{args.recovery_burst_cycles} "
-        f"reasons={','.join(decision.reasons) or '-'} "
-        f"blockers={','.join(decision.blockers) or '-'}",
-        flush=True,
-    )
-
-    calibration_transition = pipeline.calibration_transition(
-        calibration_requested=decision.should_calibrate,
-        stop_requested=_STOP_EVENT.is_set(),
-    )
-    calibration_records: list[dict[str, Any]] = []
-    if calibration_transition is CalibrationTransition.RUN:
-        recovery_result = RecoveryCycleCoordinator().run(
-            planned_passes=_calibration_passes_for_cycle(
-                profile,
-                metrics,
-                history,
-                recovery_active=recovery_evaluation_active,
+    return ProfileCycleService(
+        ProfileEvaluationService(store),
+        store,
+        ProfileCycleHooks(
+            write_health=lambda decision: _write_json(
+                collect_dir / "health.json",
+                decision.to_dict(),
             ),
-            remaining_daily_attempts=_remaining_daily_calibration_attempts(
-                calibration_attempt_timestamps,
-                limit=policy.max_calibrations_per_24h,
-            ),
-            available_targets=target_count,
-            target_offset=calibration_target_offset,
-            min_targets=policy.min_calibration_targets,
             stop_requested=_STOP_EVENT.is_set,
-            execute_pass=lambda target_offset, target_limit_cap: _run_calibration(
-                profile,
-                args,
-                collect_dir,
-                root_dir,
-                decision=decision,
-                target_offset=target_offset,
-                target_limit_cap=target_limit_cap,
+            execute_calibration=lambda decision, target_offset, target_limit: (
+                _run_calibration(
+                    profile,
+                    args,
+                    collect_dir,
+                    root_dir,
+                    decision=decision,
+                    target_offset=target_offset,
+                    target_limit_cap=target_limit,
+                )
             ),
-            log_followup=lambda pass_number, planned_passes, remaining_targets: print(
-                f"[{profile.display_name}] recovery did not improve; "
-                f"calibration pass {pass_number}/{planned_passes} "
-                f"with {remaining_targets} unused targets",
+            log=lambda message: print(
+                f"[{profile.display_name}] {message}",
                 flush=True,
             ),
+        ),
+    ).run(
+        ProfileCycleRequest(
+            profile=profile,
+            metrics=metrics,
+            policy=policy,
+            schedule_policy=_profile_schedule_policy(args),
+            pipeline=pipeline,
+            calibration_targets_available=target_count,
+            recovery_burst_cycles=args.recovery_burst_cycles,
         )
-        calibration_records = list(recovery_result.records)
-    elif calibration_transition is CalibrationTransition.SKIP_PIPELINE_FAILED:
-        print(
-            f"[{profile.display_name}] calibration skipped: collection pipeline failed",
-            flush=True,
-        )
-    return store.record_profile_run(
-        profile,
-        metrics,
-        decision,
-        calibrations=calibration_records,
-        policy=policy,
-        schedule_policy=_profile_schedule_policy(args),
-        infrastructure_retry_required=pipeline.post_collection_failed,
     )
 
 
