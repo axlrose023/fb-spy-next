@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13E завершен
+Статус: `IN_PROGRESS` — этап 13F завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D, 13E COMPLETE`)
+Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D, 13E, 13F COMPLETE`)
 
 Изменения:
 
@@ -2683,6 +2683,33 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13E
+выполняется revert одного отдельного коммита.
+
+#### 13F. Facebook IoC provider
+
+Результат:
+
+- `FacebookAdsImporter`, `FacebookRunnerRegistry` и `RunService` factories
+  перенесены из generic root `ServicesProvider` в owning `app/facebook/ioc.py`;
+- APP/REQUEST scopes, repository/transaction/importer adapters,
+  `RunArtifactDirectoryStager` и все `RunDefaults` из config сохранены;
+- `FacebookProvider` получает public `MediaStorage` от AdLibraryProvider и
+  request-scoped session/UoW от DatabaseProvider; concrete run adapters
+  компонуются только внутри application-local IoC;
+- generic `ServicesProvider` удалён полностью; root container явно регистрирует
+  `FacebookProvider` перед HTTP clients;
+- добавлен root graph test APP identity importer/runner registry и REQUEST
+  resolution RunService без process/SQL side effects; focused
+  runs/importer/API/architecture regression: 40 tests; manual strict mypy
+  проходит; полный regression: 752 tests;
+- root `ioc.py` сократился с 114 до 59 строк; Facebook provider составляет
+  60 строк, focused graph test — 27 строк;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13F
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover
