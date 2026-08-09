@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G1 завершен
+Статус: `IN_PROGRESS` — этап 14G2 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G2 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3397,6 +3397,34 @@ server, live Octo runtime и старый репозиторий не менял
 calibration/discovery composition переносятся следующими независимыми
 14G units. Production server, live Octo runtime и старый репозиторий не
 менялись. Rollback 14G1 выполняется revert одного отдельного коммита.
+
+#### 14G2. Orchestrator command dispatch
+
+Результат:
+
+- command routing и signal wiring вынесены в 37-строчный
+  `facebook.orchestration.commands.dispatch`; dispatch зависит от явного
+  immutable `CommandHandlers`, а не от legacy service;
+- `run`, `evaluate`, `seed-baseline`, `discover-active` и `discover-octo`
+  направляются в прежние handlers; missing-command help и return code `2`
+  сохранены;
+- SIGINT/SIGTERM handlers по-прежнему устанавливаются только для
+  `run` и до вызова run handler;
+- legacy `main` теперь только связывает пять existing handlers с
+  canonical dispatch; `_dispatch_command` и `_build_parser` сохраняют
+  identity-compatible aliases;
+- legacy orchestrator сокращен с 1 097 до 1 090 строк; command
+  models и dispatch имеют 16 и 37 строк;
+- добавлено 6 focused routing/signal/help contracts; CLI/orchestration/
+  architecture и strict mypy проходят; полный regression: 866 тестов;
+- CLI help hashes не изменились; wheel, Ruff, stage-scoped pre-commit,
+  frontend production build и gitleaks проходят; frontend source/lock не
+  менялись, `npm audit` сохраняет 6 findings (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: top-level run/scheduler, profile cycle,
+collection pipeline, calibration и discovery composition переносятся следующими
+независимыми units. Production server, live Octo runtime и старый репозиторий
+не менялись. Rollback 14G2 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

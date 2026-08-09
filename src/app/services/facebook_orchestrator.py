@@ -94,7 +94,8 @@ from app.facebook.orchestration.adapters import (
     signal_process_group,
     write_log_line,
 )
-from app.facebook.orchestration.commands import build_parser as _build_parser
+from app.facebook.orchestration.commands import CommandHandlers, build_parser
+from app.facebook.orchestration.commands import dispatch as _dispatch_command
 from app.facebook.orchestration.lifecycle import (
     baseline_from_run_records,
     calibration_was_effective,
@@ -122,6 +123,7 @@ ProfileConfig = Profile
 
 
 StateStore = FileStateStore
+_build_parser = build_parser
 _baseline_from_run_records = baseline_from_run_records
 _calibration_was_effective = calibration_was_effective
 _is_healthy_relevance_result = is_healthy_relevance_result
@@ -136,22 +138,17 @@ _profile_evaluation_policy = recovery_evaluation_policy
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-    if args.command == "run":
-        signal.signal(signal.SIGINT, _request_orchestrator_stop)
-        signal.signal(signal.SIGTERM, _request_orchestrator_stop)
-        return _run(args)
-    if args.command == "evaluate":
-        return _evaluate(args)
-    if args.command == "seed-baseline":
-        return _seed_baseline(args)
-    if args.command == "discover-active":
-        return _discover_active(args)
-    if args.command == "discover-octo":
-        return _discover_public(args)
-    parser.print_help()
-    return 2
+    return _dispatch_command(
+        argv,
+        handlers=CommandHandlers(
+            run=_run,
+            evaluate=_evaluate,
+            seed_baseline=_seed_baseline,
+            discover_active=_discover_active,
+            discover_public=_discover_public,
+        ),
+        request_stop=_request_orchestrator_stop,
+    )
 
 
 def _run(args) -> int:
