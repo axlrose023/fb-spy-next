@@ -1,6 +1,7 @@
 from .contracts import (
     CommandRunner,
     OrchestrationStateStore,
+    ProfileScheduleState,
     ProfileStateReader,
     ProfileStateWriter,
 )
@@ -11,6 +12,9 @@ from .models import (
     RecoverySchedulePolicy,
 )
 from .scheduling import (
+    ProfileScheduler,
+    SchedulerConfig,
+    SchedulerHooks,
     available_profile_slots,
     is_recovery_calibration_decision,
     next_profile_schedule,
@@ -38,10 +42,14 @@ __all__ = [
     "OrchestrationState",
     "OrchestrationStateStore",
     "ProfileCycleSchedule",
+    "ProfileScheduleState",
+    "ProfileScheduler",
     "ProfileState",
     "ProfileStateReader",
     "ProfileStateWriter",
     "RecoverySchedulePolicy",
+    "SchedulerConfig",
+    "SchedulerHooks",
     "orchestration_state_from_dict",
     "orchestration_state_to_dict",
     "is_recovery_calibration_decision",

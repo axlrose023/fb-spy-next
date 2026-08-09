@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2053,6 +2053,39 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12E
+выполняется revert одного отдельного коммита.
+
+#### 12F. Profile scheduler lifecycle
+
+Результат:
+
+- one-shot и continuous profile loops вынесены в
+  `facebook/orchestration/scheduling/scheduler.py`; legacy `_run_once` и
+  `_run_continuously` остались composition wrappers;
+- `SchedulerConfig` содержит capacity, default/retry rest, discovery и
+  max-cycle limits; `SchedulerHooks` инвертирует discovery, profile loading,
+  cycle execution, restart-rest calculation и logging;
+- scheduler зависит только от узкого `ProfileScheduleState` port;
+  concrete JSON store, argparse, global stop event и wall/monotonic clocks подаются
+  снаружи;
+- independent profile completion, due ordering, max parallel, automatic discovery,
+  resume rest, infrastructure retry, no-profile waiting и return codes `0/1/130`
+  сохранены;
+- существующие integration tests подтвердили max parallel 5,
+  queueing для 7 profiles, independent fast/slow cycles и recovery starvation
+  protection;
+- добавлено 5 focused scheduler tests: empty/error/stop one-shot, resume
+  delay, failed-cycle retry schedule и automatic start нового profile без restart;
+- legacy orchestrator сократился с 2157 до 2083 строк; scheduler и
+  models составляют 174 и 28 строк;
+- focused orchestration regression: 115 tests; branch-aware coverage 96%,
+  scheduler coverage 98%; полный regression: 637 tests;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12F
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

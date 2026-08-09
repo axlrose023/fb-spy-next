@@ -11,7 +11,22 @@ from app.facebook.runs import RunMetrics
 from .models import ProfileCycleSchedule, RecoverySchedulePolicy
 
 
-class ProfileStateReader(Protocol):
+class ProfileScheduleState(Protocol):
+    def profile_resume_schedule(
+        self,
+        profile_uuid: str,
+        *,
+        default_rest_seconds: float,
+    ) -> ProfileCycleSchedule: ...
+
+
+class ProfileStateReader(ProfileScheduleState, Protocol):
+    def profile_last_run_at(self, profile_uuid: str) -> str | None: ...
+
+    def profile_recovery_burst_count(self, profile_uuid: str) -> int: ...
+
+    def profile_recovery_evaluation_active(self, profile_uuid: str) -> bool: ...
+
     def profile_history(
         self,
         profile_uuid: str,
@@ -20,19 +35,6 @@ class ProfileStateReader(Protocol):
     def profile_calibration_attempts(self, profile_uuid: str) -> list[str]: ...
 
     def profile_calibration_target_offset(self, profile_uuid: str) -> int: ...
-
-    def profile_last_run_at(self, profile_uuid: str) -> str | None: ...
-
-    def profile_recovery_burst_count(self, profile_uuid: str) -> int: ...
-
-    def profile_recovery_evaluation_active(self, profile_uuid: str) -> bool: ...
-
-    def profile_resume_schedule(
-        self,
-        profile_uuid: str,
-        *,
-        default_rest_seconds: float,
-    ) -> ProfileCycleSchedule: ...
 
 
 class ProfileStateWriter(Protocol):

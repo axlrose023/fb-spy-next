@@ -8,7 +8,6 @@ not require backend or frontend changes.
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import json
 import math
 import os
@@ -38,11 +37,13 @@ from app.facebook.calibration import (
 from app.facebook.orchestration import (
     OrchestrationStateStore,
     ProfileCycleSchedule,
+    ProfileScheduler,
     RecoverySchedulePolicy,
+    SchedulerConfig,
+    SchedulerHooks,
     next_profile_schedule,
     profile_rest_seconds,
     recovery_schedule_policy,
-    select_due_profile_ids,
 )
 from app.facebook.orchestration import (
     recovery_evaluation_policy as _profile_evaluation_policy,
@@ -541,27 +542,7 @@ def _run_once(
     policy: CalibrationPolicy,
     root_dir: Path,
 ) -> int:
-    enabled_profiles = _enabled_profiles(args)
-    if not enabled_profiles:
-        print("No enabled profiles.", flush=True)
-        return 1
-    failed = False
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=args.max_parallel
-    ) as executor:
-        futures = [
-            executor.submit(_run_profile_cycle, profile, args, store, policy, root_dir)
-            for profile in enabled_profiles
-        ]
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as exc:
-                failed = True
-                print(f"[orchestrator] profile cycle failed: {exc!r}", flush=True)
-    if _STOP_EVENT.is_set():
-        return 130
-    return 1 if failed else 0
+    return _profile_scheduler(args, store, policy, root_dir).run_once()
 
 
 def _run_continuously(
@@ -571,107 +552,52 @@ def _run_continuously(
     root_dir: Path,
 ) -> int:
     """Schedule each profile independently without a global cycle barrier."""
-    next_due: dict[str, float] = {}
-    running: dict[str, concurrent.futures.Future] = {}
-    profiles: dict[str, ProfileConfig] = {}
-    next_discovery = 0.0
-    completed_cycles = 0
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=args.max_parallel)
-    try:
-        while not _STOP_EVENT.is_set():
-            now = time.monotonic()
-            if now >= next_discovery:
-                try:
-                    _discover_profiles(args, fail_fast=False)
-                    profiles = {
-                        profile.octo_profile_uuid: profile
-                        for profile in _enabled_profiles(args)
-                    }
-                    for uuid in profiles:
-                        if uuid in next_due:
-                            continue
-                        schedule = store.profile_resume_schedule(
-                            uuid,
-                            default_rest_seconds=_profile_rest_seconds(args),
-                        )
-                        remaining_rest = _remaining_profile_rest_seconds(
-                            store.profile_last_run_at(uuid),
-                            schedule.rest_seconds,
-                        )
-                        next_due[uuid] = now + remaining_rest
-                        if remaining_rest > 0:
-                            print(
-                                f"[{profiles[uuid].display_name}] resume "
-                                f"schedule={schedule.kind} rest="
-                                f"{remaining_rest / 60:.1f}m",
-                                flush=True,
-                            )
-                finally:
-                    next_discovery = now + max(5.0, args.discovery_interval)
+    return _profile_scheduler(args, store, policy, root_dir).run_continuously()
 
-            for uuid, future in list(running.items()):
-                if not future.done():
-                    continue
-                del running[uuid]
-                schedule = ProfileCycleSchedule(
-                    kind="normal",
-                    rest_seconds=_profile_rest_seconds(args),
-                )
-                try:
-                    result = future.result()
-                    if isinstance(result, ProfileCycleSchedule):
-                        schedule = result
-                except Exception as exc:
-                    schedule = ProfileCycleSchedule(
-                        kind="infrastructure_retry",
-                        rest_seconds=_profile_schedule_policy(
-                            args
-                        ).infrastructure_retry_seconds,
-                    )
-                    print(
-                        f"[orchestrator] profile {uuid[:8]} cycle failed: {exc!r}",
-                        flush=True,
-                    )
-                next_due[uuid] = time.monotonic() + schedule.rest_seconds
-                profile = profiles.get(uuid)
-                if profile:
-                    _log_profile_schedule(
-                        profile,
-                        schedule,
-                        burst_limit=args.recovery_burst_cycles,
-                    )
-                completed_cycles += 1
-                if args.max_cycles > 0 and completed_cycles >= args.max_cycles:
-                    return 0
 
-            due_profile_ids = select_due_profile_ids(
-                profiles,
-                running_profile_ids=running,
-                next_due=next_due,
-                now=now,
-                max_parallel=args.max_parallel,
-            )
-            for uuid in due_profile_ids:
-                profile = profiles[uuid]
-                running[uuid] = executor.submit(
-                    _run_profile_cycle,
-                    profile,
-                    args,
-                    store,
-                    policy,
-                    root_dir,
+def _profile_scheduler(
+    args,
+    store: OrchestrationStateStore,
+    policy: CalibrationPolicy,
+    root_dir: Path,
+) -> ProfileScheduler:
+    schedule_policy = _profile_schedule_policy(args)
+    return ProfileScheduler(
+        SchedulerConfig(
+            max_parallel=args.max_parallel,
+            default_rest_seconds=schedule_policy.normal_rest_seconds,
+            infrastructure_retry_seconds=(schedule_policy.infrastructure_retry_seconds),
+            discovery_interval_seconds=args.discovery_interval,
+            max_cycles=args.max_cycles,
+        ),
+        store,
+        SchedulerHooks(
+            discover_profiles=lambda: _discover_profiles(args, fail_fast=False),
+            enabled_profiles=lambda: _enabled_profiles(args),
+            run_profile_cycle=lambda profile: _run_profile_cycle(
+                profile,
+                args,
+                store,
+                policy,
+                root_dir,
+            ),
+            remaining_profile_rest_seconds=lambda profile_uuid, rest_seconds: (
+                _remaining_profile_rest_seconds(
+                    store.profile_last_run_at(profile_uuid),
+                    rest_seconds,
                 )
-
-            if not profiles and not running:
-                print(
-                    "[orchestrator] no enabled profiles; waiting for discovery",
-                    flush=True,
-                )
-            time.sleep(1.0)
-        print("[orchestrator] stopping; waiting for active profile jobs", flush=True)
-        return 130
-    finally:
-        executor.shutdown(wait=True, cancel_futures=True)
+            ),
+            log=lambda message: print(message, flush=True),
+            log_schedule=lambda profile, schedule: _log_profile_schedule(
+                profile,
+                schedule,
+                burst_limit=args.recovery_burst_cycles,
+            ),
+        ),
+        stop_requested=_STOP_EVENT.is_set,
+        monotonic=time.monotonic,
+        sleep=time.sleep,
+    )
 
 
 def _enabled_profiles(args) -> list[ProfileConfig]:
