@@ -6,7 +6,6 @@ import pytest
 
 from app.facebook.enrichment import EnrichmentOptions, RelevantAd
 from app.facebook.enrichment.adapters.playwright import capture
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -41,7 +40,7 @@ def test_failed_post_match_closes_page_and_preserves_candidate(
         "wait_for_saved_post",
         lambda *_a, **_k: {"status": "post_not_found"},
     )
-    monkeypatch.setattr(facebook_runner, "_pause_ad_video", lambda *_a: None)
+    monkeypatch.setattr(capture, "pause_ad_video", lambda *_a: None)
     candidate = RelevantAd.from_raw(
         {
             "relevance_gate": "allow",

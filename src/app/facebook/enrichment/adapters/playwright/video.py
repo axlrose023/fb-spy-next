@@ -4,14 +4,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.services import facebook_runner
+from app.facebook.collection import CollectedAd
 
 from ...models import EnrichmentOptions
+from ...video.adapters.playwright import record_ad_video
 
 
 def record_video(
     page: Any,
-    ad: facebook_runner.Ad,
+    ad: CollectedAd,
     element_id: str,
     *,
     sequence: int,
@@ -21,7 +22,7 @@ def record_video(
     video_path = (
         run_dir / "videos" / f"{sequence:04d}_{safe_slug(ad.advertiser or 'ad')}.mp4"
     )
-    ok, issue = facebook_runner.record_ad_video(
+    ok, issue = record_ad_video(
         page,
         video_path,
         element_id,

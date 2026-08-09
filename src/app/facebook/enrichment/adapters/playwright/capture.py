@@ -7,11 +7,12 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.calibration import wait_for_saved_post
+from app.facebook.collection import CollectedAd
 from app.facebook.navigation import goto_with_retry
-from app.services import facebook_runner
 
 from ...models import EnrichmentOptions, EnrichmentResult, RelevantAd
 from ...post import valid_post_url
+from ...video.adapters.playwright import pause_ad_video
 from .landing import resolve_landing
 from .mapping import ad_from_raw, merge_ad_fields, target_from_raw
 from .post import recover_allowed_post_url
@@ -136,7 +137,7 @@ def _open_saved_post(page: Any, post_url: str, options: EnrichmentOptions) -> No
 
 def _capture_video(
     page: Any,
-    ad: facebook_runner.Ad,
+    ad: CollectedAd,
     element_id: str,
     details: dict[str, Any],
     sequence: int,
@@ -160,7 +161,7 @@ def _capture_video(
 def _capture_landing(
     page: Any,
     context: Any,
-    ad: facebook_runner.Ad,
+    ad: CollectedAd,
     element_id: str,
     details: dict[str, Any],
     post_url: str,
@@ -187,7 +188,7 @@ def _capture_landing(
 def _close_page(page: Any, details: dict[str, Any]) -> None:
     if page is None:
         return
-    facebook_runner._pause_ad_video(
+    pause_ad_video(
         page,
         str(details.get("match", {}).get("element_id") or ""),
     )

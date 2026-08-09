@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import time
@@ -10,6 +11,7 @@ from PIL import Image
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from app.api.modules.runs.models import FacebookRun
+from app.facebook.enrichment.video.adapters.playwright import recorder as video_recorder
 from app.services import facebook_runner
 from app.services.facebook.importer import FacebookAdsImporter
 from app.services.facebook.runner_process import FacebookRunnerRegistry
@@ -424,7 +426,7 @@ class ScreencastVideoPage:
             buffer = BytesIO()
             image.save(buffer, format="JPEG")
             self.session.handler({
-                "data": facebook_runner.base64.b64encode(buffer.getvalue()).decode(),
+                "data": base64.b64encode(buffer.getvalue()).decode(),
                 "sessionId": index + 1,
             })
 
@@ -508,20 +510,20 @@ def test_video_uses_screencast_frames_without_screenshot_commands(
     page = ScreencastVideoPage()
     output_path = tmp_path / "video.mp4"
     encoded: dict[str, object] = {}
-    monkeypatch.setattr(facebook_runner.shutil, "which", lambda _name: "/ffmpeg")
+    monkeypatch.setattr(video_recorder.shutil, "which", lambda _name: "/ffmpeg")
     monkeypatch.setattr(
-        facebook_runner,
-        "_prepare_video_playback",
+        video_recorder,
+        "prepare_video_playback",
         lambda *_args: {"ok": True, "played": True, "duration": 1},
     )
     monkeypatch.setattr(
-        facebook_runner,
-        "_element_viewport_clip",
+        video_recorder,
+        "element_viewport_clip",
         lambda *_args: {"x": 0, "y": 0, "width": 100, "height": 100},
     )
     monkeypatch.setattr(
-        facebook_runner,
-        "_trim_static_tail_frames",
+        video_recorder,
+        "trim_static_tail_frames",
         lambda _frames_dir, *, frame_count, **_kwargs: frame_count,
     )
 
@@ -532,7 +534,7 @@ def test_video_uses_screencast_frames_without_screenshot_commands(
         assert (frames_dir / "frame_00003.png").exists()
         return True, "ok"
 
-    monkeypatch.setattr(facebook_runner, "_encode_video_frames", fake_encode)
+    monkeypatch.setattr(video_recorder, "encode_video_frames", fake_encode)
 
     ok, issue = facebook_runner.record_ad_video(
         page,
@@ -558,7 +560,7 @@ def test_write_screencast_frame_crops_to_element(tmp_path) -> None:
     output = tmp_path / "frame.png"
 
     ok, issue = facebook_runner._write_screencast_frame(
-        facebook_runner.base64.b64encode(buffer.getvalue()).decode(),
+        base64.b64encode(buffer.getvalue()).decode(),
         output,
         clip={
             "x": 25,

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F6 завершен
+Статус: `IN_PROGRESS` — этап 14F7 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F6 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F7 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3209,6 +3209,44 @@ Octo runtime и старый репозиторий не менялись. Rollb
 composition переносятся следующими независимыми commit/revert units. Production
 server, Octo runtime и старый репозиторий не менялись. Rollback 14F6 выполняется
 revert одного отдельного коммита.
+
+#### 14F7. Active video recording
+
+Результат:
+
+- active video capture перенесен из legacy runner в owning
+  `facebook.enrichment.video.adapters.playwright` и разделен на playback/clip,
+  CDP screencast, frame trimming, ffmpeg encoding и небольшой recorder;
+- `VIDEO_PREP_JS` перенесен побайтно; поиск крупнейшего видимого video,
+  scroll/reset/play, click fallback и source-duration limit сохранены без
+  изменения;
+- CDP `Page.startScreencast`, обязательный ack каждого frame, sampling cadence,
+  viewport-to-ad crop и minimum `40x40` сохранены; `Page.captureScreenshot`
+  по-прежнему не используется для записи animated media;
+- fps/max-duration clamps, minimum frame count, static-tail threshold/grace,
+  effective encode fps и прежняя libx264/faststart команда ffmpeg сохранены;
+  запись остается visual-only без аудио;
+- stop screencast, detach, pause video и удаление временного frame directory
+  остаются best-effort/finally cleanup, включая failure paths; error codes и
+  `video_recorded` debug fields не менялись;
+- enrichment consumer использует canonical recorder и collection model без
+  зависимости от legacy runner; close-page cleanup использует canonical pause;
+- runner сохраняет identity-compatible constants/functions для обратной
+  совместимости, но собственных video implementations больше не содержит;
+  runner уменьшен с 1 460 до 1 000 строк;
+- добавлено 8 focused contracts для public alias identity, clip validation,
+  mandatory cleanup, duplicate-tail trimming, ffmpeg contract и enrichment
+  artifact mapping; video, enrichment, runner, architecture/contracts и strict
+  mypy проходят; полный regression: 847 тестов;
+- canonical implementation-файлы имеют от 55 до 127 строк; wheel содержит весь
+  video adapter package; Ruff, stage-scoped pre-commit, frontend production
+  build и gitleaks проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет известные 6 findings (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: collection CLI composition переносится
+следующим независимым commit/revert unit. Production server, Octo runtime и
+старый репозиторий не менялись. Rollback 14F7 выполняется revert одного
+отдельного коммита.
 
 Перед удалением:
 
