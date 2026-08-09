@@ -1253,7 +1253,7 @@ Server, Octo и production runtime не менялись. Старый репо�
 
 ### Этап 7. `facebook/profiles` и Octo boundary
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-09
 
 Источники:
 
@@ -1296,6 +1296,74 @@ facebook/adapters/octo/
 - токен и proxy не попадают в log/result;
 - Octo timeout не считается плохой рекламной метрикой;
 - профиль не стартует одновременно дважды.
+
+Результат:
+
+- профиль, безопасные discovery/session DTO, catalog/source/session contracts и
+  `ProfileService` вынесены в `facebook/profiles`; display/storage naming,
+  defaults, enable flags, calibration paths и recovery bounds сохранены;
+- Public и Local discovery координируются через `ProfileDiscoveryService`, а
+  JSON persistence вынесен в `JsonProfileCatalog`; UUID дедуплицируются как
+  между циклами, так и внутри одного API page/result, запись выполняется через
+  atomic temporary-file replace;
+- Public API возвращает в application layer только UUID/title и намеренно не
+  назначает geo по proxy/extra_info hints; normalized geo принимается только из
+  Local API connection data и сохраняется write-once после первого надёжного
+  наблюдения;
+- country normalization сосредоточена в одном модуле, существующие Turkey
+  aliases сохранены, пустой geo остаётся `None`, а неизвестное полное название
+  не заменяется и не выдумывается;
+- `MetricBaseline`, build options, requirements, median builder, window
+  comparability и eligibility validation вынесены в `profiles/baseline`;
+  `CalibrationPolicy` остаётся во внешнем health compatibility layer и
+  преобразуется в узкие baseline options/requirements;
+- единый `OctoHttpClient` инкапсулирует Local/Public JSON HTTP, timeout и
+  redacted errors; token остаётся только в private request header, HTTP body,
+  URL, proxy object и credentials не попадают в exception или profile result;
+- Public pagination, Local active discovery, start/stop, headless mismatch
+  restart, CDP endpoint mapping и remote-host rewrite разделены между
+  `adapters/octo/client.py`, `profiles.py`, `sessions.py` и `mapping.py`;
+- standalone runner и orchestrator подключены к новым adapters через небольшие
+  compatibility wrappers; старые callable names, CLI help, profiles JSON shape,
+  state JSON, tuple результата `get_cdp_endpoint()` и health imports сохранены;
+- connection mapping передаёт legacy runner только normalized country и IP,
+  поэтому произвольные proxy credentials из Local API больше не могут попасть в
+  debug event/run metadata;
+- существующий per-profile `flock` оркестратора продолжает запрещать
+  одновременный profile cycle и гарантированно останавливает Octo session в
+  `finally`; infrastructure timeout/error остаётся health blocker и не входит в
+  baseline/advertising degradation signal;
+- добавлено 16 unit/contract tests для discovery dedup, active/public authority,
+  write-once geo, malformed catalog, baseline parity, Public pagination,
+  start/stop/headless restart, safe mapping и redacted HTTP failures; focused
+  branch coverage — 92%, полный suite — 488 тестов, общий combined coverage —
+  67.54%; strict mypy, Ruff, полный pre-commit, architecture/API/database/CLI
+  contracts, frontend build и gitleaks проходят.
+
+Audit observations, не измененные в refactor-only этапе:
+
+- `JsonProfileCatalog` защищает read-modify-write общим process lock и atomic
+  replace, но не ставит отдельный cross-process lock на profiles JSON. Production
+  orchestrator запускается одним процессом; если появится несколько независимых
+  discovery writers, catalog нужно перевести на file lock или database;
+- profile execution защищён cross-process `flock` в orchestrator, но прямой
+  standalone вызов session manager сам по себе не является distributed lock.
+  Вынос durable lease относится к orchestration lifecycle этапу;
+- geo остаётся write-once: смена proxy/страны не переписывает существующий
+  expected country автоматически. Это защищает baseline от случайного drift,
+  но намеренный перенос профиля требует явного config update/reset;
+- normalization знает только подтверждённые существующие Turkey aliases;
+  полноценное ISO-code mapping нельзя добавлять без списка поддерживаемых Octo
+  значений и migration существующих profile configs;
+- Octo client сохраняет legacy single-attempt HTTP behavior без retry/backoff.
+  Timeout классифицируется как infrastructure failure; retry policy должна быть
+  согласована с orchestration capacity и shutdown semantics на последующем
+  этапе;
+- frontend source/lock не менялись; актуальный `npm audit` по-прежнему сообщает
+  6 findings (3 moderate, 3 high), не относящихся к этому backend refactor.
+
+Server, Octo и production runtime не менялись. Старый репозиторий не
+использовался. Rollback выполняется revert одного коммита этапа 7.
 
 ### Этап 8. `facebook/relevance`
 

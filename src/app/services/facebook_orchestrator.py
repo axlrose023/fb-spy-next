@@ -17,15 +17,28 @@ import signal
 import subprocess
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.facebook.adapters.octo import (
+    OctoActiveProfileSource,
+    OctoHttpClient,
+    OctoProfileSessionManager,
+    OctoPublicProfileSource,
+)
+from app.facebook.profiles import (
+    BaselineBuildOptions,
+    DiscoveredProfile,
+    Profile,
+    ProfileDiscoveryService,
+    ProfileService,
+    build_metric_baseline,
+)
+from app.facebook.profiles.adapters import JsonProfileCatalog
 from app.services.facebook.calibration import (
     load_saved_facebook_targets_from_ads_json,
     quarantined_facebook_post_urls,
@@ -43,7 +56,6 @@ from app.services.facebook.health import (
 )
 from app.settings import get_config
 
-_PROFILES_FILE_LOCK = threading.Lock()
 _POOL_FILE_LOCK = threading.Lock()
 _ACTIVE_PROCESS_LOCK = threading.Lock()
 _ACTIVE_PROCESSES: set[subprocess.Popen] = set()
@@ -61,47 +73,7 @@ _LOW_RELEVANCE_CALIBRATION_REASONS = {
 }
 
 
-@dataclass
-class ProfileConfig:
-    octo_profile_uuid: str
-    label: str = ""
-    expected_country: str | None = None
-    enabled: bool = True
-    no_country_filter: bool = False
-    calibration_ads_json: list[str] = field(default_factory=list)
-    quality_guard: bool = False
-    failed_recovery_calibration_passes: int = 1
-
-    @property
-    def display_name(self) -> str:
-        return self.label or self.octo_profile_uuid[:8]
-
-    @property
-    def storage_name(self) -> str:
-        slug = "".join(
-            char.lower() if char.isascii() and char.isalnum() else "_"
-            for char in self.display_name
-        )
-        slug = "_".join(part for part in slug.split("_") if part) or "profile"
-        return f"{slug[:40]}_{self.octo_profile_uuid[:8]}"
-
-    @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> ProfileConfig:
-        return cls(
-            octo_profile_uuid=str(raw["octo_profile_uuid"]),
-            label=str(raw.get("label") or ""),
-            expected_country=raw.get("expected_country"),
-            enabled=bool(raw.get("enabled", True)),
-            no_country_filter=bool(raw.get("no_country_filter", False)),
-            calibration_ads_json=[
-                str(path) for path in raw.get("calibration_ads_json", [])
-            ],
-            quality_guard=bool(raw.get("quality_guard", False)),
-            failed_recovery_calibration_passes=min(
-                3,
-                max(1, int(raw.get("failed_recovery_calibration_passes", 1))),
-            ),
-        )
+ProfileConfig = Profile
 
 
 @dataclass(frozen=True)
@@ -586,11 +558,13 @@ def _baseline_from_run_records(
             continue
         by_run_dir.pop(metrics.run_dir, None)
         by_run_dir[metrics.run_dir] = metrics
-    baseline = MetricBaseline.from_good_runs(
+    baseline = build_metric_baseline(
         list(by_run_dir.values()),
-        max_samples=policy.baseline_window,
-        min_healthy_relevant_rate=policy.minimum_healthy_relevant_rate,
-        min_healthy_relevant_ads=policy.minimum_healthy_relevant_ads,
+        BaselineBuildOptions(
+            max_samples=policy.baseline_window,
+            min_healthy_relevant_rate=policy.minimum_healthy_relevant_rate,
+            min_healthy_relevant_ads=policy.minimum_healthy_relevant_ads,
+        ),
     )
     trusted_dirs = {
         str(item.get("run_dir") or "")
@@ -2478,28 +2452,50 @@ def _seed_baseline(args) -> int:
     return 0
 
 
+class _PublicProfilesCompatibilitySource:
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def discover(self, *, search_tags: str = "") -> list[DiscoveredProfile]:
+        return [
+            DiscoveredProfile(
+                octo_profile_uuid=str(raw.get("uuid") or ""),
+                label=str(raw.get("title") or str(raw.get("uuid") or "")[:8]),
+            )
+            for raw in _octo_public_profiles(self._token, search_tags=search_tags)
+            if raw.get("uuid")
+        ]
+
+
+class _LocalOctoCompatibilityTransport:
+    def __init__(self, host: str, port: int) -> None:
+        self._host = host
+        self._port = port
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any] | list[Any]:
+        del timeout_seconds
+        if method == "GET":
+            return _octo_local_get(self._host, self._port, path)
+        return _octo_local_post(self._host, self._port, path, body or {})
+
+
 def _discover_active(args) -> int:
     profiles_path = Path(args.profiles_json)
-    profiles = _load_profiles(profiles_path)
-    existing = {profile.octo_profile_uuid for profile in profiles}
-    active = _octo_local_get(args.octo_host, args.octo_port, "/api/profiles/active")
-    added = 0
-    for raw in active if isinstance(active, list) else []:
-        uuid = str(raw.get("uuid") or "")
-        if not uuid or uuid in existing:
-            continue
-        country = (raw.get("connection_data") or {}).get("country")
-        profiles.append(
-            ProfileConfig(
-                octo_profile_uuid=uuid,
-                label=str(raw.get("title") or raw.get("name") or uuid[:8]),
-                expected_country=str(country) if country else None,
-                enabled=bool(args.enable_new),
-            )
-        )
-        added += 1
-    _write_json(profiles_path, {"profiles": [asdict(profile) for profile in profiles]})
-    print(f"active={len(active) if isinstance(active, list) else 0} added={added}")
+    sessions = OctoProfileSessionManager(
+        _LocalOctoCompatibilityTransport(args.octo_host, args.octo_port)
+    )
+    result = ProfileDiscoveryService(
+        JsonProfileCatalog(profiles_path),
+        OctoActiveProfileSource(sessions),
+    ).discover(enable_new=bool(args.enable_new))
+    print(f"active={result.discovered} added={result.added}")
     return 0
 
 
@@ -2523,62 +2519,19 @@ def _merge_public_profiles(
 ) -> int:
     if not token:
         raise RuntimeError("Octo Public API token is required")
-    public_profiles = _octo_public_profiles(token, search_tags=search_tags)
-    with _PROFILES_FILE_LOCK:
-        profiles = _load_profiles(profiles_path)
-        existing = {profile.octo_profile_uuid for profile in profiles}
-        added = 0
-        for raw in public_profiles:
-            uuid = str(raw.get("uuid") or "")
-            if not uuid or uuid in existing:
-                continue
-            profiles.append(
-                ProfileConfig(
-                    octo_profile_uuid=uuid,
-                    label=str(raw.get("title") or uuid[:8]),
-                    # The Local API start response is the authority for geo. Public
-                    # API proxy hints may be ISO codes or stale proxy metadata.
-                    expected_country=None,
-                    enabled=enable_new,
-                )
-            )
-            existing.add(uuid)
-            added += 1
-        if added:
-            _write_json(
-                profiles_path, {"profiles": [asdict(profile) for profile in profiles]}
-            )
-    return added
+    result = ProfileDiscoveryService(
+        JsonProfileCatalog(profiles_path),
+        _PublicProfilesCompatibilitySource(token),
+    ).discover(search_tags=search_tags, enable_new=enable_new)
+    return result.added
 
 
 def _load_profiles(path: Path) -> list[ProfileConfig]:
-    payload = _load_json(path, default={"profiles": []})
-    raw_profiles = payload.get("profiles", []) if isinstance(payload, dict) else payload
-    return [
-        ProfileConfig.from_dict(raw)
-        for raw in raw_profiles
-        if isinstance(raw, dict) and raw.get("octo_profile_uuid")
-    ]
+    return ProfileService(JsonProfileCatalog(path)).list_profiles()
 
 
 def _persist_profile_country(path: Path, profile_uuid: str, country: str) -> None:
-    with _PROFILES_FILE_LOCK:
-        payload = _load_json(path, default={"profiles": []})
-        raw_profiles = (
-            payload.get("profiles", []) if isinstance(payload, dict) else payload
-        )
-        changed = False
-        for raw in raw_profiles if isinstance(raw_profiles, list) else []:
-            if not isinstance(raw, dict):
-                continue
-            if str(raw.get("octo_profile_uuid") or "") != profile_uuid:
-                continue
-            if not raw.get("expected_country"):
-                raw["expected_country"] = country
-                changed = True
-            break
-        if changed:
-            _write_json(path, {"profiles": raw_profiles})
+    ProfileService(JsonProfileCatalog(path)).adopt_country(profile_uuid, country)
 
 
 def _calibration_was_effective(raw: dict[str, Any]) -> bool:
@@ -2763,16 +2716,7 @@ def _safe_name(value: str) -> str:
 
 
 def _octo_local_get(host: str, port: int, path: str) -> dict | list:
-    request = urllib.request.Request(
-        f"http://{host}:{port}{path}",
-        method="GET",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=40) as response:
-            return json.loads(response.read().decode())
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Octo Local API failed: HTTP {exc.code}") from exc
+    return OctoHttpClient(f"http://{host}:{port}").request("GET", path)
 
 
 def _octo_local_post(
@@ -2781,17 +2725,7 @@ def _octo_local_post(
     path: str,
     body: dict[str, Any],
 ) -> dict | list:
-    request = urllib.request.Request(
-        f"http://{host}:{port}{path}",
-        data=json.dumps(body).encode(),
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=40) as response:
-            return json.loads(response.read().decode())
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Octo Local API failed: HTTP {exc.code}") from exc
+    return OctoHttpClient(f"http://{host}:{port}").request("POST", path, body)
 
 
 def _stop_octo_profile(profile: ProfileConfig, args) -> None:
@@ -2799,20 +2733,15 @@ def _stop_octo_profile(profile: ProfileConfig, args) -> None:
     host = args.octo_host or config.facebook.octo_host
     port = args.octo_port or config.facebook.octo_port
     try:
-        active = _octo_local_get(host, port, "/api/profiles/active")
-        is_active = isinstance(active, list) and any(
-            str(item.get("uuid") or "") == profile.octo_profile_uuid
-            for item in active
-            if isinstance(item, dict)
+        sessions = OctoProfileSessionManager(
+            _LocalOctoCompatibilityTransport(host, port)
         )
-        if not is_active:
+        if not any(
+            active.octo_profile_uuid == profile.octo_profile_uuid
+            for active in sessions.active()
+        ):
             return
-        _octo_local_post(
-            host,
-            port,
-            "/api/profiles/stop",
-            {"uuid": profile.octo_profile_uuid},
-        )
+        sessions.stop(profile.octo_profile_uuid)
         print(f"[{profile.display_name}] Octo profile stopped", flush=True)
     except Exception as exc:
         print(
@@ -2822,51 +2751,16 @@ def _stop_octo_profile(profile: ProfileConfig, args) -> None:
 
 
 def _octo_public_profiles(token: str, *, search_tags: str = "") -> list[dict[str, Any]]:
-    page = 0
-    page_len = 100
-    profiles: list[dict[str, Any]] = []
-    while True:
-        query = (
-            f"page_len={page_len}&page={page}"
-            "&fields=title,description,proxy,tags,status,last_active,extra_info"
-            "&ordering=active"
+    source = OctoPublicProfileSource(
+        OctoHttpClient(
+            "https://app.octobrowser.net",
+            token=token,
         )
-        if search_tags:
-            query += f"&search_tags={urllib.parse.quote(search_tags)}"
-        request = urllib.request.Request(
-            f"https://app.octobrowser.net/api/v2/automation/profiles?{query}",
-            method="GET",
-            headers={
-                "Content-Type": "application/json",
-                "X-Octo-Api-Token": token,
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=40) as response:
-                payload = json.loads(response.read().decode())
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"Octo Public API failed: HTTP {exc.code}") from exc
-        data = payload.get("data", []) if isinstance(payload, dict) else []
-        if not isinstance(data, list) or not data:
-            break
-        profiles.extend(item for item in data if isinstance(item, dict))
-        total_count = int(payload.get("total_count") or len(profiles))
-        if len(profiles) >= total_count:
-            break
-        page += 1
-    return profiles
-
-
-def _public_profile_country_hint(raw: dict[str, Any]) -> str | None:
-    extra_info = (
-        raw.get("extra_info") if isinstance(raw.get("extra_info"), dict) else {}
     )
-    proxy = raw.get("proxy") if isinstance(raw.get("proxy"), dict) else {}
-    for key in ("country", "geo", "profile_country"):
-        value = extra_info.get(key) or proxy.get(key)
-        if value:
-            return str(value)
-    return None
+    return [
+        {"uuid": profile.octo_profile_uuid, "title": profile.label}
+        for profile in source.discover(search_tags=search_tags)
+    ]
 
 
 def _load_json(path: Path, *, default: Any) -> Any:

@@ -707,8 +707,7 @@ def test_get_cdp_endpoint_restarts_profile_when_headless_mode_differs(
 
 def test_rewrite_cdp_endpoint_resolves_remote_host_for_chromium(monkeypatch) -> None:
     monkeypatch.setattr(
-        facebook_runner.socket,
-        "gethostbyname",
+        "app.facebook.adapters.octo.mapping.socket.gethostbyname",
         lambda host: "192.0.2.10" if host == "host.docker.internal" else host,
     )
 

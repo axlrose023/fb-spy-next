@@ -152,9 +152,7 @@ class FacebookRunnerRegistry:
                         await self._poll_stream_import(run_id, stream)
                 else:
                     await self._poll_stream_import(run_id, stream)
-                await asyncio.sleep(
-                    self.config.facebook.streaming_import_poll_seconds
-                )
+                await asyncio.sleep(self.config.facebook.streaming_import_poll_seconds)
 
         return_code = await wait_task
         log_file.close()
@@ -235,7 +233,7 @@ class FacebookRunnerRegistry:
         concurrency = max(1, self.config.facebook.relevance_filter_concurrency)
         attempts = max(0, self.config.facebook.relevance_filter_task_retries) + 1
         batches = max(1, math.ceil(stream.pending_count / concurrency))
-        return (
+        return float(
             self.config.facebook.relevance_filter_task_timeout_seconds
             * attempts
             * batches
@@ -245,7 +243,7 @@ class FacebookRunnerRegistry:
     def _run_dir(self, run: Run | FacebookRun) -> Path:
         if run.runner_run_dir:
             return Path(run.runner_run_dir).expanduser().resolve()
-        return (self.config.facebook.runner_out_dir / f"run_{run.id}").resolve()
+        return (Path(self.config.facebook.runner_out_dir) / f"run_{run.id}").resolve()
 
     def _media_relative(self, path: Path) -> str:
         try:
@@ -260,8 +258,8 @@ class FacebookRunnerRegistry:
     def _read_tail(self, relative_path: str | None, limit: int = 4000) -> str | None:
         if not relative_path:
             return None
-        path = self.config.facebook.data_dir / relative_path
+        path = Path(self.config.facebook.data_dir) / relative_path
         if not path.exists():
             return None
         data = path.read_bytes()[-limit:]
-        return data.decode(errors="replace")
+        return str(data.decode(errors="replace"))

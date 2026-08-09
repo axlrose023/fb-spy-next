@@ -68,9 +68,7 @@ class RunService:
         return await self._runs.get(run.id, refresh=True) or run
 
     async def import_run(self, command: ImportRun) -> Run:
-        ads_json_path = await self._stager.stage_ads_json(
-            Path(command.ads_json_path)
-        )
+        ads_json_path = await self._stager.stage_ads_json(Path(command.ads_json_path))
         if ads_json_path is None:
             raise RunArtifactsNotFound
         started_at = datetime.now(UTC)

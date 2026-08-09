@@ -78,9 +78,7 @@ def collect_run_metrics(
         for ad in ads
         if clean(ad.get("screenshot")) and ad.get("screenshot_ok") is not False
     )
-    countries = [
-        clean(ad.get("country")) for ad in ads if clean(ad.get("country"))
-    ]
+    countries = [clean(ad.get("country")) for ad in ads if clean(ad.get("country"))]
     country_match_rate = None
     if countries and country_target:
         normalized_target = normalize(country_target)
@@ -140,9 +138,7 @@ def collect_run_metrics(
             {
                 clean_landing_key(ad.get("landing_clean") or ad.get("landing_full"))
                 for ad in resolved_ads
-                if clean_landing_key(
-                    ad.get("landing_clean") or ad.get("landing_full")
-                )
+                if clean_landing_key(ad.get("landing_clean") or ad.get("landing_full"))
             }
         ),
         unique_fb_ad_ids=len(

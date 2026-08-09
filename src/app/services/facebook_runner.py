@@ -39,13 +39,10 @@ import random
 import re
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import time
 import traceback
-import urllib.error
-import urllib.request
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -56,6 +53,19 @@ from urllib.parse import quote_plus
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from app.facebook.adapters.octo import (
+    OctoHttpClient,
+    OctoProfileSessionManager,
+)
+from app.facebook.adapters.octo import (
+    rewrite_cdp_endpoint_host as _rewrite_cdp_endpoint_host,
+)
+from app.facebook.profiles import (
+    ProfileSourceError,
+)
+from app.facebook.profiles import (
+    normalize_country as _normalize_country,
+)
 from app.services.facebook.landing_archive import (
     archive_landing_page_from_browser,
     save_landing_screenshot_from_browser,
@@ -340,73 +350,54 @@ class OctoApiError(RuntimeError):
 
 
 def octo(method: str, path: str, body: dict | None = None) -> dict | list:
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        f"{OCTO_API}{path}", data=data, method=method,
-        headers={"Content-Type": "application/json"},
-    )
     try:
         timeout = 150 if method == "POST" and path == "/api/profiles/start" else 40
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        body_text = ""
-        try:
-            body_text = exc.read().decode(errors="replace")
-        except Exception:
-            pass
-        detail = f"{method} {path} failed: HTTP {exc.code}"
-        if body_text:
-            detail += f" {body_text}"
-        raise OctoApiError(detail) from exc
+        return OctoHttpClient(OCTO_API).request(
+            method,
+            path,
+            body,
+            timeout_seconds=timeout,
+        )
+    except ProfileSourceError as exc:
+        raise OctoApiError(str(exc)) from exc
+
+
+class _RunnerOctoTransport:
+    def request(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> dict | list:
+        del timeout_seconds
+        return octo(method, path, body)
+
+
+def _profile_sessions() -> OctoProfileSessionManager:
+    return OctoProfileSessionManager(
+        _RunnerOctoTransport(),
+        start_flags=OCTO_START_FLAGS,
+        sleeper=time.sleep,
+    )
 
 
 def _start_octo_profile(uuid: str) -> tuple[str, dict]:
-    started = octo("POST", "/api/profiles/start", {
-        "uuid": uuid,
-        "headless": OCTO_HEADLESS,
-        "debug_port": True,
-        "flags": OCTO_START_FLAGS,
-        "timeout": 120,
-    })
-    time.sleep(2)
-    return started["ws_endpoint"], started.get("connection_data", {})
+    session = _profile_sessions().start(uuid, headless=OCTO_HEADLESS)
+    return session.ws_endpoint, session.connection.to_legacy_dict()
 
 
 def get_cdp_endpoint() -> tuple[str, dict]:
-    active = octo("GET", "/api/profiles/active")
-    if not active:
-        return _start_octo_profile(OCTO_PROFILE_UUID)
-    prof = next(
-        (profile for profile in active if profile.get("uuid") == OCTO_PROFILE_UUID),
-        None,
+    session = _profile_sessions().acquire(
+        OCTO_PROFILE_UUID,
+        headless=OCTO_HEADLESS,
     )
-    if prof is None:
-        return _start_octo_profile(OCTO_PROFILE_UUID)
-    uuid = prof["uuid"]
-    if bool(prof.get("headless")) != OCTO_HEADLESS:
-        octo("POST", "/api/profiles/stop", {"uuid": uuid})
-        time.sleep(3)
-        return _start_octo_profile(uuid)
-    if prof.get("ws_endpoint"):
-        return prof["ws_endpoint"], prof.get("connection_data", {})
-    # restart with a debug port (keeps cookies; the profile just re-opens)
-    octo("POST", "/api/profiles/stop", {"uuid": uuid})
-    time.sleep(3)
-    return _start_octo_profile(uuid)
+    return session.ws_endpoint, session.connection.to_legacy_dict()
 
 
 def rewrite_cdp_endpoint_host(ws_endpoint: str, octo_host: str) -> str:
-    if octo_host in {"127.0.0.1", "localhost"}:
-        return ws_endpoint
-    match = re.match(r"^(wss?://)([^/:]+)(.*)$", ws_endpoint)
-    if not match or match.group(2) not in {"127.0.0.1", "localhost"}:
-        return ws_endpoint
-    try:
-        cdp_host = socket.gethostbyname(octo_host)
-    except OSError:
-        cdp_host = octo_host
-    return f"{match.group(1)}{cdp_host}{match.group(3)}"
+    return _rewrite_cdp_endpoint_host(ws_endpoint, octo_host)
 
 
 # ── Data model ──────────────────────────────────────────────────────────────
@@ -583,19 +574,7 @@ def _ad_summary(ads: dict[str, Ad]) -> dict:
 
 
 def normalize_country(value: str | None) -> str | None:
-    if not value:
-        return None
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    aliases = {
-        "tr": "Turkey",
-        "tur": "Turkey",
-        "turkey": "Turkey",
-        "turkiye": "Turkey",
-        "türkiye": "Turkey",
-    }
-    return aliases.get(normalized.lower(), normalized)
+    return _normalize_country(value)
 
 
 # ── In-page detector (runs in the browser) ─────────────────────────────────

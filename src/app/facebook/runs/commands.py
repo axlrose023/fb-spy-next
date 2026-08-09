@@ -28,7 +28,7 @@ async def import_run(ads_json_path: Path, *, title: str = "") -> FacebookRun:
     summary = _load_json(run_dir / "summary.json", default={})
 
     async with SessionFactory() as session:
-        existing = await session.scalar(
+        existing: FacebookRun | None = await session.scalar(
             select(FacebookRun)
             .where(FacebookRun.runner_run_dir == str(run_dir))
             .limit(1)

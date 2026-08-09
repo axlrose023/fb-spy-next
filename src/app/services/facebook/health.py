@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import dataclasses
 import math
-import statistics
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.facebook.profiles import (
+    BaselineBuildOptions,
+    BaselineRequirements,
+    build_metric_baseline,
+    is_baseline_candidate,
+)
+from app.facebook.profiles import (
+    MetricBaseline as MetricBaseline,
+)
+from app.facebook.profiles import (
+    window_bucket as _window_bucket,
+)
 from app.facebook.runs.metrics import (
-    RunMetrics,
+    RunMetrics as RunMetrics,
 )
 from app.facebook.runs.metrics import (
     collect_run_metrics as collect_run_metrics,
@@ -16,117 +27,16 @@ from app.facebook.runs.metrics import (
 from app.facebook.runs.metrics.normalization import (
     parse_datetime as _parse_datetime,
 )
-from app.facebook.runs.metrics.normalization import (
-    safe_div as _safe_div,
-)
 
-
-@dataclass(frozen=True)
-class MetricBaseline:
-    sample_count: int = 0
-    collector_metric_version: int = 1
-    source_run_dirs: list[str] = field(default_factory=list)
-    window_seconds: float | None = None
-    octo_headless: bool | None = None
-    trusted: bool = False
-    target_source: str | None = None
-    target_sample_count: int = 0
-    ads_per_hour: float | None = None
-    target_per_hour: float | None = None
-    resolved_per_hour: float | None = None
-    ads_per_100_scrolls: float | None = None
-    target_per_100_scrolls: float | None = None
-    resolved_per_100_scrolls: float | None = None
-    relevant_rate: float | None = None
-    landing_resolution_rate: float | None = None
-    domain_diversity_rate: float | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, raw: dict[str, Any] | None) -> MetricBaseline:
-        if not raw:
-            return cls()
-        values: dict[str, Any] = {}
-        for item in dataclasses.fields(cls):
-            if item.name in raw:
-                values[item.name] = raw[item.name]
-            elif item.default is not dataclasses.MISSING:
-                values[item.name] = item.default
-            elif item.default_factory is not dataclasses.MISSING:
-                values[item.name] = item.default_factory()
-        return cls(**values)
-
-    @classmethod
-    def from_good_runs(
-        cls,
-        runs: list[RunMetrics],
-        *,
-        max_samples: int = 8,
-        min_healthy_relevant_rate: float = 0.0,
-        min_healthy_relevant_ads: int = 0,
-    ) -> MetricBaseline:
-        if not runs:
-            return cls()
-        latest_window = _window_bucket(runs[-1].elapsed_seconds)
-        latest_headless = runs[-1].octo_headless
-        latest_metric_version = runs[-1].collector_metric_version
-        comparable = [
-            run
-            for run in runs
-            if _window_bucket(run.elapsed_seconds) == latest_window
-            and run.octo_headless == latest_headless
-            and run.collector_metric_version == latest_metric_version
-        ]
-        samples = comparable[-max(1, max_samples) :]
-
-        def med(values: list[float | None]) -> float | None:
-            cleaned = [value for value in values if value is not None]
-            if not cleaned:
-                return None
-            return float(statistics.median(cleaned))
-
-        relevance_samples = [
-            run
-            for run in samples
-            if run.target_source == "relevance"
-            and run.relevance_known
-            and run.relevant_rate is not None
-            and run.relevant_rate >= min_healthy_relevant_rate
-            and int(run.relevant_ads or 0) >= min_healthy_relevant_ads
-        ]
-        target_samples = relevance_samples or [
-            run for run in samples if run.target_source == "resolved_landings"
-        ]
-        target_source = target_samples[-1].target_source if target_samples else None
-
-        return cls(
-            sample_count=len(samples),
-            collector_metric_version=latest_metric_version,
-            source_run_dirs=[run.run_dir for run in samples],
-            window_seconds=latest_window,
-            octo_headless=latest_headless,
-            target_source=target_source,
-            target_sample_count=len(target_samples),
-            ads_per_hour=med([run.ads_per_hour for run in samples]),
-            target_per_hour=med([run.target_per_hour for run in target_samples]),
-            resolved_per_hour=med([run.resolved_per_hour for run in samples]),
-            ads_per_100_scrolls=med([run.ads_per_100_scrolls for run in samples]),
-            target_per_100_scrolls=med(
-                [run.target_per_100_scrolls for run in target_samples],
-            ),
-            resolved_per_100_scrolls=med(
-                [run.resolved_per_100_scrolls for run in samples],
-            ),
-            relevant_rate=med([run.relevant_rate for run in relevance_samples]),
-            landing_resolution_rate=med(
-                [_safe_div(run.resolved_landings, run.link_ads) for run in samples]
-            ),
-            domain_diversity_rate=med(
-                [_safe_div(run.unique_domains, run.ads_total) for run in samples]
-            ),
-        )
+_BAD_STOP_REASONS = frozenset({
+    "interrupted",
+    "octo_proxy_error",
+    "octo_start_error",
+    "facebook_login_required",
+    "resolve_timeout",
+    "scroll_failed",
+    "video_timeout",
+})
 
 
 @dataclass(frozen=True)
@@ -199,26 +109,15 @@ def is_good_baseline_candidate(
     policy: CalibrationPolicy | None = None,
 ) -> bool:
     active_policy = policy or CalibrationPolicy()
-    if metrics.return_code not in {None, 0}:
-        return False
-    if _is_bad_stop_reason(metrics.stop_reason):
-        return False
-    if not metrics.geo_observed:
-        return False
-    if not metrics.geo_match:
-        return False
-    if (
-        metrics.elapsed_seconds is None
-        or metrics.elapsed_seconds < active_policy.min_elapsed_seconds
-    ):
-        return False
-    if metrics.ads_total < active_policy.min_good_ads_for_baseline:
-        return False
-    if metrics.target_ads < active_policy.min_good_targets_for_baseline:
-        return False
-    if metrics.ads_per_hour is None or metrics.ads_per_hour <= 0:
-        return False
-    return True
+    return is_baseline_candidate(
+        metrics,
+        BaselineRequirements(
+            min_elapsed_seconds=active_policy.min_elapsed_seconds,
+            min_ads=active_policy.min_good_ads_for_baseline,
+            min_targets=active_policy.min_good_targets_for_baseline,
+            blocked_stop_reasons=_BAD_STOP_REASONS,
+        ),
+    )
 
 
 def evaluate_calibration_need(
@@ -775,11 +674,13 @@ def baseline_from_history(
         for metrics in history
         if is_good_baseline_candidate(metrics, active_policy)
     ]
-    return MetricBaseline.from_good_runs(
+    return build_metric_baseline(
         good_runs,
-        max_samples=active_policy.baseline_window,
-        min_healthy_relevant_rate=(active_policy.minimum_healthy_relevant_rate),
-        min_healthy_relevant_ads=active_policy.minimum_healthy_relevant_ads,
+        BaselineBuildOptions(
+            max_samples=active_policy.baseline_window,
+            min_healthy_relevant_rate=(active_policy.minimum_healthy_relevant_rate),
+            min_healthy_relevant_ads=active_policy.minimum_healthy_relevant_ads,
+        ),
     )
 
 
@@ -900,15 +801,7 @@ def _target_baseline_comparison_allowed(
 
 
 def _is_bad_stop_reason(value: str | None) -> bool:
-    return value in {
-        "interrupted",
-        "octo_proxy_error",
-        "octo_start_error",
-        "facebook_login_required",
-        "resolve_timeout",
-        "scroll_failed",
-        "video_timeout",
-    }
+    return value in _BAD_STOP_REASONS
 
 
 def _relevance_drop_confident(
@@ -955,12 +848,6 @@ def _wilson_upper_bound(successes: int, total: int, *, z: float) -> float:
         proportion * (1 - proportion) / total + z_squared / (4 * total * total)
     )
     return (center + margin) / denominator
-
-
-def _window_bucket(elapsed_seconds: float | None) -> float | None:
-    if elapsed_seconds is None or elapsed_seconds <= 0:
-        return None
-    return float(max(300, round(elapsed_seconds / 300) * 300))
 
 
 def _consecutive_count(

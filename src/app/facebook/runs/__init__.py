@@ -1,5 +1,6 @@
 from .contracts import RunProcessRunner, RunRepository
 from .exceptions import RunArtifactsNotFound, RunNotActive, RunNotFound
+from .metrics import RunMetrics
 from .models import (
     ImportRun,
     NewRun,
@@ -17,6 +18,7 @@ __all__ = [
     "Run",
     "RunArtifactsNotFound",
     "RunDefaults",
+    "RunMetrics",
     "RunNotActive",
     "RunNotFound",
     "RunPage",

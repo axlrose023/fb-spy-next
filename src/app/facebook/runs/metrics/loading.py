@@ -29,9 +29,7 @@ def load_json(path: Path, *, default: Any) -> Any:
 
 def last_captured_at(ads: list[dict[str, Any]]) -> str | None:
     values = [
-        value
-        for ad in ads
-        if (value := clean(ad.get("captured_at"))) is not None
+        value for ad in ads if (value := clean(ad.get("captured_at"))) is not None
     ]
     return max(values) if values else None
 
