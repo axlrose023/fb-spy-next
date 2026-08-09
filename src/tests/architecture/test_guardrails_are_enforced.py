@@ -76,3 +76,17 @@ def test_importing_another_module_internals_is_rejected(
 
     with pytest.raises(AssertionError, match="through __init__.py"):
         boundaries.test_cross_module_imports_use_public_package_api()
+
+
+def test_application_ioc_may_compose_its_own_adapters(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    app_root = _use_temporary_source_root(monkeypatch, tmp_path)
+    _write(
+        app_root,
+        "ad_library/ioc.py",
+        "from app.ad_library.media.adapters.ads import AdMediaReader\n",
+    )
+
+    boundaries.test_cross_module_imports_use_public_package_api()

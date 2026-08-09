@@ -4,13 +4,8 @@ from dishka import AsyncContainer, Provider, Scope, make_async_container, provid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts.ioc import AccountsProvider
-from app.ad_library.ads import AdService
-from app.ad_library.ads.adapters.persistence import FacebookAd, SqlAlchemyAdRepository
-from app.ad_library.media import MediaService, MediaStorage, MediaURLSigner
-from app.ad_library.media.adapters.ads import AdMediaReader
-from app.ad_library.media.configuration import configured_signer, configured_storage
-from app.ad_library.statistics import StatisticsService
-from app.ad_library.statistics.adapters import SqlAlchemyAdStatisticsReader
+from app.ad_library.ioc import AdLibraryProvider
+from app.ad_library.media import MediaStorage
 from app.clients.providers import HttpClientsProvider
 from app.database.ioc import DatabaseProvider
 from app.database.uow import UnitOfWork
@@ -43,34 +38,6 @@ class AppProvider(Provider):
 
 class ServicesProvider(Provider):
     @provide(scope=Scope.APP)
-    def get_media_signer(self, config: Config) -> MediaURLSigner:
-        return configured_signer(config)
-
-    @provide(scope=Scope.APP)
-    def get_media_storage(self, config: Config) -> MediaStorage:
-        return configured_storage(config)
-
-    @provide(scope=Scope.REQUEST)
-    def get_ad_repository(
-        self,
-        session: AsyncSession,
-    ) -> SqlAlchemyAdRepository:
-        return SqlAlchemyAdRepository(session)
-
-    @provide(scope=Scope.REQUEST)
-    def get_media_service(
-        self,
-        ads: SqlAlchemyAdRepository,
-        media_storage: MediaStorage,
-        media_signer: MediaURLSigner,
-    ) -> MediaService:
-        return MediaService(
-            AdMediaReader(ads),
-            media_storage,
-            media_signer,
-        )
-
-    @provide(scope=Scope.APP)
     def get_facebook_ads_importer(
         self,
         config: Config,
@@ -85,14 +52,6 @@ class ServicesProvider(Provider):
         importer: FacebookAdsImporter,
     ) -> FacebookRunnerRegistry:
         return FacebookRunnerRegistry(config, importer)
-
-    @provide(scope=Scope.REQUEST)
-    async def get_ad_service(
-        self,
-        ads: SqlAlchemyAdRepository,
-        media_signer: MediaURLSigner,
-    ) -> AdService:
-        return AdService(ads, media_signer)
 
     @provide(scope=Scope.REQUEST)
     def get_run_service(
@@ -118,21 +77,6 @@ class ServicesProvider(Provider):
                 octo_profile_uuid=facebook.octo_profile_uuid,
             ),
         )
-
-    @provide(scope=Scope.REQUEST)
-    def get_statistics_reader(
-        self,
-        session: AsyncSession,
-    ) -> SqlAlchemyAdStatisticsReader:
-        return SqlAlchemyAdStatisticsReader(session, FacebookAd)
-
-    @provide(scope=Scope.REQUEST)
-    def get_stats_service(
-        self,
-        reader: SqlAlchemyAdStatisticsReader,
-    ) -> StatisticsService:
-        return StatisticsService(reader)
-
 
 if _BROWSER_PROVIDER_ENABLED:
     class BrowserProvider(Provider):
@@ -161,6 +105,7 @@ def get_async_container() -> AsyncContainer:
         AppProvider(),
         DatabaseProvider(),
         AccountsProvider(),
+        AdLibraryProvider(),
         ServicesProvider(),
         HttpClientsProvider(),
     ]

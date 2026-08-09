@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13D завершен
+Статус: `IN_PROGRESS` — этап 13E завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D COMPLETE`)
+Статус: `IN_PROGRESS` (`13A, 13B, 13C, 13D, 13E COMPLETE`)
 
 Изменения:
 
@@ -2652,6 +2652,37 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 13D
+выполняется revert одного отдельного коммита.
+
+#### 13E. Ad library IoC provider
+
+Результат:
+
+- media signer/storage, ad repository, media/ad services и statistics
+  reader/service factories перенесены из root IoC в owning
+  `app/ad_library/ioc.py`;
+- APP/REQUEST scopes, configured local/S3 storage, `AdMediaReader`, persistence
+  model и constructor arguments сохранены без изменений;
+- `AdLibraryProvider` подключается после database/accounts providers;
+  Facebook importer в следующем provider продолжает получать тот же public
+  `MediaStorage` dependency;
+- initial public re-export approach был отклонён focused tests из-за import cycle
+  `ads.contracts → media → AdMediaReader → ads`; concrete adapters остались
+  internal и доступны только application-local outer `ioc.py`;
+- architecture guardrail явно разрешает `ioc.py` собирать adapters внутри своего
+  application, но продолжает запрещать internal imports обычным modules и между
+  applications; добавлен enforcement test этого исключения;
+- добавлен root-container graph test семи dependencies без SQL/S3 operations;
+  focused ad-library/API/architecture regression: 69 tests; manual strict mypy
+  проходит; полный regression: 751 test;
+- root `ioc.py` сократился с 169 до 114 строк; ad-library provider составляет
+  67 строк, focused graph test — 34 строки;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13E
 выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover

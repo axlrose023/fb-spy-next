@@ -138,6 +138,12 @@ def test_cross_module_imports_use_public_package_api() -> None:
             target_owner = _owner(imported)
             if target_owner is None or target_owner == source_owner:
                 continue
+            if (
+                source.endswith(".ioc")
+                and source_owner is not None
+                and source_owner[0] == target_owner[0]
+            ):
+                continue
             if len(imported.split(".")) > 3:
                 violations.append(f"{source} -> {imported}")
     assert not violations, "Import another module through __init__.py:\n" + "\n".join(
