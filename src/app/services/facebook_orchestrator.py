@@ -39,11 +39,22 @@ from app.facebook.calibration import (
 from app.facebook.orchestration import (
     ProfileCycleSchedule,
     RecoverySchedulePolicy,
+    profile_rest_seconds,
     profile_resume_schedule,
+    recovery_schedule_policy,
     schedule_to_dict,
 )
 from app.facebook.orchestration import (
+    next_profile_schedule as _next_profile_schedule,
+)
+from app.facebook.orchestration import (
     profile_state_recovery_active as _profile_state_recovery_active,
+)
+from app.facebook.orchestration import (
+    recovery_evaluation_policy as _profile_evaluation_policy,
+)
+from app.facebook.orchestration import (
+    remaining_profile_rest_seconds as _remaining_profile_rest_seconds,
 )
 from app.facebook.orchestration import (
     to_nonnegative_int as _nonnegative_int,
@@ -346,110 +357,6 @@ class StateStore:
                 profile_state,
                 default_rest_seconds=default_rest_seconds,
             )
-
-
-def _next_profile_schedule(
-    *,
-    previous_burst_count: int,
-    metrics: RunMetrics,
-    decision: CalibrationDecision,
-    calibration: dict[str, Any] | None,
-    policy: RecoverySchedulePolicy,
-    previous_recovery_active: bool = False,
-    infrastructure_retry_required: bool = False,
-) -> ProfileCycleSchedule:
-    burst_count = max(0, previous_burst_count)
-    recovery_active = previous_recovery_active or burst_count > 0
-    normal_rest = max(0.0, policy.normal_rest_seconds)
-    retry_rest = max(0.0, policy.infrastructure_retry_seconds)
-
-    blocked_technical_stop = (
-        calibration is None
-        and decision.status != "healthy"
-        and any(
-            blocker
-            in {
-                "collector_stop_reason_resolve_timeout",
-                "collector_stop_reason_scroll_failed",
-                "collector_stop_reason_video_timeout",
-            }
-            for blocker in decision.blockers
-        )
-    )
-    collector_failed = metrics.return_code not in {
-        None,
-        0,
-    } and metrics.stop_reason not in {"facebook_login_required", "interrupted"}
-    if (
-        infrastructure_retry_required
-        or collector_failed
-        or blocked_technical_stop
-        or metrics.stop_reason in {"octo_proxy_error", "octo_start_error"}
-    ):
-        return ProfileCycleSchedule(
-            kind="infrastructure_retry",
-            rest_seconds=retry_rest,
-            recovery_burst_count=burst_count,
-            recovery_active=recovery_active,
-        )
-
-    if calibration:
-        summary = (
-            calibration.get("summary")
-            if isinstance(calibration.get("summary"), dict)
-            else {}
-        )
-        status = str(summary.get("status") or "")
-        if status == "infrastructure_error" or summary.get("infrastructure_error"):
-            return ProfileCycleSchedule(
-                kind="infrastructure_retry",
-                rest_seconds=retry_rest,
-                recovery_burst_count=burst_count,
-                recovery_active=recovery_active,
-            )
-        if status not in {"completed", "dry_run"}:
-            return ProfileCycleSchedule(
-                kind="calibration_retry",
-                rest_seconds=retry_rest,
-                recovery_burst_count=burst_count,
-                recovery_active=recovery_active,
-            )
-        if _is_recovery_calibration_decision(decision):
-            attempt = burst_count + 1
-            if attempt >= max(1, policy.burst_limit):
-                return ProfileCycleSchedule(
-                    kind="recovery_burst_rest",
-                    rest_seconds=normal_rest,
-                    recovery_burst_count=0,
-                    recovery_attempt=attempt,
-                    recovery_active=True,
-                )
-            return ProfileCycleSchedule(
-                kind="recovery_burst",
-                rest_seconds=max(0.0, policy.burst_rest_seconds),
-                recovery_burst_count=attempt,
-                recovery_attempt=attempt,
-                recovery_active=True,
-            )
-        return ProfileCycleSchedule(
-            kind="normal",
-            rest_seconds=normal_rest,
-            recovery_burst_count=0,
-        )
-
-    if decision.status == "healthy":
-        burst_count = 0
-        recovery_active = False
-    return ProfileCycleSchedule(
-        kind="normal",
-        rest_seconds=normal_rest,
-        recovery_burst_count=burst_count,
-        recovery_active=recovery_active,
-    )
-
-
-def _is_recovery_calibration_decision(decision: CalibrationDecision) -> bool:
-    return bool(set(decision.reasons) - {"periodic_account_maintenance"})
 
 
 def _is_healthy_relevance_result(
@@ -1083,49 +990,20 @@ def _enabled_profiles(args) -> list[ProfileConfig]:
 
 
 def _profile_rest_seconds(args) -> float:
-    return max(
-        0.0,
-        float(args.cycle_sleep),
-        float(args.profile_rest_minutes) * 60.0,
+    return profile_rest_seconds(
+        cycle_sleep_seconds=args.cycle_sleep,
+        profile_rest_minutes=args.profile_rest_minutes,
     )
 
 
 def _profile_schedule_policy(args) -> RecoverySchedulePolicy:
-    return RecoverySchedulePolicy(
-        normal_rest_seconds=_profile_rest_seconds(args),
-        burst_limit=max(1, int(args.recovery_burst_cycles)),
-        burst_rest_seconds=max(
-            0.0,
-            float(args.recovery_burst_rest_minutes) * 60.0,
-        ),
-        infrastructure_retry_seconds=max(
-            0.0,
-            float(args.infrastructure_retry_minutes) * 60.0,
-        ),
+    return recovery_schedule_policy(
+        cycle_sleep_seconds=args.cycle_sleep,
+        profile_rest_minutes=args.profile_rest_minutes,
+        recovery_burst_cycles=args.recovery_burst_cycles,
+        recovery_burst_rest_minutes=args.recovery_burst_rest_minutes,
+        infrastructure_retry_minutes=args.infrastructure_retry_minutes,
     )
-
-
-def _profile_evaluation_policy(
-    policy: CalibrationPolicy,
-    *,
-    recovery_active: bool,
-    quality_guard: bool = False,
-) -> CalibrationPolicy:
-    overrides: dict[str, Any] = {
-        # Recovery bursts below provide the bounded backoff for this orchestrator.
-        "zero_ads_calibration_burst_limit": max(
-            policy.zero_ads_calibration_burst_limit,
-            policy.max_calibrations_per_24h + 1,
-        ),
-        "proactive_quality_drop_enabled": quality_guard,
-    }
-    if recovery_active:
-        overrides.update(
-            calibration_cooldown_seconds=0.0,
-            zero_ads_calibration_cooldown_seconds=0.0,
-            calibration_retry_cooldown_seconds=0.0,
-        )
-    return replace(policy, **overrides)
 
 
 def _log_profile_schedule(
@@ -1152,27 +1030,6 @@ def _log_profile_schedule(
         f"rest={schedule.rest_seconds / 60:.1f}m",
         flush=True,
     )
-
-
-def _remaining_profile_rest_seconds(
-    last_run_at: str | None,
-    rest_seconds: float,
-    *,
-    now: datetime | None = None,
-) -> float:
-    if not last_run_at or rest_seconds <= 0:
-        return 0.0
-    try:
-        parsed = datetime.fromisoformat(last_run_at.replace("Z", "+00:00"))
-    except ValueError:
-        return 0.0
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    elapsed = max(
-        0.0,
-        ((now or datetime.now(UTC)) - parsed.astimezone(UTC)).total_seconds(),
-    )
-    return max(0.0, rest_seconds - elapsed)
 
 
 def _discover_profiles(args, *, fail_fast: bool) -> None:

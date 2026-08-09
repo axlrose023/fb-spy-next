@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -1938,6 +1938,30 @@ facebook/orchestration/
   (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12A
+выполняется revert одного отдельного коммита.
+
+#### 12B. Scheduling policy
+
+Результат:
+
+- deterministic profile scheduling, recovery calibration decisions, evaluation
+  cooldown overrides, 15/45 rest policy и restart timing вынесены в
+  framework-free `facebook/orchestration/scheduling`;
+- policy принимает typed schedules и calibration decisions, не зависит
+  от argparse, filesystem, subprocess и wall clock;
+- legacy orchestrator сохраняет тонкие CLI conversion wrappers, прежние
+  import names и все defaults; recovery burst, cooldown и regular rest behavior не
+  изменились;
+- 3000 randomized schedule decisions и 500 restart timing cases совпали с
+  legacy-реализацией без расхождений;
+- focused orchestration regression: 85 tests, branch-aware coverage 94%; полный
+  regression: 607 tests;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12B
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
