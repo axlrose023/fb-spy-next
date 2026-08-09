@@ -19,6 +19,17 @@ from pathlib import Path
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 
+from app.facebook.calibration import (
+    EngagementPolicy,
+    click_like,
+    follow_advertiser,
+    locate_saved_post,
+    plan_engagement,
+    post_comment,
+    view_feed_ad,
+    visit_ad_landing,
+    wait_for_saved_post,
+)
 from app.services import facebook_runner
 from app.services.facebook.calibration import (
     CalibrationTarget,
@@ -29,16 +40,6 @@ from app.services.facebook.calibration import (
     rotate_calibration_targets,
     write_json,
     write_targets,
-)
-from app.services.facebook.engagement import (
-    EngagementPolicy,
-    click_like,
-    follow_advertiser,
-    locate_saved_post,
-    post_comment,
-    view_feed_ad,
-    visit_ad_landing,
-    wait_for_saved_post,
 )
 from app.services.facebook.offer_funnel import (
     OfferFunnelPolicy,
@@ -866,45 +867,33 @@ def _engage_row(
         "actions": [],
     }
 
-    force_minimum = budget["successful"] < policy.min_interactions
-    reaction_due = budget["reaction"] < policy.max_reactions and (
-        force_minimum or random.random() < policy.reaction_rate
-    )
     comment_templates = [
         value.strip() for value in args.comment_template if value.strip()
     ] or ["👍"]
-    comment_due = (
-        bool(comment_templates)
-        and budget["comment"] < policy.max_comments
-        and policy.comment_every > 0
-        and relevant_ad_number % policy.comment_every == 0
+    engagement = plan_engagement(
+        policy,
+        budget,
+        relevant_ad_number=relevant_ad_number,
+        comments_available=bool(comment_templates),
+        visit_landing=bool(getattr(args, "visit_landing", False)),
+        random_value=random.random,
     )
-    follow_due = (
-        budget["follow"] < policy.max_follows and random.random() < policy.follow_rate
-    )
-    landing_due = bool(getattr(args, "visit_landing", False))
 
     if args.interaction_dry_run:
         result["actions"] = [
             {"action": action, "status": "dry_run"}
-            for action, due in (
-                ("reaction", reaction_due),
-                ("comment", comment_due),
-                ("follow", follow_due),
-                ("landing_visit", landing_due),
-            )
-            if due
+            for action in engagement.due_actions()
         ]
         return result
 
-    if reaction_due:
+    if engagement.reaction:
         budget["reaction"] += 1
         action = _engage_reaction(page, row, element_id, target)
         result["actions"].append(action)
         if action.get("status") == "clicked":
             budget["successful"] += 1
 
-    if comment_due:
+    if engagement.comment:
         budget["comment"] += 1
         refreshed_row = _refresh_engagement_row(page, row, target)
         comment_element_id = str((refreshed_row or row).get("element_id") or element_id)
@@ -920,7 +909,7 @@ def _engage_row(
         if action.get("status") == "posted":
             budget["successful"] += 1
 
-    if follow_due:
+    if engagement.follow:
         budget["follow"] += 1
         refreshed_row = _refresh_engagement_row(page, row, target)
         follow_element_id = str((refreshed_row or row).get("element_id") or element_id)
@@ -936,7 +925,7 @@ def _engage_row(
         if action.get("status") == "clicked":
             budget["successful"] += 1
 
-    if landing_due:
+    if engagement.landing_visit:
         budget["landing_visit"] = budget.get("landing_visit", 0) + 1
         refreshed_row = _refresh_engagement_row(page, row, target)
         landing_element_id = str(

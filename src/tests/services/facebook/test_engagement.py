@@ -368,7 +368,7 @@ def test_like_requires_active_state_after_click() -> None:
 def test_like_does_not_report_unconfirmed_click_as_success(monkeypatch) -> None:
     monotonic_values = iter([0.0, 9.0])
     monkeypatch.setattr(
-        "app.services.facebook.engagement.time.monotonic",
+        "app.facebook.calibration.adapters.playwright.reaction.time.monotonic",
         lambda: next(monotonic_values),
     )
     page = StubPage(

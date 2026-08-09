@@ -13,8 +13,8 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 
+from app.facebook.calibration import open_ad_landing
 from app.services.facebook.calibration import CalibrationTarget
-from app.services.facebook.engagement import open_ad_landing
 
 SUCCESS_PHRASES = (
     "thank you",

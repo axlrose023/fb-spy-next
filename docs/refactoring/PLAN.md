@@ -1660,7 +1660,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 11. `facebook/calibration`
 
-Статус: `IN_PROGRESS` (`11A COMPLETE`)
+Статус: `IN_PROGRESS` (`11A, 11B COMPLETE`)
 
 Источники:
 
@@ -1711,6 +1711,31 @@ calibration decision части services/facebook/health.py
 - Playwright engagement adapter;
 - comments disabled invariant;
 - repeated target behavior.
+
+Результат 11B:
+
+- matching и bounded engagement policy перенесены в
+  `app.facebook.calibration.execution`; выбор reaction/comment/follow/landing
+  отделён от Playwright и сохраняет прежний порядок и ленивость random draws;
+- post locating/viewing, reaction, follow, landing и опциональная legacy comment
+  automation разделены на пять Playwright adapters; каждый production-файл
+  меньше 300 строк;
+- production entrypoints калибратора и оркестратора по умолчанию сохраняют
+  `comment_every=0` и `max_comments=0`; старые defaults публичного
+  `EngagementPolicy` оставлены без изменения ради compatibility;
+- `app.services.facebook.engagement` сокращён с 1068 до 31 строки и оставлен
+  facade; calibration CLI, enrichment и offer funnel переведены на новый
+  публичный API без изменения CLI и runtime contracts;
+- 500 randomized differential matching cases совпали с legacy-реализацией;
+  все 11 Playwright JavaScript constants совпадают посимвольно;
+- 33 focused tests проходят, branch coverage execution и Playwright adapters
+  составляет 78%; полный regression: 231 + 312 + 10, итого 553 теста;
+- Ruff, strict mypy, architecture/contracts, wheel build, frontend production
+  build и gitleaks проходят; frontend source/lock не менялись, а `npm audit`
+  сохраняет известные 6 findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 11B
+выполняется revert одного отдельного коммита.
 
 #### 11C. Offer funnel
 

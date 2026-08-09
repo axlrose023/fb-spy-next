@@ -6,8 +6,8 @@ from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError
 
+from app.facebook.calibration import wait_for_saved_post
 from app.services import facebook_runner
-from app.services.facebook.engagement import wait_for_saved_post
 
 from ...models import EnrichmentOptions, EnrichmentResult, RelevantAd
 from ...post import valid_post_url

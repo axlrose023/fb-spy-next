@@ -1,3 +1,21 @@
+from .adapters.playwright import (
+    click_like,
+    follow_advertiser,
+    locate_saved_post,
+    open_ad_landing,
+    post_comment,
+    view_feed_ad,
+    visit_ad_landing,
+    wait_for_saved_post,
+)
+from .execution import (
+    EngagementPlan,
+    EngagementPolicy,
+    find_matching_target,
+    live_ad_key,
+    plan_engagement,
+    target_match_score,
+)
 from .models import CalibrationDecision, CalibrationPlan, CalibrationPolicy
 from .planning import (
     CalibrationIntensityPolicy,
@@ -18,12 +36,26 @@ __all__ = [
     "CalibrationPlan",
     "CalibrationPolicy",
     "CalibrationTarget",
+    "EngagementPlan",
+    "EngagementPolicy",
     "baseline_from_history",
+    "click_like",
     "evaluate_calibration_need",
     "effective_target_goal",
+    "find_matching_target",
+    "follow_advertiser",
     "is_good_baseline_candidate",
+    "live_ad_key",
+    "locate_saved_post",
     "metrics_from_dict",
+    "open_ad_landing",
     "plan_calibration_intensity",
+    "plan_engagement",
+    "post_comment",
     "rotate_calibration_targets",
     "select_calibration_targets",
+    "target_match_score",
+    "view_feed_ad",
+    "visit_ad_landing",
+    "wait_for_saved_post",
 ]
