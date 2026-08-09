@@ -35,6 +35,8 @@ from app.facebook.calibration import (
     plan_calibration_intensity,
 )
 from app.facebook.orchestration import (
+    CalibrationTransition,
+    CollectionPipelineState,
     OrchestrationStateStore,
     ProfileCycleSchedule,
     ProfileScheduler,
@@ -724,10 +726,10 @@ def _run_profile_cycle_locked(
             collect_dir / "runner.log",
             timeout_seconds=args.collect_minutes * 60 + args.collect_timeout_grace,
         )
-    interest_safety_code: int | None = None
+    pipeline = CollectionPipelineState(collect_code=collect_code)
     if collect_code == 0 and args.interest_safe_collection and not args.dry_run:
         safety_violations = _interest_safe_collection_violations(collect_dir)
-        interest_safety_code = 4 if safety_violations else 0
+        pipeline.interest_safety_code = 4 if safety_violations else 0
         _write_json(
             collect_dir / "interest_safety.json",
             {
@@ -741,30 +743,23 @@ def _run_profile_cycle_locked(
                 f"{','.join(safety_violations)}",
                 flush=True,
             )
-    prefilter_code: int | None = None
-    isolated_resolution_code: int | None = None
-    gate_resolution_code: int | None = None
-    enrichment_code: int | None = None
-    relevance_code: int | None = None
     relevance_enabled = _relevance_classification_enabled(args)
-    if (
-        collect_code == 0
-        and interest_safety_code in {None, 0}
-        and not args.dry_run
-        and not _STOP_EVENT.is_set()
-        and relevance_enabled
-        and (collect_dir / "ads.json").exists()
+    if pipeline.can_start_relevance(
+        dry_run=args.dry_run,
+        stop_requested=_STOP_EVENT.is_set(),
+        relevance_enabled=relevance_enabled,
+        ads_available=(collect_dir / "ads.json").exists(),
     ):
         if args.interest_safe_collection:
-            prefilter_code = _run_command(
+            pipeline.prefilter_code = _run_command(
                 _relevance_classifier_command(collect_dir, stage="prefilter"),
                 collect_dir / "prefilter.log",
                 timeout_seconds=args.relevance_timeout,
             )
-            if prefilter_code == 0 and not _STOP_EVENT.is_set():
+            if pipeline.prefilter_code == 0 and not _STOP_EVENT.is_set():
                 enrichment_source = collect_dir / "ads.prefilter.json"
                 if args.isolated_hold_resolution:
-                    isolated_resolution_code = _run_command(
+                    pipeline.isolated_resolution_code = _run_command(
                         _isolated_landing_resolver_command(
                             profile,
                             args,
@@ -773,8 +768,11 @@ def _run_profile_cycle_locked(
                         collect_dir / "isolated_resolution.log",
                         timeout_seconds=args.isolated_resolution_timeout,
                     )
-                    if isolated_resolution_code == 0 and not _STOP_EVENT.is_set():
-                        gate_resolution_code = _run_command(
+                    if (
+                        pipeline.isolated_resolution_code == 0
+                        and not _STOP_EVENT.is_set()
+                    ):
+                        pipeline.gate_resolution_code = _run_command(
                             _relevance_classifier_command(
                                 collect_dir,
                                 stage="resolve-holds",
@@ -783,18 +781,14 @@ def _run_profile_cycle_locked(
                             collect_dir / "gate_resolution.log",
                             timeout_seconds=args.relevance_timeout,
                         )
-                        if gate_resolution_code == 0:
+                        if pipeline.gate_resolution_code == 0:
                             enrichment_source = collect_dir / "ads.gated.json"
                 else:
-                    isolated_resolution_code = 0
-                    gate_resolution_code = 0
+                    pipeline.isolated_resolution_code = 0
+                    pipeline.gate_resolution_code = 0
                 if args.relevant_enrichment:
-                    if (
-                        isolated_resolution_code in {None, 0}
-                        and gate_resolution_code in {None, 0}
-                        and not _STOP_EVENT.is_set()
-                    ):
-                        enrichment_code = _run_command(
+                    if pipeline.resolution_succeeded and not _STOP_EVENT.is_set():
+                        pipeline.enrichment_code = _run_command(
                             _relevant_enricher_command(
                                 profile,
                                 args,
@@ -805,25 +799,16 @@ def _run_profile_cycle_locked(
                             timeout_seconds=args.enrichment_timeout,
                         )
                     else:
-                        enrichment_code = (
-                            gate_resolution_code or isolated_resolution_code
-                        )
+                        pipeline.enrichment_code = pipeline.resolution_failure_code
                 else:
-                    enrichment_code = (
-                        0
-                        if (
-                            isolated_resolution_code in {None, 0}
-                            and gate_resolution_code in {None, 0}
-                        )
-                        else gate_resolution_code or isolated_resolution_code
-                    )
-                if enrichment_code == 0 and not _STOP_EVENT.is_set():
+                    pipeline.enrichment_code = pipeline.resolution_result_code
+                if pipeline.enrichment_code == 0 and not _STOP_EVENT.is_set():
                     finalize_source = (
                         collect_dir / "ads.enriched.json"
                         if args.relevant_enrichment
                         else enrichment_source
                     )
-                    relevance_code = _run_command(
+                    pipeline.relevance_code = _run_command(
                         _relevance_classifier_command(
                             collect_dir,
                             stage="finalize",
@@ -834,25 +819,25 @@ def _run_profile_cycle_locked(
                         timeout_seconds=args.relevance_timeout,
                     )
                 else:
-                    relevance_code = enrichment_code
+                    pipeline.relevance_code = pipeline.enrichment_code
             else:
-                relevance_code = prefilter_code
+                pipeline.relevance_code = pipeline.prefilter_code
         else:
-            relevance_code = _run_command(
+            pipeline.relevance_code = _run_command(
                 _relevance_classifier_command(collect_dir),
                 collect_dir / "relevance.log",
                 timeout_seconds=args.relevance_timeout,
             )
-        if relevance_code:
+        if pipeline.relevance_code:
             print(
-                f"[{profile.display_name}] relevance classifier code={relevance_code}",
+                f"[{profile.display_name}] relevance classifier "
+                f"code={pipeline.relevance_code}",
                 flush=True,
             )
-    elif (
-        collect_code == 0
-        and args.interest_safe_collection
-        and not args.dry_run
-        and not relevance_enabled
+    elif pipeline.should_record_disabled_relevance(
+        interest_safe_collection=args.interest_safe_collection,
+        dry_run=args.dry_run,
+        relevance_enabled=relevance_enabled,
     ):
         _write_json(
             collect_dir / "relevance_summary.json",
@@ -866,17 +851,15 @@ def _run_profile_cycle_locked(
             "active enrichment and backend import are disabled",
             flush=True,
         )
-    if (
-        collect_code == 0
-        and args.import_backend
-        and not args.dry_run
-        and not _STOP_EVENT.is_set()
-        and relevance_code in {None, 0}
-        and (not args.interest_safe_collection or relevance_code == 0)
+    if pipeline.can_import_backend(
+        import_enabled=args.import_backend,
+        interest_safe_collection=args.interest_safe_collection,
+        dry_run=args.dry_run,
+        stop_requested=_STOP_EVENT.is_set(),
     ):
         import_source = (
             collect_dir / "ads.relevant.json"
-            if relevance_code == 0
+            if pipeline.relevance_code == 0
             else collect_dir / "ads.json"
         )
         if import_source.exists():
@@ -956,16 +939,12 @@ def _run_profile_cycle_locked(
         flush=True,
     )
 
-    pipeline_failed = (
-        interest_safety_code not in {None, 0}
-        or prefilter_code not in {None, 0}
-        or isolated_resolution_code not in {None, 0}
-        or gate_resolution_code not in {None, 0}
-        or enrichment_code not in {None, 0}
-        or relevance_code not in {None, 0}
+    calibration_transition = pipeline.calibration_transition(
+        calibration_requested=decision.should_calibrate,
+        stop_requested=_STOP_EVENT.is_set(),
     )
     calibration_records: list[dict[str, Any]] = []
-    if decision.should_calibrate and not _STOP_EVENT.is_set() and not pipeline_failed:
+    if calibration_transition is CalibrationTransition.RUN:
         calibration_passes = _calibration_passes_for_cycle(
             profile,
             metrics,
@@ -1016,7 +995,7 @@ def _run_profile_cycle_locked(
                 f"with {remaining_targets} unused targets",
                 flush=True,
             )
-    elif decision.should_calibrate and pipeline_failed:
+    elif calibration_transition is CalibrationTransition.SKIP_PIPELINE_FAILED:
         print(
             f"[{profile.display_name}] calibration skipped: collection pipeline failed",
             flush=True,
@@ -1028,7 +1007,7 @@ def _run_profile_cycle_locked(
         calibrations=calibration_records,
         policy=policy,
         schedule_policy=_profile_schedule_policy(args),
-        infrastructure_retry_required=pipeline_failed,
+        infrastructure_retry_required=pipeline.post_collection_failed,
     )
 
 

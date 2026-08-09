@@ -5,6 +5,7 @@ from .contracts import (
     ProfileStateReader,
     ProfileStateWriter,
 )
+from .lifecycle import CalibrationTransition, CollectionPipelineState
 from .models import (
     OrchestrationState,
     ProfileCycleSchedule,
@@ -38,7 +39,9 @@ from .serialization import (
 
 __all__ = [
     "available_profile_slots",
+    "CalibrationTransition",
     "CommandRunner",
+    "CollectionPipelineState",
     "OrchestrationState",
     "OrchestrationStateStore",
     "ProfileCycleSchedule",

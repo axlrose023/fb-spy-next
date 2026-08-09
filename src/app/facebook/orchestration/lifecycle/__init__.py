@@ -3,12 +3,15 @@ from .history import (
     calibration_was_effective,
     is_healthy_relevance_result,
 )
+from .pipeline import CalibrationTransition, CollectionPipelineState
 from .state import calibration_timestamp, new_profile_state
 
 __all__ = [
     "baseline_from_run_records",
+    "CalibrationTransition",
     "calibration_timestamp",
     "calibration_was_effective",
+    "CollectionPipelineState",
     "is_healthy_relevance_result",
     "new_profile_state",
 ]

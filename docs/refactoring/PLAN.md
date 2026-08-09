@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2086,6 +2086,37 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12F
+выполняется revert одного отдельного коммита.
+
+#### 12G. Collection pipeline transitions
+
+Результат:
+
+- stage codes и relevance/import/calibration gates вынесены в pure
+  `facebook/orchestration/lifecycle/pipeline.py`;
+- `CollectionPipelineState` хранит collect, interest safety, prefilter,
+  isolated resolution, gate resolution, enrichment и final relevance codes;
+  `CalibrationTransition` явно различает run, pipeline-failed skip и no-op;
+- legacy profile cycle делегирует модели relevance start, disabled-safe
+  marker, resolution propagation, backend import и calibration disposition;
+- exact legacy semantics сохранена: `post_collection_failed` учитывает
+  interest/relevance stages, но не `collect_code` и не backend import code; это
+  осознанно не менялось в refactor-этапе;
+- resolution propagation сохраняет gate-code precedence и различие
+  между successful result `0` и unset failure propagation `None`;
+- exhaustive truth-table tests сравнили более 16 000 combinations с
+  прежними boolean expressions; legacy command-order и artifact tests проходят;
+- добавлено 9 focused test cases; pipeline policy branch coverage 100%;
+  focused orchestration regression: 124 tests, coverage 97%; полный regression:
+  646 tests;
+- legacy orchestrator сократился с 2083 до 2062 строк; pipeline policy
+  составляет 119 строк;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12G
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root
