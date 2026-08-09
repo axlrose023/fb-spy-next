@@ -33,6 +33,7 @@ from app.facebook.calibration import (
     JsonCalibrationTargetPool,
     build_calibration_command,
     calibration_pool_name,
+    calibration_timeout_seconds,
     effective_target_goal,
     is_direct_calibration_target,
     is_relevant_ad,
@@ -1270,32 +1271,7 @@ def _calibration_timeout_seconds(
     *,
     target_limit: int | None = None,
 ) -> float:
-    if args.calibration_offer_funnel and args.calibration_session_minutes > 0:
-        return max(
-            300.0,
-            args.calibration_session_minutes * 60
-            + args.calibration_page_timeout
-            + args.calibration_landing_timeout
-            + args.calibration_timeout_grace,
-        )
-    per_target = (
-        args.calibration_view_seconds
-        + args.calibration_pause
-        + args.calibration_locate_timeout
-        + args.calibration_page_timeout
-        + (
-            args.calibration_landing_view_seconds + args.calibration_landing_timeout
-            if args.calibration_visit_landing
-            else 0.0
-        )
-        + 3.0
-    )
-    return max(
-        300.0,
-        (target_limit if target_limit is not None else args.calibration_limit)
-        * per_target
-        + args.calibration_timeout_grace,
-    )
+    return calibration_timeout_seconds(args, target_limit=target_limit)
 
 
 def _write_log_line(log_file, message: str) -> None:

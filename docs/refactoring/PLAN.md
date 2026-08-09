@@ -1860,7 +1860,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 12. `facebook/orchestration`
 
-Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M COMPLETE`)
+Статус: `IN_PROGRESS` (`12A, 12B, 12C, 12D, 12E, 12F, 12G, 12H, 12I, 12J, 12K, 12L, 12M, 12N COMPLETE`)
 
 Источник: `services/facebook_orchestrator.py`.
 
@@ -2310,6 +2310,33 @@ Production server, Octo runtime и старый репозиторий не ме
   findings (3 moderate, 3 high).
 
 Production server, Octo runtime и старый репозиторий не менялись. Rollback 12M
+выполняется revert одного отдельного коммита.
+
+#### 12N. Calibration runtime budget
+
+Результат:
+
+- calibrator subprocess timeout policy вынесена из legacy orchestrator в pure
+  `facebook/calibration/execution/runtime_budget.py`;
+- `CalibrationRuntimeOptions` protocol явно фиксирует все входы session-
+  и per-target formulas без зависимости от argparse, process runner и settings;
+- offer-funnel session budget, five-minute floor, landing-view contribution,
+  explicit `target_limit=0`, default calibration limit и timeout grace сохранили
+  exact legacy semantics;
+- legacy `_calibration_timeout_seconds` сохранён wrapper; command building,
+  subprocess execution, calibration summary/effectiveness и recovery transitions не
+  менялись;
+- добавлено 4 focused boundary tests; runtime budget policy имеет 100%
+  coverage по строкам и веткам; focused calibration/orchestration regression:
+  69 tests; полный regression: 693 tests;
+- legacy orchestrator сократился с 1563 до 1539 строки; runtime budget module
+  составляет 51 строку кода;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, wheel
+  build, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 12N
 выполняется revert одного отдельного коммита.
 
 ### Этап 13. Entry points и composition root

@@ -24,6 +24,7 @@ from .contracts import CalibrationResultRecorder, CalibrationTargetExecutor
 from .execution import (
     EngagementPlan,
     EngagementPolicy,
+    calibration_timeout_seconds,
     find_matching_target,
     live_ad_key,
     plan_engagement,
@@ -97,6 +98,7 @@ __all__ = [
     "build_calibration_command",
     "calibration_goals_met",
     "calibration_target_ok",
+    "calibration_timeout_seconds",
     "click_like",
     "click_prelander_cta",
     "complete_quiz",
