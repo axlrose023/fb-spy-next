@@ -19,12 +19,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/ping")
-async def ping() -> None | dict:
-    """Ping endpoint to check if the service is alive."""
-    return {"message": "pong"}
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting application...")

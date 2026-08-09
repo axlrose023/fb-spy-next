@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 12 завершен
+Статус: `IN_PROGRESS` — этап 13A завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `PENDING`
+Статус: `IN_PROGRESS` (`13A COMPLETE`)
 
 Изменения:
 
@@ -2552,6 +2552,31 @@ Production server, Octo runtime и старый репозиторий не ме
 - все старые CLI команды запускаются;
 - compose commands остаются рабочими;
 - import graph не имеет cycles.
+
+#### 13A. API router ownership
+
+Результат:
+
+- `/ping` перенесён из FastAPI application factory в owning
+  `app/api/health.py` router;
+- feature-router registry перенесён из package `__init__.py` в явный
+  `app/api/router.py`; `app.api.register_routers` сохранён compatibility export;
+- порядок подключения health/auth/media/users/ads/runs/stats routers сохранён;
+  prefixes, tags, methods, response body и operation metadata не изменились;
+- `application.py` больше не владеет endpoint logic и остаётся FastAPI assembly
+  с прежними CORS, lifespan, Dishka, metrics и data-directory side effects;
+- добавлен focused async test прямого health router; route contract и прежний
+  OpenAPI SHA проходят без изменений; focused API regression: 3 tests; полный
+  regression: 746 tests;
+- `application.py` сократился до 56 строк, `api/__init__.py` — до 3 строк;
+  health и registry modules составляют 9 и 19 строк;
+- Ruff, architecture/contracts, stage-scoped pre-commit, wheel build, frontend
+  production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6
+  findings (3 moderate, 3 high).
+
+Production server, Octo runtime и старый репозиторий не менялись. Rollback 13A
+выполняется revert одного отдельного коммита.
 
 ### Этап 14. Удаление legacy и финальный cutover
 
