@@ -56,6 +56,7 @@ from app.browser import (
     BrowserOperationDeadlineExceeded as _OperationDeadlineExceeded,
 )
 from app.browser import hard_deadline as _hard_deadline
+from app.facebook import enrichment as facebook_enrichment
 from app.facebook import navigation as facebook_navigation
 from app.facebook.adapters.octo import (
     OctoHttpClient,
@@ -137,6 +138,18 @@ _goto_with_retry = facebook_navigation.goto_with_retry
 _ignore_proxy_certificate_errors = facebook_navigation.ignore_proxy_certificate_errors
 _is_fb_feed_url = facebook_navigation.is_facebook_feed_url
 _recover_feed = facebook_navigation.recover_facebook_feed
+OPEN_COMMENTS_FOR_PERMALINK_JS = (
+    facebook_enrichment.OPEN_COMMENTS_FOR_PERMALINK_JS
+)
+parse_landing = facebook_enrichment.parse_landing
+_external_landing_url = facebook_enrichment.external_landing_url
+_facebook_post_identity_from_url = (
+    facebook_enrichment.facebook_post_identity_from_url
+)
+_normalized_facebook_post_url = (
+    facebook_enrichment.normalized_facebook_post_url
+)
+resolve_facebook_post_url = facebook_enrichment.resolve_facebook_post_url
 BROWSER_OPERATION_TIMEOUT_REASONS = frozenset({
     "resolve_timeout",
     "video_timeout",
@@ -474,55 +487,6 @@ SCROLL_CTA_JS = r"""
   return null;
 }
 """
-
-
-OPEN_COMMENTS_FOR_PERMALINK_JS = r"""
-({elementId}) => {
-  const root = document.querySelector(`[data-fbspy-id="${elementId}"]`);
-  if (!root) return {status: "root_not_found"};
-  const norm = value => (value || "").toLocaleLowerCase().replace(/\s+/g, " ").trim();
-  const positive = ["comment", "comentario", "comentar", "yorum"];
-  const exclude = ["comments and reactions", "comentarios y reacciones"];
-  for (const el of root.querySelectorAll('button,[role="button"]')) {
-    const label = norm(`${el.getAttribute("aria-label") || ""} ${el.innerText || ""}`);
-    if (!label || exclude.some(term => label.includes(norm(term)))) continue;
-    if (!positive.some(term => label.includes(norm(term)))) continue;
-    root.scrollIntoView({block: "center", inline: "nearest"});
-    el.click();
-    return {status: "clicked", label};
-  }
-  return {status: "control_not_found"};
-}
-"""
-
-
-# ── URL helpers ─────────────────────────────────────────────────────────────
-def parse_landing(url: str) -> tuple[str, dict, str | None]:
-    """Return (clean_url, utm_dict, fb_ad_id)."""
-    from urllib.parse import parse_qs, urlparse
-    p = urlparse(url)
-    clean = f"{p.scheme}://{p.netloc}{p.path}"
-    qs = parse_qs(p.query)
-    utm = {k: v[0] for k, v in qs.items() if k.startswith("utm_") or k in ("fbclid",)}
-
-    def first_numeric(keys: tuple[str, ...]) -> str | None:
-        for k in keys:
-            for value in qs.get(k, []):
-                m = re.search(r"\d{10,}", value)
-                if m:
-                    return m.group(0)
-        return None
-
-    # Prefer the real ad-level identifier. utm_id is commonly campaign-level,
-    # so it is only a last-resort fallback.
-    ad_id = first_numeric(("ad_id", "adid", "fb_ad_id", "utm_content"))
-    if not ad_id:
-        m = re.search(r"(?:[?&]|%26)(?:ad[_-]?id|adid|fb_ad_id|sub5)=(\d{10,})", url)
-        if m:
-            ad_id = m.group(1)
-    if not ad_id:
-        ad_id = first_numeric(("utm_term", "utm_id"))
-    return clean, utm, ad_id
 
 
 def _screenshot_has_blank_media(path: Path) -> bool:
@@ -1069,132 +1033,6 @@ def _encode_video_frames(
         return False, (completed.stderr or completed.stdout or "ffmpeg_failed")[-1000:]
     tmp_path.replace(output_path)
     return output_path.exists() and output_path.stat().st_size > 0, "ok"
-
-
-def resolve_facebook_post_url(
-    page,
-    ad: Ad,
-    element_id: str | None,
-    *,
-    feed_url: str = "https://m.facebook.com/",
-    debug: DebugRecorder | None = None,
-    debug_id: int = 0,
-) -> bool:
-    """Open a post's comments read-only to recover IDs absent from static ads."""
-    if ad.facebook_post_url:
-        return True
-    if not element_id:
-        return False
-    try:
-        opened = page.evaluate(
-            OPEN_COMMENTS_FOR_PERMALINK_JS,
-            {"elementId": element_id},
-        )
-        if opened.get("status") != "clicked":
-            return False
-        deadline = time.monotonic() + 5.0
-        identity = None
-        while time.monotonic() < deadline:
-            identity = _facebook_post_identity_from_url(page.url)
-            if identity:
-                break
-            page.wait_for_timeout(250)
-        if not identity:
-            page.keyboard.press("Escape")
-            return False
-        owner_id, _post_id = identity
-        observed_post_url = _normalized_facebook_post_url(page.url)
-        if not observed_post_url:
-            return False
-        ad.facebook_page_url = f"https://m.facebook.com/{owner_id}"
-        ad.facebook_post_url = observed_post_url
-        if debug:
-            debug.event(
-                "facebook_post_url_resolved",
-                debug_id=debug_id,
-                fb_ad_id=ad.fb_ad_id,
-                facebook_post_url=ad.facebook_post_url,
-                observed_url=page.url,
-            )
-        return True
-    except Exception as exc:
-        if debug:
-            debug.event(
-                "facebook_post_url_failed",
-                debug_id=debug_id,
-                error=repr(exc),
-            )
-        return False
-    finally:
-        try:
-            if not _is_fb_feed_url(page.url):
-                page.go_back(wait_until="domcontentloaded", timeout=12000)
-                page.wait_for_timeout(750)
-        except Exception:
-            pass
-        _recover_feed(page, feed_url=feed_url)
-
-
-def _facebook_post_identity_from_url(url: str) -> tuple[str, str] | None:
-    from urllib.parse import parse_qs, urlparse
-
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return None
-    host = (parsed.hostname or "").casefold()
-    if host != "facebook.com" and not host.endswith(".facebook.com"):
-        return None
-    query = parse_qs(parsed.query)
-    owner_id = (query.get("id") or [""])[0]
-    post_id = (query.get("story_fbid") or [""])[0]
-    if owner_id and post_id:
-        return owner_id, post_id
-    parts = [part for part in parsed.path.split("/") if part]
-    if "posts" in parts:
-        index = parts.index("posts")
-        if index > 0 and index + 1 < len(parts):
-            return parts[index - 1], parts[index + 1]
-    return None
-
-
-def _normalized_facebook_post_url(url: str) -> str | None:
-    """Return a stable direct URL while discarding Facebook tracking state."""
-    from urllib.parse import parse_qs, urlencode, urlparse
-
-    identity = _facebook_post_identity_from_url(url)
-    if not identity:
-        return None
-    owner_id, post_id = identity
-    parsed = urlparse(url)
-    query = parse_qs(parsed.query)
-    if query.get("story_fbid") and query.get("id"):
-        return "https://m.facebook.com/story.php?" + urlencode({
-            "story_fbid": post_id,
-            "id": owner_id,
-        })
-    return f"https://m.facebook.com/{owner_id}/posts/{post_id}"
-
-
-def _external_landing_url(url: str | None) -> str | None:
-    """Return an external landing URL, including FB outbound l.php redirects."""
-    if not url or not url.startswith(("http://", "https://")):
-        return None
-    try:
-        from urllib.parse import parse_qs, urlparse
-        p = urlparse(url)
-        host = (p.hostname or "").lower()
-        if not host.endswith("facebook.com"):
-            return url
-        if p.path.endswith("/l.php"):
-            target = parse_qs(p.query).get("u", [None])[0]
-            if target and target.startswith(("http://", "https://")):
-                target_host = (urlparse(target).hostname or "").lower()
-                if not target_host.endswith("facebook.com"):
-                    return target
-    except Exception:
-        pass
-    return None
 
 
 # ── Click-resolve a link ad that is CURRENTLY in view ───────────────────────

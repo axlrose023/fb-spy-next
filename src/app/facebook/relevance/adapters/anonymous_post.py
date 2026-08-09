@@ -7,6 +7,7 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.calibration import CalibrationTarget
+from app.facebook.enrichment import parse_landing
 from app.facebook.navigation import facebook_login_required
 from app.services import facebook_runner
 
@@ -198,7 +199,7 @@ def resolve_from_anonymous_post(
     )
     if not final_url:
         raise RuntimeError(f"unsafe anonymous landing redirect: {issue}")
-    clean, utm, ad_id = facebook_runner.parse_landing(final_url)
+    clean, utm, ad_id = parse_landing(final_url)
     resolved.update(
         {
             "landing_full": final_url,

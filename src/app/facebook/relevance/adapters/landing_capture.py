@@ -9,10 +9,10 @@ from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.enrichment import (
     archive_landing_page_from_browser,
+    parse_landing,
     save_landing_screenshot_from_browser,
     wait_for_landing_page_ready,
 )
-from app.services import facebook_runner
 
 from ..evidence.policy import isolated_external_url
 from .anonymous_post import resolve_from_anonymous_post
@@ -160,7 +160,7 @@ def _capture_direct_landing(
     )
     if not final_url:
         raise RuntimeError(f"unsafe landing redirect: {issue}")
-    clean, utm, ad_id = facebook_runner.parse_landing(final_url)
+    clean, utm, ad_id = parse_landing(final_url)
     resolved.update({"landing_full": final_url, "landing_clean": clean, "utm": utm})
     if ad_id and not resolved.get("fb_ad_id"):
         resolved["fb_ad_id"] = ad_id

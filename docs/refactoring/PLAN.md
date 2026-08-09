@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14F3 завершен
+Статус: `IN_PROGRESS` — этап 14F4 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F3 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14E COMPLETE`, `14F IN_PROGRESS: 14F1-14F4 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3105,6 +3105,44 @@ Rollback 14F2 выполняется revert одного отдельного к
 composition переносятся следующими независимыми commit/revert units. Production
 server, Octo runtime и старый репозиторий не менялись. Rollback 14F3 выполняется
 revert одного отдельного коммита.
+
+#### 14F4. Post identity and landing URL policy
+
+Результат:
+
+- landing URL parsing вынесен из legacy runner в 56-строчный
+  `facebook.enrichment.landing.urls`; stable URL, UTM/fbclid extraction,
+  ad-level identifier priority и Facebook `l.php` unwrapping сохранены без
+  изменения;
+- Facebook post identity и tracking-free normalization перенесены в
+  `facebook.enrichment.post.urls`, а read-only comments/permalink recovery — в
+  отдельный 96-строчный `facebook.enrichment.post.permalink`;
+- comments selector, five-second identity polling, `facebook_page_url`/
+  `facebook_post_url` fields, debug events, `go_back`, Escape fallback и
+  best-effort feed recovery сохранены в прежнем порядке;
+- enrichment permalink recovery и оба relevance landing consumers используют
+  owning public API вместо URL helpers в `services.facebook_runner`;
+- runner сохраняет identity-compatible aliases для `parse_landing`, external
+  landing extraction, post identity/normalization, comments script и permalink
+  resolver, но собственных реализаций больше не содержит; runner уменьшен с
+  2 051 до 1 889 строк;
+- активный CTA click, tab lifecycle, landing screenshot/archive и media capture
+  намеренно не смешивались с этим unit и остаются следующему независимому
+  этапу;
+- добавлено 16 focused contracts для URL parsing и identifier priority,
+  Facebook redirect unwrapping, host-bound post identity, URL normalization,
+  read-only permalink recovery и legacy alias identity; post/landing,
+  enrichment, relevance, runner, architecture/contracts и strict mypy проходят;
+  полный regression: 828 тестов;
+- wheel содержит canonical landing/post modules и обновленные consumers; Ruff,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+  frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14F остается `IN_PROGRESS`: active landing capture, video/media и
+collection CLI composition переносятся следующими независимыми commit/revert
+units. Production server, Octo runtime и старый репозиторий не менялись.
+Rollback 14F4 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

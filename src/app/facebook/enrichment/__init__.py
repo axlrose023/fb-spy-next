@@ -1,3 +1,4 @@
+from .landing import external_landing_url, parse_landing
 from .media import (
     LandingArchiveResult,
     archive_filename,
@@ -7,6 +8,12 @@ from .media import (
     wait_for_landing_page_ready,
 )
 from .models import EnrichmentOptions, EnrichmentResult, RelevantAd
+from .post import (
+    OPEN_COMMENTS_FOR_PERMALINK_JS,
+    facebook_post_identity_from_url,
+    normalized_facebook_post_url,
+    resolve_facebook_post_url,
+)
 from .service import EnrichmentService
 
 __all__ = [
@@ -14,10 +21,16 @@ __all__ = [
     "EnrichmentOptions",
     "EnrichmentResult",
     "EnrichmentService",
+    "OPEN_COMMENTS_FOR_PERMALINK_JS",
     "RelevantAd",
     "archive_filename",
     "archive_landing_http",
     "archive_landing_page_from_browser",
+    "external_landing_url",
+    "facebook_post_identity_from_url",
+    "normalized_facebook_post_url",
+    "parse_landing",
+    "resolve_facebook_post_url",
     "save_landing_screenshot_from_browser",
     "wait_for_landing_page_ready",
 ]

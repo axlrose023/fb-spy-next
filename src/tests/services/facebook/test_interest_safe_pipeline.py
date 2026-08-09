@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.facebook.enrichment.adapters.playwright import post as enrichment_post
 from app.services import (
     facebook_isolated_landing_resolver as isolated_resolver,
 )
@@ -206,7 +207,7 @@ def test_allowed_post_url_is_recovered_from_neutralized_feed_history(
         ad.facebook_page_url = "https://m.facebook.com/123"
         return True
 
-    monkeypatch.setattr(facebook_runner, "resolve_facebook_post_url", resolve)
+    monkeypatch.setattr(enrichment_post, "resolve_facebook_post_url", resolve)
     monkeypatch.setattr(
         facebook_runner,
         "neutralize_profile_pages",

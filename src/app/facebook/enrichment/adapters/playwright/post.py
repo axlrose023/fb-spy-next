@@ -10,6 +10,7 @@ from ...post import (
     is_facebook_url,
     matching_visible_feed_row,
     merge_passive_identity,
+    resolve_facebook_post_url,
     valid_post_url,
 )
 from .mapping import ad_from_raw
@@ -110,7 +111,7 @@ def _resolve_permalink(
         recovery["status"] = "missing_feed_element_id"
         return "", recovery
     ad = ad_from_raw(raw, element_id=element_id)
-    if not facebook_runner.resolve_facebook_post_url(
+    if not resolve_facebook_post_url(
         page,
         ad,
         element_id,
