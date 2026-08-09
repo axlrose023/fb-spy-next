@@ -7,7 +7,7 @@ def register_routers(router: APIRouter) -> None:
     from app.ad_library.ads.router import router as ads_router
     from app.ad_library.media.router import router as media_router
     from app.ad_library.statistics.router import router as stats_router
-    from app.api.modules.runs.routes import router as runs_router
+    from app.facebook.runs.router import router as runs_router
 
     router.include_router(auth_router, prefix="/auth", tags=["Auth"])
     router.include_router(media_router, prefix="/media", tags=["Media"])

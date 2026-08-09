@@ -19,11 +19,20 @@ from app.ad_library.media.adapters.ads import AdMediaReader
 from app.ad_library.media.configuration import configured_signer, configured_storage
 from app.ad_library.statistics import StatisticsService
 from app.ad_library.statistics.adapters import SqlAlchemyAdStatisticsReader
-from app.api.modules.runs.service import FacebookRunService
 from app.clients.providers import HttpClientsProvider
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
-from app.services.facebook import FacebookAdsImporter, FacebookRunnerRegistry
+from app.facebook.runs import RunDefaults, RunService
+from app.facebook.runs.adapters import (
+    LegacyRunAdsImporter,
+    RunArtifactDirectoryStager,
+)
+from app.facebook.runs.adapters.persistence import (
+    SqlAlchemyRunRepository,
+    SqlAlchemyRunTransaction,
+)
+from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
+from app.services.facebook.importer import FacebookAdsImporter
 from app.settings import Config, get_config
 
 try:
@@ -147,14 +156,29 @@ class ServicesProvider(Provider):
         return AdService(ads, media_signer)
 
     @provide(scope=Scope.REQUEST)
-    async def get_facebook_run_service(
+    def get_run_service(
         self,
+        session: AsyncSession,
         uow: UnitOfWork,
         config: Config,
         importer: FacebookAdsImporter,
         runner_registry: FacebookRunnerRegistry,
-    ) -> FacebookRunService:
-        return FacebookRunService(uow, config, importer, runner_registry)
+    ) -> RunService:
+        facebook = config.facebook
+        return RunService(
+            SqlAlchemyRunRepository(session),
+            SqlAlchemyRunTransaction(session),
+            runner_registry,
+            LegacyRunAdsImporter(uow, importer),
+            RunArtifactDirectoryStager(facebook.data_dir),
+            RunDefaults(
+                minutes=facebook.default_minutes,
+                collect_scrolls=facebook.default_collect_scrolls,
+                resolve_max=facebook.default_resolve_max,
+                scroll_px=facebook.default_scroll_px,
+                octo_profile_uuid=facebook.octo_profile_uuid,
+            ),
+        )
 
     @provide(scope=Scope.REQUEST)
     def get_statistics_reader(

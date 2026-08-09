@@ -16,24 +16,28 @@ class SqlAlchemyAdStatisticsReader:
     async def read_ads_statistics(self, *, facet_limit: int) -> AdStatistics:
         ads = self._ads
         summary = (
-            await self._session.execute(
-                select(
-                    func.count().label("total_ads"),
-                    self._conditional_count(ads.ad_type == "link").label(
-                        "link_ads"
-                    ),
-                    self._conditional_count(ads.landing_full.is_not(None)).label(
-                        "resolved_ads"
-                    ),
-                    self._conditional_count(
-                        ads.has_video.is_(True) | (ads.ad_type == "video")
-                    ).label("video_ads"),
-                    self._conditional_count(ads.screenshot_ok.is_(False)).label(
-                        "bad_screenshots"
-                    ),
-                ).select_from(ads)
+            (
+                await self._session.execute(
+                    select(
+                        func.count().label("total_ads"),
+                        self._conditional_count(ads.ad_type == "link").label(
+                            "link_ads"
+                        ),
+                        self._conditional_count(ads.landing_full.is_not(None)).label(
+                            "resolved_ads"
+                        ),
+                        self._conditional_count(
+                            ads.has_video.is_(True) | (ads.ad_type == "video")
+                        ).label("video_ads"),
+                        self._conditional_count(ads.screenshot_ok.is_(False)).label(
+                            "bad_screenshots"
+                        ),
+                    ).select_from(ads)
+                )
             )
-        ).one()._mapping
+            .one()
+            ._mapping
+        )
         facets = await self._read_facets(facet_limit)
         return AdStatistics(
             total_ads=int(summary["total_ads"] or 0),

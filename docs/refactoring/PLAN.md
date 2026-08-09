@@ -1147,7 +1147,7 @@ Server, Octo и production runtime не менялись. Старый репо�
 
 ### Этап 6. `facebook/runs`
 
-Статус: `PENDING`
+Статус: `COMPLETED` — 2026-08-09
 
 Источники:
 
@@ -1190,6 +1190,66 @@ Calibration decisions остаются до своего этапа.
 - metrics parity на существующих JSON fixtures;
 - process cancellation и timeout;
 - таблица и relationship с ads не меняются.
+
+Результат:
+
+- immutable domain models, application `RunService` и узкие contracts для
+  repository, transaction, process runner, importer и artifact staging вынесены
+  в `facebook/runs`; inner layer не импортирует FastAPI, Pydantic, SQLAlchemy,
+  UoW, subprocess или settings;
+- lifecycle start/import/stop сохраняет прежние transaction boundaries и HTTP
+  semantics: run фиксируется до старта процесса, импорт выполняется в одной DB
+  transaction, остановка требует активного процесса и переводит run в
+  `stopping`;
+- SQLAlchemy model, mapping, repository и transaction adapter перенесены во
+  внешний persistence package; имя таблицы, колонки, индексы, relationship и
+  OpenAPI contract не изменились;
+- process registry физически перенесён в `adapters/processes`; spawn в отдельной
+  process group, PID/runtime paths, terminal status, streaming import drain и
+  SIGTERM semantics сохранены, старый import path стал compatibility facade;
+- `RunMetrics` и весь сбор фактов вынесены из legacy `health.py` в отдельный
+  `metrics` package; calibration policy и решения намеренно остаются в
+  `health.py` до этапа orchestration/calibration;
+- API router подключён напрямую к новому модулю через composition root, а
+  прежние `api/modules/runs/*` оставлены тонкими compatibility facades для
+  переходных consumers;
+- operational DB-import command перенесён в `facebook/runs/commands.py`, при
+  этом прежний module entrypoint и точный `--help` contract сохранены для
+  orchestrator;
+- добавлено 15 unit/integration/characterization tests для defaults и явного
+  `resolve_max=0`, filters/errors, staging/import, PID/return code/SIGTERM,
+  process flags, idempotent completed-run import и повреждённых metric inputs;
+  focused branch coverage модуля — 90%, полный suite — 472 теста, общий combined
+  coverage — 66.29%; strict mypy, Ruff, architecture/OpenAPI/database/CLI
+  contracts проходят.
+
+Audit observations, не измененные в refactor-only этапе:
+
+- registry хранит process handles только в памяти; после рестарта API процесс
+  может продолжить работу по сохранённому PID, но текущий stop endpoint уже не
+  сможет им управлять. Durable process recovery относится к будущему lifecycle
+  orchestration, где необходимо валидировать PID ownership, а не слепо посылать
+  signal;
+- если subprocess spawn завершится ошибкой после commit, в БД останется run со
+  статусом `created`, как и до переноса; отдельная compensating transition в
+  `failed` будет behavior change и должна внедряться вместе с recovery policy;
+- staging внешней директории выполняется до DB transaction и использует basename
+  исходного run; collision или ошибка последующего import могут оставить
+  скопированные artifacts. Idempotent UUID destination и cleanup compensation
+  следует добавлять отдельным storage/lifecycle изменением;
+- process monitor и importer пока используют legacy UoW/ORM bridge, потому что
+  streaming relevance pipeline переносится на следующих этапах; dependency не
+  протекает в domain/application contracts;
+- допустимые status strings по-прежнему не закреплены database constraint или
+  domain state machine. Их формализация выполняется вместе с lifecycle module,
+  чтобы не изменить существующие operational состояния частичным решением.
+- frontend source и dependency lock не менялись; актуальный `npm audit` теперь
+  сообщает 6 findings (3 moderate, 3 high) вместо ранее зафиксированных 5 из-за
+  обновившейся advisory database. Их устранение требует отдельного dependency
+  upgrade и не смешивается с backend refactor.
+
+Server, Octo и production runtime не менялись. Старый репозиторий не
+использовался. Rollback выполняется revert одного коммита этапа 6.
 
 ### Этап 7. `facebook/profiles` и Octo boundary
 
