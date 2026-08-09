@@ -44,9 +44,6 @@ from app.facebook.calibration import (
 )
 from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
-    CollectionPipelineHooks,
-    CollectionPipelineRequest,
-    CollectionPipelineService,
     CollectionPipelineState,
     OrchestrationStateStore,
     ProfileCycleSchedule,
@@ -81,6 +78,8 @@ from app.facebook.orchestration.adapters import (
     write_log_line,
 )
 from app.facebook.orchestration.commands import (
+    CollectionCommandHooks,
+    CollectionCommandRequest,
     CommandHandlers,
     ProfileCycleCommandHooks,
     ProfileCycleCommandRequest,
@@ -89,6 +88,7 @@ from app.facebook.orchestration.commands import (
     calibration_policy_from_args,
     log_profile_schedule,
     profile_rest_seconds_from_args,
+    run_collection_command,
     run_command,
     run_profile_cycle_command,
     schedule_policy_from_args,
@@ -297,64 +297,9 @@ def _run_collection_pipeline(
     args,
     collect_dir: Path,
 ) -> CollectionPipelineState:
-    hooks = CollectionPipelineHooks(
-        run_collector=lambda: _run_command(
-            _collector_command(profile, args, collect_dir),
-            collect_dir / "runner.log",
-            timeout_seconds=args.collect_minutes * 60 + args.collect_timeout_grace,
-        ),
-        stop_requested=_STOP_EVENT.is_set,
-        relevance_enabled=lambda: _relevance_classification_enabled(args),
-        artifact_exists=lambda path: path.exists(),
-        audit_interest_safety=lambda: _interest_safe_collection_violations(collect_dir),
-        record_interest_safety=lambda violations: _write_json(
-            collect_dir / "interest_safety.json",
-            {
-                "status": "violation" if violations else "passed",
-                "violations": violations,
-            },
-        ),
-        run_classifier=lambda stage, source, include_video, log_name: _run_command(
-            _relevance_classifier_command(
-                collect_dir,
-                stage=stage,
-                source=source,
-                include_video=include_video,
-            ),
-            collect_dir / log_name,
-            timeout_seconds=args.relevance_timeout,
-        ),
-        run_isolated_resolver=lambda: _run_command(
-            _isolated_landing_resolver_command(profile, args, collect_dir),
-            collect_dir / "isolated_resolution.log",
-            timeout_seconds=args.isolated_resolution_timeout,
-        ),
-        run_enricher=lambda source: _run_command(
-            _relevant_enricher_command(
-                profile,
-                args,
-                collect_dir,
-                source=source,
-            ),
-            collect_dir / "enrichment.log",
-            timeout_seconds=args.enrichment_timeout,
-        ),
-        run_backend_import=lambda source: _run_command(
-            _backend_import_command(profile, source),
-            collect_dir / "backend_import.log",
-            timeout_seconds=args.backend_import_timeout,
-        ),
-        record_disabled_relevance=lambda: _write_json(
-            collect_dir / "relevance_summary.json",
-            {
-                "status": "disabled_in_interest_safe_collection",
-                "total": 0,
-            },
-        ),
-        log=lambda message: print(f"[{profile.display_name}] {message}", flush=True),
-    )
-    return CollectionPipelineService(hooks).run(
-        CollectionPipelineRequest(
+    return run_collection_command(
+        CollectionCommandRequest(
+            profile=profile,
             collect_dir=collect_dir,
             dry_run=args.dry_run,
             interest_safe_collection=args.interest_safe_collection,
@@ -362,7 +307,50 @@ def _run_collection_pipeline(
             relevant_enrichment=args.relevant_enrichment,
             import_backend=args.import_backend,
             include_video=not args.no_video_recording,
-        )
+            collector_timeout=(args.collect_minutes * 60 + args.collect_timeout_grace),
+            relevance_timeout=args.relevance_timeout,
+            isolated_resolution_timeout=args.isolated_resolution_timeout,
+            enrichment_timeout=args.enrichment_timeout,
+            backend_import_timeout=args.backend_import_timeout,
+        ),
+        CollectionCommandHooks(
+            run_command=lambda command, log_path, timeout: _run_command(
+                command,
+                log_path,
+                timeout_seconds=timeout,
+            ),
+            collector_command=lambda cycle_profile, run_dir: _collector_command(
+                cycle_profile,
+                args,
+                run_dir,
+            ),
+            classifier_command=lambda run_dir, stage, source, include_video: (
+                _relevance_classifier_command(
+                    run_dir,
+                    stage=stage,
+                    source=source,
+                    include_video=include_video,
+                )
+            ),
+            isolated_resolver_command=lambda cycle_profile, run_dir: (
+                _isolated_landing_resolver_command(cycle_profile, args, run_dir)
+            ),
+            enricher_command=lambda cycle_profile, run_dir, source: (
+                _relevant_enricher_command(
+                    cycle_profile,
+                    args,
+                    run_dir,
+                    source=source,
+                )
+            ),
+            backend_import_command=_backend_import_command,
+            stop_requested=_STOP_EVENT.is_set,
+            relevance_enabled=lambda: _relevance_classification_enabled(args),
+            artifact_exists=lambda path: path.exists(),
+            audit_interest_safety=_interest_safe_collection_violations,
+            write_json=_write_json,
+            log=lambda message: print(message, flush=True),
+        ),
     )
 
 

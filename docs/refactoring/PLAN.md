@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G4 завершен
+Статус: `IN_PROGRESS` — этап 14G5 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G4 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G5 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3492,6 +3492,37 @@ Production server, live Octo runtime и старый репозиторий не
 Этап 14G остается `IN_PROGRESS`: collection pipeline, calibration и discovery
 composition переносятся следующими независимыми units. Production server, live
 Octo runtime и старый репозиторий не менялись. Rollback 14G4 выполняется revert
+одного отдельного коммита.
+
+#### 14G5. Orchestrator collection pipeline composition
+
+Результат:
+
+- outer wiring collection/relevance/import lifecycle вынесен в 124-строчный
+  `facebook.orchestration.commands.collection`; последовательностью действий
+  по-прежнему владеет ранее выделенный `CollectionPipelineService`;
+- immutable request фиксирует flags и пять timeout budgets, а process runner,
+  command builders, stop/relevance state, artifact reader, safety audit, JSON
+  writer и logger передаются через `CollectionCommandHooks`;
+- exact safe-flow `collect -> prefilter -> isolated -> gate -> enrich ->
+  finalize -> import`, log filenames, source artifacts и timeout routing
+  сохранены;
+- payloads `interest_safety.json` и `relevance_summary.json`, prefixed log text,
+  disabled-classifier import block и standard/safe pipeline semantics не
+  изменились;
+- legacy `_run_collection_pipeline` остался args/environment adapter и
+  динамически связывает прежние command-builder, subprocess, settings и
+  persistence seams;
+- legacy orchestrator сокращен с 897 до 885 строк; добавлено 2 focused wiring
+  contracts; focused regression: 112 тестов, полный regression: 873 теста;
+- wheel содержит canonical collection composition; Ruff, strict mypy,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: calibration и discovery/maintenance
+composition переносятся следующими независимыми units. Production server, live
+Octo runtime и старый репозиторий не менялись. Rollback 14G5 выполняется revert
 одного отдельного коммита.
 
 Перед удалением:

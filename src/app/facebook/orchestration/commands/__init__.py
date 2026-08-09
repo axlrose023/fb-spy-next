@@ -1,3 +1,8 @@
+from .collection import (
+    CollectionCommandHooks,
+    CollectionCommandRequest,
+    run_collection_command,
+)
 from .dispatch import dispatch
 from .maintenance_options import add_common_paths
 from .models import (
@@ -18,6 +23,8 @@ from .run import (
 
 __all__ = [
     "CommandHandlers",
+    "CollectionCommandHooks",
+    "CollectionCommandRequest",
     "ProfileCycleCommandHooks",
     "ProfileCycleCommandRequest",
     "RunCommandHooks",
@@ -27,6 +34,7 @@ __all__ = [
     "dispatch",
     "log_profile_schedule",
     "profile_rest_seconds_from_args",
+    "run_collection_command",
     "run_profile_cycle_command",
     "run_command",
     "schedule_policy_from_args",
