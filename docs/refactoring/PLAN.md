@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 13I завершен
+Статус: `IN_PROGRESS` — этап 13 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2532,7 +2532,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 13. Entry points и composition root
 
-Статус: `IN_PROGRESS` (`13A–13I COMPLETE`)
+Статус: `COMPLETE` (`13A–13I COMPLETE`)
 
 Изменения:
 
@@ -2809,6 +2809,46 @@ Production server, Octo runtime и старый репозиторий не ме
 ### Этап 14. Удаление legacy и финальный cutover
 
 Статус: `PENDING`
+
+Closure inventory после этапа 13:
+
+- `app/services`: 24 Python-файла, 5 740 строк, 29 direct production import
+  sites в 23 файлах;
+- `app/api/modules`: 31 Python-файл, 450 строк, 11 direct production import
+  sites в 7 файлах;
+- основные implementation leftovers: `facebook_runner.py` (2 349 строк),
+  `facebook_orchestrator.py` (1 379), `facebook/importer.py` (690),
+  `facebook/calibration.py` (445), browser services (170 суммарно), logging (50);
+- короткие compatibility facades не удаляются раньше implementation leftovers,
+  потому что часть новых adapters пока импортирует их публичные names.
+
+Порядок локального cutover:
+
+1. `14A` — перенести logging/observability и оставить `services.logging` facade;
+2. `14B` — перевести UoW и production imports со старых `api/modules` на owning
+   accounts/ad-library/facebook persistence adapters;
+3. `14C` — перенести Facebook importer в `ad_library`/`facebook.runs`, затем
+   оставить `services.facebook.importer` facade;
+4. `14D` — перенести calibration persistence/target loading из
+   `services.facebook.calibration`;
+5. `14E` — перенести browser pool/context/user-agent implementations в
+   `app.browser`, затем удалить `services.browser` imports;
+6. `14F` — по группам перенести оставшиеся runner primitives: runtime/deadline,
+   navigation, post/landing, video/media и collection CLI composition;
+7. `14G` — перенести orchestrator parser/composition в
+   `facebook.orchestration.commands`, сохранив module wrapper;
+8. `14H` — удалить простые Facebook compatibility facades после нулевого
+   production import count;
+9. `14I` — удалить one-off legacy CLI wrappers после release-path contract;
+10. `14J` — удалить пустые `services`/`api.modules` trees и ужесточить
+    architecture guardrails до полного запрета legacy imports;
+11. `14K` — выполнить полный локальный cutover gate и подготовить отдельный
+    список live validation без production deployment.
+
+Каждый подэтап выполняется отдельным commit/revert unit. Production server,
+Octo runtime и старый репозиторий на этапе 14 также не меняются. Manual Octo,
+production schema migration и server smoke выполняются только после отдельного
+разрешения пользователя и не блокируют локальный архитектурный перенос.
 
 Перед удалением:
 
