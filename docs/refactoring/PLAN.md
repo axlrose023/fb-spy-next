@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14K1 завершен
+Статус: `COMPLETE_LOCAL` — этап 14K завершен, production cutover отложен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14J COMPLETE`, `14K IN_PROGRESS: 14K1 COMPLETE`)
+Статус: `COMPLETE_LOCAL` (`14A-14K COMPLETE`, live cutover deferred)
 
 Closure inventory после этапа 13:
 
@@ -4418,6 +4418,35 @@ worktree пересоздаётся из нового HEAD, затем выпо�
 orchestration fake-process и release-report gates. Production server, live Octo
 runtime и старый репозиторий не менялись. Rollback 14K1 выполняется
 revert одного отдельного коммита.
+
+#### 14K2. Clean package и release-readiness gate
+
+Результат:
+
+- detached clean worktree пересоздан из published 14K1 commit;
+  frozen install и полный clean regression прошли: 883 теста;
+- candidate metadata повторно сверена с isolated migrated PostgreSQL:
+  `alembic check` не выявил drift;
+- wheel установлен в отдельный venv; canonical imports и public
+  collect/orchestrate/calibrate help contracts проходят, legacy namespaces в
+  installed package отсутствуют;
+- focused fake-process/profile/state collection, calibration, orchestration и
+  interest-safety gate: 252 теста;
+- clean frontend `npm ci` и production build проходят; audit baseline не
+  изменился; clean-worktree gitleaks не нашёл secrets;
+- local branch и GitHub remote совпадают; author/committer всех новых
+  units — только `axlrose023 <sloboda282@gmail.com>`;
+- создан `docs/refactoring/RELEASE_READINESS.md` с пройденными
+  gates, известными ограничениями, live checklist и rollback;
+- production status умышленно `HOLD`: server deployment, live Octo
+  collection/calibration и production state не менялись и требуют
+  отдельного разрешения.
+
+Этапы 14A-14K завершены локально. Рефакторинг опубликован только в
+`axlrose023/fb-spy-next`; старый репозиторий, production server и live Octo не
+изменялись. Следующее действие — только отдельно разрешённый live
+validation/cutover по release-readiness checklist. Rollback 14K2 — revert одного
+documentation-only commit.
 
 Перед удалением:
 
