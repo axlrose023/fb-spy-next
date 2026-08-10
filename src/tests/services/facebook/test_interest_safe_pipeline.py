@@ -6,17 +6,24 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.facebook.calibration import CalibrationTarget
 from app.facebook.enrichment.adapters.playwright import post as enrichment_post
 from app.facebook.relevance import (
     RelevanceResult,
     apply_prefilter_uncertainty_guard,
     parse_model_json,
 )
-from app.services import (
-    facebook_isolated_landing_resolver as isolated_resolver,
+from app.facebook.relevance.adapters.anonymous_post import (
+    wait_for_anonymous_post_cta,
+)
+from app.facebook.relevance.classification.input import analysis_input
+from app.facebook.relevance.evidence import (
+    EvidenceService,
+    isolated_external_url,
+    resolution_candidate,
+    summarize_isolated_resolutions,
 )
 from app.services import facebook_orchestrator, facebook_runner
-from app.services import facebook_relevance_classifier as classifier
 from app.services.facebook_ad_enricher import (
     _candidate_indexes,
     _enrich_one,
@@ -92,7 +99,7 @@ def test_feed_only_analysis_removes_every_active_enrichment_artifact() -> None:
         "utm": {"fbclid": "secret"},
     }
 
-    result = classifier._analysis_input(
+    result = analysis_input(
         raw,
         include_video=False,
         feed_only=True,
@@ -290,15 +297,7 @@ class _RecordingFilter:
 @pytest.mark.asyncio
 async def test_finalize_never_reclassifies_or_acts_on_denied_rows(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        classifier,
-        "get_config",
-        lambda: SimpleNamespace(
-            facebook=SimpleNamespace(relevance_filter_concurrency=3)
-        ),
-    )
     relevance_filter = _RecordingFilter()
     rows = [
         {
@@ -328,10 +327,9 @@ async def test_finalize_never_reclassifies_or_acts_on_denied_rows(
         },
     ]
 
-    result = await classifier._finalize_ads(
+    result = await EvidenceService(relevance_filter, concurrency=3).finalize_ads(
         rows,
         tmp_path,
-        relevance_filter,
         include_video=False,
     )
 
@@ -344,15 +342,7 @@ async def test_finalize_never_reclassifies_or_acts_on_denied_rows(
 @pytest.mark.asyncio
 async def test_isolated_landing_can_promote_hold_before_profile_enrichment(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        classifier,
-        "get_config",
-        lambda: SimpleNamespace(
-            facebook=SimpleNamespace(relevance_filter_concurrency=3)
-        ),
-    )
     relevance_filter = _RecordingFilter()
     rows = [
         {
@@ -374,10 +364,9 @@ async def test_isolated_landing_can_promote_hold_before_profile_enrichment(
         }
     ]
 
-    result = await classifier._resolve_held_ads(
+    result = await EvidenceService(relevance_filter, concurrency=3).resolve_held_ads(
         rows,
         tmp_path,
-        relevance_filter,
     )
 
     assert len(relevance_filter.calls) == 1
@@ -389,15 +378,7 @@ async def test_isolated_landing_can_promote_hold_before_profile_enrichment(
 @pytest.mark.asyncio
 async def test_unresolved_hold_never_enters_authenticated_profile(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        classifier,
-        "get_config",
-        lambda: SimpleNamespace(
-            facebook=SimpleNamespace(relevance_filter_concurrency=3)
-        ),
-    )
     relevance_filter = _RecordingFilter()
     rows = [
         {
@@ -411,10 +392,9 @@ async def test_unresolved_hold_never_enters_authenticated_profile(
         }
     ]
 
-    gated = await classifier._resolve_held_ads(
+    gated = await EvidenceService(relevance_filter, concurrency=3).resolve_held_ads(
         rows,
         tmp_path,
-        relevance_filter,
     )
 
     assert relevance_filter.calls == []
@@ -422,14 +402,7 @@ async def test_unresolved_hold_never_enters_authenticated_profile(
     assert _candidate_indexes(gated) == []
 
 
-def test_isolated_url_decodes_fb_redirect_and_removes_profile_tracking(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        isolated_resolver,
-        "_host_is_public",
-        lambda host: host == "offer.example",
-    )
+def test_isolated_url_decodes_fb_redirect_and_removes_profile_tracking() -> None:
     value = (
         "https://l.facebook.com/l.php?"
         "u=https%3A%2F%2Foffer.example%2Fstart%3F"
@@ -437,7 +410,10 @@ def test_isolated_url_decodes_fb_redirect_and_removes_profile_tracking(
         "&h=redirect-token"
     )
 
-    target, issue = isolated_resolver.isolated_external_url(value)
+    target, issue = isolated_external_url(
+        value,
+        host_is_public=lambda host: host == "offer.example",
+    )
 
     assert issue == ""
     assert target == "https://offer.example/start?campaign_id=123"
@@ -446,16 +422,17 @@ def test_isolated_url_decodes_fb_redirect_and_removes_profile_tracking(
 
 
 def test_isolated_candidate_falls_back_to_anonymous_saved_post() -> None:
-    source, target, issue = isolated_resolver._resolution_candidate(
+    candidate = resolution_candidate(
         {
             "cta_href": "",
             "facebook_post_url": "https://m.facebook.com/123/posts/456",
-        }
+        },
+        host_is_public=lambda _host: False,
     )
 
-    assert source == "anonymous_facebook_post"
-    assert target == "https://m.facebook.com/123/posts/456"
-    assert issue == ""
+    assert candidate.source == "anonymous_facebook_post"
+    assert candidate.target == "https://m.facebook.com/123/posts/456"
+    assert candidate.issue == ""
 
 
 class _AnonymousLocatorPage:
@@ -479,7 +456,7 @@ class _AnonymousLocatorPage:
 
 def test_anonymous_post_locator_requires_metadata_cta_match() -> None:
     page = _AnonymousLocatorPage()
-    target = isolated_resolver.CalibrationTarget(
+    target = CalibrationTarget(
         url="https://m.facebook.com/123/posts/456",
         advertiser="Example News",
         displayed_domain="offer.example",
@@ -488,7 +465,7 @@ def test_anonymous_post_locator_requires_metadata_cta_match() -> None:
         cta="Learn more",
     )
 
-    result = isolated_resolver._wait_for_anonymous_post_cta(
+    result = wait_for_anonymous_post_cta(
         page,
         target,
         element_id="isolated-1",
@@ -519,22 +496,18 @@ def test_anonymous_post_locator_requires_metadata_cta_match() -> None:
 )
 def test_isolated_url_rejects_meta_and_private_destinations(
     value,
-    monkeypatch,
 ) -> None:
-    monkeypatch.setattr(
-        isolated_resolver,
-        "_host_is_public",
-        lambda host: host == "public.example",
+    target, issue = isolated_external_url(
+        value,
+        host_is_public=lambda host: host == "public.example",
     )
-
-    target, issue = isolated_resolver.isolated_external_url(value)
 
     assert target == ""
     assert issue
 
 
 def test_isolated_summary_fails_closed_without_cookie_audit() -> None:
-    result = isolated_resolver._summary(
+    result = summarize_isolated_resolutions(
         [
             {
                 "relevance_gate": "hold",
@@ -552,6 +525,7 @@ def test_isolated_summary_fails_closed_without_cookie_audit() -> None:
             }
         ],
         status="completed",
+        finished_at="2026-08-09T00:00:00Z",
     )
 
     assert result["isolation_violations"] == 1

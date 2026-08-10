@@ -28,6 +28,15 @@ REMOVED_FACADES = {
         APP_ROOT / "services/facebook/runner_process.py"
     ),
     "app.services.facebook.relevance": APP_ROOT / "services/facebook/relevance.py",
+    "app.services.facebook_db_importer": (
+        APP_ROOT / "services/facebook_db_importer.py"
+    ),
+    "app.services.facebook_isolated_landing_resolver": (
+        APP_ROOT / "services/facebook_isolated_landing_resolver.py"
+    ),
+    "app.services.facebook_relevance_classifier": (
+        APP_ROOT / "services/facebook_relevance_classifier.py"
+    ),
 }
 
 

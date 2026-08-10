@@ -5,7 +5,7 @@ from .classification import (
     parse_model_json,
 )
 from .configuration import configured_relevance_service
-from .contracts import RelevanceProvider
+from .contracts import RelevanceAnalyzer, RelevanceProvider
 from .evidence import EvidenceCandidate, EvidenceService
 from .exceptions import (
     RelevanceError,
@@ -19,6 +19,7 @@ from .service import RelevanceService
 __all__ = [
     "RelevanceClassificationService",
     "RelevanceDecision",
+    "RelevanceAnalyzer",
     "EvidenceCandidate",
     "EvidenceService",
     "RelevanceError",

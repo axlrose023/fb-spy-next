@@ -1,6 +1,6 @@
 from datetime import UTC
 
-from app.services.facebook_db_importer import _default_title, _parse_datetime
+from app.facebook.runs.commands import _default_title, _parse_datetime
 
 
 def test_db_importer_builds_profile_title_and_parses_utc(tmp_path) -> None:

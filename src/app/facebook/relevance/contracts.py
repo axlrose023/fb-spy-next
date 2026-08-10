@@ -1,7 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
+
+from .models import RelevanceResult
+
+
+class RelevanceAnalyzer(Protocol):
+    async def analyze_raw_ad(
+        self,
+        raw: dict[str, Any],
+        run_dir: Path,
+        *,
+        prefilter: bool = False,
+    ) -> RelevanceResult: ...
 
 
 class RelevanceProvider(Protocol):

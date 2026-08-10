@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ..classification.input import analysis_input
-from ..service import RelevanceService
+from ..contracts import RelevanceAnalyzer
 
 
 class EvidenceService:
@@ -13,7 +13,7 @@ class EvidenceService:
 
     def __init__(
         self,
-        relevance: RelevanceService,
+        relevance: RelevanceAnalyzer,
         *,
         concurrency: int = 3,
     ) -> None:
