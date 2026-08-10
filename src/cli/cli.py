@@ -21,10 +21,10 @@ from app.api.modules.runs.models import FacebookRun
 from app.api.modules.users.models import User
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
+from app.facebook.enrichment import archive_filename, archive_landing_http
+from app.facebook.relevance import configured_relevance_service
 from app.facebook.runs.adapters import FacebookAdsImporter
 from app.ioc import get_async_container
-from app.services.facebook.landing_archive import archive_filename, archive_landing_http
-from app.services.facebook.relevance import FacebookAdRelevanceFilter
 from app.settings import get_config
 
 app = typer.Typer()
@@ -132,7 +132,7 @@ def filter_facebook_ads(
 
     async def _filter_ads() -> None:
         config = get_config()
-        relevance_filter = FacebookAdRelevanceFilter.from_config(config)
+        relevance_filter = configured_relevance_service(config)
         if not relevance_filter.enabled:
             raise typer.BadParameter(
                 "Relevance filter is disabled. Set APP__FACEBOOK__RELEVANCE_FILTER_ENABLED=true "

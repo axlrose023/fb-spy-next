@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from app.services.facebook.relevance import (
-    TEXT_PROMPT,
-    VISION_PROMPT,
-    FacebookAdRelevanceFilter,
-    _contains_term,
+from app.facebook.relevance import (
+    RelevanceClassificationService,
+    RelevanceService,
     apply_scope_guards,
 )
+from app.facebook.relevance.classification.matching import contains_term
+from app.facebook.relevance.classification.prompt import TEXT_PROMPT, VISION_PROMPT
 
 
 def test_facebook_relevance_prompt_is_not_general_finance_classifier() -> None:
@@ -108,11 +108,11 @@ def test_facebook_vision_prompt_mentions_scam_buyer_funnel_signals() -> None:
 
 
 def test_term_matching_does_not_match_fragments_inside_words() -> None:
-    assert not _contains_term("utm_medium=paid", "ai")
-    assert not _contains_term("Learn more", "earn")
-    assert not _contains_term("a better offer", "bet")
-    assert _contains_term("AI-powered income", "ai")
-    assert _contains_term("Start to earn today", "earn")
+    assert not contains_term("utm_medium=paid", "ai")
+    assert not contains_term("Learn more", "earn")
+    assert not contains_term("a better offer", "bet")
+    assert contains_term("AI-powered income", "ai")
+    assert contains_term("Start to earn today", "earn")
 
 
 class _ImageSequenceGemini:
@@ -163,7 +163,9 @@ async def test_filter_analyzes_ad_and_landing_together(
             },
         ]
     )
-    relevance_filter = FacebookAdRelevanceFilter(gemini, enabled=True)
+    relevance_filter = RelevanceService(
+        RelevanceClassificationService(gemini, enabled=True)
+    )
 
     result = await relevance_filter.analyze_raw_ad(
         {
@@ -275,8 +277,7 @@ def test_scope_guard_rejects_coinbet_hostname_mislabeled_as_crypto() -> None:
             {
                 "result": "relevant",
                 "reason": (
-                    "The Zeus creative promises 50% EXTRA and redirects to "
-                    "WhatsApp."
+                    "The Zeus creative promises 50% EXTRA and redirects to WhatsApp."
                 ),
                 "category": "make_money",
                 "grey_signals": ["50% EXTRA", "discount code"],

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14H2 завершен
+Статус: `IN_PROGRESS` — этап 14H завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14G COMPLETE`, `14H IN_PROGRESS: 14H1-14H2 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I NEXT`)
 
 Closure inventory после этапа 13:
 
@@ -3957,6 +3957,34 @@ Production server, live Octo runtime и старый репозиторий не
 рассматриваются отдельно в 14I. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14H2 выполняется revert одного отдельного
 коммита.
+
+#### 14H3. Relevance и landing-archive facade removal
+
+Результат:
+
+- production CLI переведён на существующие public API
+  `app.facebook.relevance.configured_relevance_service` и
+  `app.facebook.enrichment`; дублирующая сборка Gemini provider/classifier из
+  `FacebookAdRelevanceFilter.from_config` удалена;
+- relevance tests используют canonical classification coordinator, prompt и
+  matching policy; поведение совместного анализа ad/landing evidence сохранено;
+- landing archive tests импортируют public enrichment API, а HTTP client и
+  browser-to-HTTP fallback подменяют непосредственно в owning archive modules;
+  искусственный `httpx` re-export больше не нужен;
+- удалены последние `app.services.facebook` facades: `relevance.py`,
+  `landing_archive.py` и пустой package `__init__.py`; architecture denylist
+  запрещает возврат package и обоих module paths;
+- focused cutover regression: 78 тестов, полный regression: 896 тестов;
+- wheel содержит canonical relevance/enrichment archive modules и не содержит
+  удалённый `app.services.facebook` package; Ruff, mypy, architecture/contracts,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14H завершен: все простые Facebook compatibility facades удалены.
+Historical executable wrappers остаются отдельной release-path задачей 14I.
+Production server, live Octo runtime и старый репозиторий не менялись. Rollback
+14H3 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

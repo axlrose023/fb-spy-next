@@ -10,6 +10,7 @@ pytestmark = pytest.mark.architecture
 SRC_ROOT = Path(__file__).parents[2]
 APP_ROOT = SRC_ROOT / "app"
 REMOVED_FACADES = {
+    "app.services.facebook": APP_ROOT / "services/facebook/__init__.py",
     "app.services.facebook.calibration": (
         APP_ROOT / "services/facebook/calibration.py"
     ),
@@ -17,12 +18,16 @@ REMOVED_FACADES = {
     "app.services.facebook.health": APP_ROOT / "services/facebook/health.py",
     "app.services.facebook.importer": APP_ROOT / "services/facebook/importer.py",
     "app.services.facebook.language": APP_ROOT / "services/facebook/language.py",
+    "app.services.facebook.landing_archive": (
+        APP_ROOT / "services/facebook/landing_archive.py"
+    ),
     "app.services.facebook.offer_funnel": (
         APP_ROOT / "services/facebook/offer_funnel.py"
     ),
     "app.services.facebook.runner_process": (
         APP_ROOT / "services/facebook/runner_process.py"
     ),
+    "app.services.facebook.relevance": APP_ROOT / "services/facebook/relevance.py",
 }
 
 

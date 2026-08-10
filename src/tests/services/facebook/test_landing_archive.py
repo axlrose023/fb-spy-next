@@ -3,13 +3,14 @@ import zipfile
 
 import httpx
 
-from app.services.facebook import landing_archive
-from app.services.facebook.landing_archive import (
+from app.facebook.enrichment import (
     LandingArchiveResult,
     archive_landing_http,
     archive_landing_page_from_browser,
     save_landing_screenshot_from_browser,
 )
+from app.facebook.enrichment.media.archive import http_capture
+from app.facebook.enrichment.media.archive import service as archive_service
 
 
 def test_archive_landing_skips_error_documents_and_keeps_original_refs(
@@ -88,7 +89,7 @@ def test_archive_landing_skips_error_documents_and_keeps_original_refs(
                 request=httpx.Request("GET", url),
             )
 
-    monkeypatch.setattr(landing_archive.httpx, "Client", FakeClient)
+    monkeypatch.setattr(http_capture.httpx, "Client", FakeClient)
 
     archive_path = tmp_path / "landing.zip"
     result = archive_landing_http(base_url, archive_path)
@@ -126,8 +127,12 @@ def test_archive_landing_skips_error_documents_and_keeps_original_refs(
 
     asset_requests = [request for request in requests if request[0] != base_url]
     assert asset_requests
-    assert all(headers and headers.get("Referer") == base_url for _, headers in asset_requests)
-    assert all(headers and headers.get("Accept") == "*/*" for _, headers in asset_requests)
+    assert all(
+        headers and headers.get("Referer") == base_url for _, headers in asset_requests
+    )
+    assert all(
+        headers and headers.get("Accept") == "*/*" for _, headers in asset_requests
+    )
 
 
 def test_archive_landing_page_from_browser_uses_browser_artifacts(
@@ -137,7 +142,7 @@ def test_archive_landing_page_from_browser_uses_browser_artifacts(
     def fail_http(*args, **kwargs):
         raise AssertionError("browser archive should not fetch landing over http")
 
-    monkeypatch.setattr(landing_archive, "archive_landing_http", fail_http)
+    monkeypatch.setattr(archive_service, "archive_landing_http", fail_http)
 
     page = FakeBrowserPage()
     relative = archive_landing_page_from_browser(
@@ -179,7 +184,9 @@ def test_archive_landing_page_from_browser_uses_browser_artifacts(
         assert manifest["source_url"] == "https://cloak.example/click?fbclid=123"
         assert manifest["final_url"] == "https://cloak.example/live"
         assert manifest["resources"] == []
-        assert any(item["path"] == "browser/page.mhtml" for item in manifest["artifacts"])
+        assert any(
+            item["path"] == "browser/page.mhtml" for item in manifest["artifacts"]
+        )
 
 
 def test_browser_archive_reuses_previously_captured_full_page_screenshot(
@@ -189,7 +196,7 @@ def test_browser_archive_reuses_previously_captured_full_page_screenshot(
     def fail_http(*args, **kwargs):
         raise AssertionError("valid browser artifacts should not use HTTP fallback")
 
-    monkeypatch.setattr(landing_archive, "archive_landing_http", fail_http)
+    monkeypatch.setattr(archive_service, "archive_landing_http", fail_http)
     fallback_path = tmp_path / "landing_screens" / "loaded.png"
     fallback_path.parent.mkdir()
     fallback_path.write_bytes(FakeBrowserPage.PNG)
@@ -207,7 +214,7 @@ def test_browser_archive_reuses_previously_captured_full_page_screenshot(
     assert relative
     with zipfile.ZipFile(tmp_path / relative) as archive:
         assert archive.read("browser/screenshot_loaded.png") == FakeBrowserPage.PNG
-        assert b'browser/screenshot_loaded.png' in archive.read("index.html")
+        assert b"browser/screenshot_loaded.png" in archive.read("index.html")
         manifest = json.loads(archive.read("manifest.json"))
         assert not any(error.startswith("screenshot:") for error in manifest["errors"])
     assert page.screenshot_calls == []
@@ -225,7 +232,9 @@ def test_landing_archive_result_rejects_non_zip_file(tmp_path) -> None:
     assert result.ok is False
 
 
-def test_save_landing_screenshot_from_browser_writes_loaded_screenshot(tmp_path) -> None:
+def test_save_landing_screenshot_from_browser_writes_loaded_screenshot(
+    tmp_path,
+) -> None:
     page = FakeBrowserPage()
 
     relative = save_landing_screenshot_from_browser(

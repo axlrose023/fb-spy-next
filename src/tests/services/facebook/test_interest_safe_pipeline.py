@@ -7,16 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 from app.facebook.enrichment.adapters.playwright import post as enrichment_post
+from app.facebook.relevance import (
+    RelevanceResult,
+    apply_prefilter_uncertainty_guard,
+    parse_model_json,
+)
 from app.services import (
     facebook_isolated_landing_resolver as isolated_resolver,
 )
 from app.services import facebook_orchestrator, facebook_runner
 from app.services import facebook_relevance_classifier as classifier
-from app.services.facebook.relevance import (
-    RelevanceResult,
-    apply_prefilter_uncertainty_guard,
-    parse_model_json,
-)
 from app.services.facebook_ad_enricher import (
     _candidate_indexes,
     _enrich_one,
@@ -32,10 +32,13 @@ def test_model_json_accepts_uncertain_only_for_explicit_prefilter() -> None:
     response = '{"result":"uncertain","reason":"Landing evidence is required."}'
 
     assert parse_model_json(response)["result"] == "not_relevant"
-    assert parse_model_json(
-        response,
-        allowed_results={"relevant", "not_relevant", "uncertain"},
-    )["result"] == "uncertain"
+    assert (
+        parse_model_json(
+            response,
+            allowed_results={"relevant", "not_relevant", "uncertain"},
+        )["result"]
+        == "uncertain"
+    )
 
 
 def test_sparse_link_card_is_held_instead_of_definitively_denied() -> None:
@@ -46,10 +49,7 @@ def test_sparse_link_card_is_held_instead_of_definitively_denied() -> None:
         "headline": "newscoolstop.digital",
         "ad_text": "",
         "cta": "",
-        "creative_img": (
-            "https://scontent.example/v/t39.30808-1/"
-            "profile_p135x135.jpg"
-        ),
+        "creative_img": ("https://scontent.example/v/t39.30808-1/profile_p135x135.jpg"),
         "facebook_post_url": "https://m.facebook.com/1/posts/2",
     }
 
@@ -446,10 +446,12 @@ def test_isolated_url_decodes_fb_redirect_and_removes_profile_tracking(
 
 
 def test_isolated_candidate_falls_back_to_anonymous_saved_post() -> None:
-    source, target, issue = isolated_resolver._resolution_candidate({
-        "cta_href": "",
-        "facebook_post_url": "https://m.facebook.com/123/posts/456",
-    })
+    source, target, issue = isolated_resolver._resolution_candidate(
+        {
+            "cta_href": "",
+            "facebook_post_url": "https://m.facebook.com/123/posts/456",
+        }
+    )
 
     assert source == "anonymous_facebook_post"
     assert target == "https://m.facebook.com/123/posts/456"
@@ -586,20 +588,22 @@ def test_orchestrator_passes_gated_source_to_active_enricher(
 
 def test_orchestrator_validates_passive_collection_artifacts(tmp_path: Path) -> None:
     (tmp_path / "summary.json").write_text(
-        json.dumps({
-            "interest_safe_mode": True,
-            "resolve_enabled": False,
-            "active_actions": {
-                "cta_click_attempts": 0,
-                "video_play_attempts": 0,
-                "comment_open_attempts": 0,
-            },
-            "passive_media_guard": {
-                "installed": True,
-                "init_script_installed": True,
-                "media_route_installed": True,
-            },
-        }),
+        json.dumps(
+            {
+                "interest_safe_mode": True,
+                "resolve_enabled": False,
+                "active_actions": {
+                    "cta_click_attempts": 0,
+                    "video_play_attempts": 0,
+                    "comment_open_attempts": 0,
+                },
+                "passive_media_guard": {
+                    "installed": True,
+                    "init_script_installed": True,
+                    "media_route_installed": True,
+                },
+            }
+        ),
         encoding="utf-8",
     )
     (tmp_path / "ads.json").write_text(
@@ -614,20 +618,22 @@ def test_orchestrator_rejects_active_artifact_in_passive_collection(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "summary.json").write_text(
-        json.dumps({
-            "interest_safe_mode": True,
-            "resolve_enabled": False,
-            "active_actions": {
-                "cta_click_attempts": 1,
-                "video_play_attempts": 0,
-                "comment_open_attempts": 0,
-            },
-            "passive_media_guard": {
-                "installed": True,
-                "init_script_installed": True,
-                "media_route_installed": True,
-            },
-        }),
+        json.dumps(
+            {
+                "interest_safe_mode": True,
+                "resolve_enabled": False,
+                "active_actions": {
+                    "cta_click_attempts": 1,
+                    "video_play_attempts": 0,
+                    "comment_open_attempts": 0,
+                },
+                "passive_media_guard": {
+                    "installed": True,
+                    "init_script_installed": True,
+                    "media_route_installed": True,
+                },
+            }
+        ),
         encoding="utf-8",
     )
     (tmp_path / "ads.json").write_text(
