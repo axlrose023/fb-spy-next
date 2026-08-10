@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J1 завершен
+Статус: `IN_PROGRESS` — этап 14J2 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J2 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4194,6 +4194,32 @@ constructor-compatible `services.media_storage`, затем по bounded groups
 переводятся consumers `api.modules`. Production server, live Octo runtime и
 старый репозиторий не менялись. Rollback 14J1 выполняется revert одного
 отдельного коммита.
+
+#### 14J2. Media storage facade removal
+
+Результат:
+
+- подтвержден нулевой production consumer count для
+  `services.media_storage`; local/S3 storage, signed backend URLs и media
+  errors уже принадлежат `app.ad_library.media`;
+- media tests переведены на canonical factories `configured_storage` и
+  `configured_signer`; facade-only constructor compatibility больше не
+  является частью public contract;
+- сохранено behavioral coverage token validation, expiration и tampering,
+  local path traversal/range reads, S3 key layout, read/write clients и
+  relevant-only upload gate;
+- `services/media_storage.py` удалён и добавлен в architecture denylist;
+- focused media/architecture regression: 63 теста, полный regression:
+  884 теста;
+- source wheel не содержит `app/services/media_storage.py`;
+- Ruff, architecture/contracts, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: следующий bounded unit переводит
+models/gateways consumers с `api.modules` на owning packages. Production server,
+live Octo runtime и старый репозиторий не менялись. Rollback 14J2
+выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

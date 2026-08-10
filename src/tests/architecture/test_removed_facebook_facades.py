@@ -50,6 +50,7 @@ REMOVED_FACADES = {
     "app.services.browser.pool": APP_ROOT / "services/browser/pool.py",
     "app.services.browser.useragent": APP_ROOT / "services/browser/useragent.py",
     "app.services.logging": APP_ROOT / "services/logging.py",
+    "app.services.media_storage": APP_ROOT / "services/media_storage.py",
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_FACADES)
 

@@ -7,15 +7,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.media_storage import (
+from app.ad_library.media import (
     MediaKind,
     MediaNotFoundError,
     MediaRangeError,
-    MediaStorage,
     MediaStorageError,
     MediaTokenError,
-    MediaURLSigner,
 )
+from app.ad_library.media.configuration import configured_signer, configured_storage
 from app.settings import Config, FacebookConfig, JwtConfig, MediaStorageConfig
 
 
@@ -107,7 +106,7 @@ def _config(tmp_path, *, backend: str = "s3") -> Config:
 
 def test_media_url_token_is_backend_only_and_valid_for_30_days(tmp_path) -> None:
     config = _config(tmp_path)
-    signer = MediaURLSigner(config)
+    signer = configured_signer(config)
     ad_id = uuid4()
     issued_at = 1_800_000_000
 
@@ -158,7 +157,7 @@ def test_media_url_token_is_backend_only_and_valid_for_30_days(tmp_path) -> None
 def test_media_storage_never_enables_sdk_wire_logging(tmp_path) -> None:
     logging.getLogger("botocore").setLevel(logging.DEBUG)
 
-    MediaStorage(_config(tmp_path), s3_client=FakeS3Client())
+    configured_storage(_config(tmp_path), s3_client=FakeS3Client())
 
     assert logging.getLogger("botocore").level == logging.WARNING
 
@@ -185,7 +184,7 @@ async def test_s3_upload_layout_integrity_and_ranged_read(tmp_path) -> None:
         landing_archive_path="archives/landing.zip",
     )
     client = FakeS3Client()
-    storage = MediaStorage(config, s3_client=client)
+    storage = configured_storage(config, s3_client=client)
 
     assert await storage.upload_ads([ad], relevance_verified=True) == 4
     assert ad.screenshot_path == f"s3:ads/{ad_id}/screenshots/feed.png"
@@ -222,7 +221,7 @@ async def test_s3_reads_use_read_only_client_and_writes_use_write_client(
     shared_objects: dict[tuple[str, str], tuple[bytes, str]] = {}
     write_client = FakeS3Client(shared_objects)
     read_client = FakeS3Client(shared_objects)
-    storage = MediaStorage(
+    storage = configured_storage(
         _config(tmp_path),
         s3_client=write_client,
         s3_read_client=read_client,
@@ -268,7 +267,7 @@ async def test_s3_reads_use_read_only_client_and_writes_use_write_client(
 async def test_s3_upload_refuses_media_without_relevance_verification(
     tmp_path,
 ) -> None:
-    storage = MediaStorage(_config(tmp_path), s3_client=FakeS3Client())
+    storage = configured_storage(_config(tmp_path), s3_client=FakeS3Client())
     ad = SimpleNamespace(
         id=uuid4(),
         screenshot_path=None,
@@ -282,7 +281,7 @@ async def test_s3_upload_refuses_media_without_relevance_verification(
 
 
 async def test_local_storage_rejects_traversal_and_invalid_ranges(tmp_path) -> None:
-    storage = MediaStorage(_config(tmp_path, backend="local"))
+    storage = configured_storage(_config(tmp_path, backend="local"))
     path = tmp_path / "screens" / "feed.png"
     path.parent.mkdir(parents=True)
     path.write_bytes(b"image")
@@ -398,7 +397,7 @@ def test_s3_endpoint_must_be_a_plain_https_origin(endpoint_url) -> None:
 
 
 async def test_s3_reference_rejects_ambiguous_object_keys(tmp_path) -> None:
-    storage = MediaStorage(_config(tmp_path), s3_client=FakeS3Client())
+    storage = configured_storage(_config(tmp_path), s3_client=FakeS3Client())
 
     for reference in (
         "s3:ads//object.png",
@@ -414,7 +413,7 @@ async def test_s3_reference_rejects_ambiguous_object_keys(tmp_path) -> None:
 
 
 async def test_s3_reference_is_bound_to_expected_ad_media_layout(tmp_path) -> None:
-    storage = MediaStorage(_config(tmp_path), s3_client=FakeS3Client())
+    storage = configured_storage(_config(tmp_path), s3_client=FakeS3Client())
     ad_id = uuid4()
 
     invalid_references = (
