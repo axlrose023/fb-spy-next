@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G завершен
+Статус: `IN_PROGRESS` — этап 14H1 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14G COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14G COMPLETE`, `14H IN_PROGRESS: 14H1 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3889,6 +3889,39 @@ compatibility facades только после подтверждения нул�
 count для каждого path. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14G16 выполняется revert одного отдельного
 коммита.
+
+#### 14H1. Importer, language и runner-process facade removal
+
+Результат:
+
+- production CLI переведён с `app.services.facebook.importer` и
+  `app.services.facebook.language` на owning
+  `app.facebook.runs.adapters` и `app.ad_library.ads.ingestion.language`;
+- после подтверждения нулевого production import count удалены простые facades
+  `facebook/importer.py`, `facebook/language.py` и
+  `facebook/runner_process.py`; package `app.services.facebook` больше не
+  публикует importer/process re-exports и остаётся namespace только для ещё не
+  удалённых CLI facades;
+- importer, streaming, deduplication, runner profile, process registry и
+  language tests переведены на canonical paths; identity-only legacy importer
+  test удалён, полезный UoW/importer import-order contract сохранён в runs;
+- добавлен расширяемый AST architecture guard: удалённые files не могут
+  вернуться, а новый production import любого удалённого module path ломает
+  test suite;
+- historical logger name `app.services.facebook.importer` сохранён для
+  совместимости observability и не является import dependency;
+- все CLI help SHA-256 остались прежними; focused cutover regression: 80
+  тестов, полный regression: 899 тестов;
+- wheel содержит canonical language/import/process modules и не содержит три
+  удалённых facade files; Ruff, strict mypy, architecture/contracts,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14H остается `IN_PROGRESS`: следующие simple Facebook facades удаляются
+небольшими группами только после отдельного consumer/entrypoint inventory.
+Production server, live Octo runtime и старый репозиторий не менялись. Rollback
+14H1 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

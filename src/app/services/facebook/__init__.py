@@ -1,4 +1,1 @@
-from app.facebook.runs.adapters import FacebookAdsImporter
-from app.services.facebook.runner_process import FacebookRunnerRegistry
-
-__all__ = ["FacebookAdsImporter", "FacebookRunnerRegistry"]
+"""Historical Facebook service namespace retained for remaining CLI facades."""

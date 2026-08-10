@@ -17,9 +17,9 @@ from app.facebook.collection.adapters.playwright import (
 )
 from app.facebook.collection.artifacts import files as collection_artifacts
 from app.facebook.enrichment.video.adapters.playwright import recorder as video_recorder
+from app.facebook.runs.adapters import FacebookAdsImporter
+from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
 from app.services import facebook_runner
-from app.services.facebook.importer import FacebookAdsImporter
-from app.services.facebook.runner_process import FacebookRunnerRegistry
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
 
@@ -62,10 +62,12 @@ class ProxyCertificateNavigationPage(FlakyNavigationPage):
 
 
 def test_goto_retries_transient_proxy_failure(monkeypatch) -> None:
-    page = FlakyNavigationPage([
-        RuntimeError("net::ERR_SOCKS_CONNECTION_FAILED"),
-        RuntimeError("net::ERR_SOCKS_CONNECTION_FAILED"),
-    ])
+    page = FlakyNavigationPage(
+        [
+            RuntimeError("net::ERR_SOCKS_CONNECTION_FAILED"),
+            RuntimeError("net::ERR_SOCKS_CONNECTION_FAILED"),
+        ]
+    )
     delays = []
     monkeypatch.setattr(facebook_runner.time, "sleep", delays.append)
 
@@ -81,9 +83,11 @@ def test_goto_retries_transient_proxy_failure(monkeypatch) -> None:
 
 
 def test_goto_retries_playwright_navigation_timeout(monkeypatch) -> None:
-    page = FlakyNavigationPage([
-        PlaywrightTimeoutError("Page.goto: Timeout 20000ms exceeded."),
-    ])
+    page = FlakyNavigationPage(
+        [
+            PlaywrightTimeoutError("Page.goto: Timeout 20000ms exceeded."),
+        ]
+    )
     delays = []
     monkeypatch.setattr(facebook_runner.time, "sleep", delays.append)
 
@@ -264,9 +268,7 @@ def test_octo_proxy_start_failure_writes_machine_readable_metrics(tmp_path) -> N
         requested_minutes=15,
         started_at="2026-07-17T06:00:00+00:00",
         elapsed_seconds=1.25,
-        error=facebook_runner.OctoApiError(
-            'HTTP 400 {"code":"profiles.proxy_error"}'
-        ),
+        error=facebook_runner.OctoApiError('HTTP 400 {"code":"profiles.proxy_error"}'),
     )
 
     meta = json.loads((tmp_path / "run_meta.json").read_text(encoding="utf-8"))
@@ -338,20 +340,22 @@ class ResolveTimeoutPage:
     def evaluate(self, script, *_args):
         if script != facebook_runner.DETECT_JS:
             raise AssertionError("unexpected page evaluation")
-        return [{
-            "advertiser": "Saved before click",
-            "ad_type": "link",
-            "has_video": False,
-            "domain": "blocked.example",
-            "headline": "Headline",
-            "ad_text": "Text",
-            "cta": "Learn more",
-            "creative_img": "https://cdn.example/image.jpg",
-            "element_id": "ad-1",
-            "fb_ad_id": None,
-            "facebook_page_url": None,
-            "facebook_post_url": None,
-        }]
+        return [
+            {
+                "advertiser": "Saved before click",
+                "ad_type": "link",
+                "has_video": False,
+                "domain": "blocked.example",
+                "headline": "Headline",
+                "ad_text": "Text",
+                "cta": "Learn more",
+                "creative_img": "https://cdn.example/image.jpg",
+                "element_id": "ad-1",
+                "fb_ad_id": None,
+                "facebook_page_url": None,
+                "facebook_post_url": None,
+            }
+        ]
 
 
 class VideoTimeoutPage(ResolveTimeoutPage):
@@ -430,10 +434,12 @@ class ScreencastVideoPage:
             image = Image.new("RGB", (120, 120), (index * 40, 80, 120))
             buffer = BytesIO()
             image.save(buffer, format="JPEG")
-            self.session.handler({
-                "data": base64.b64encode(buffer.getvalue()).decode(),
-                "sessionId": index + 1,
-            })
+            self.session.handler(
+                {
+                    "data": base64.b64encode(buffer.getvalue()).decode(),
+                    "sessionId": index + 1,
+                }
+            )
 
 
 def test_hard_deadline_interrupts_blocking_resolve_work() -> None:
@@ -686,11 +692,13 @@ def test_get_cdp_endpoint_restarts_profile_when_headless_mode_differs(
     def fake_octo(method, path, body=None):
         calls.append((method, path, body))
         if method == "GET":
-            return [{
-                "uuid": "target-profile",
-                "headless": False,
-                "ws_endpoint": "ws://127.0.0.1:1111/devtools/browser/visible",
-            }]
+            return [
+                {
+                    "uuid": "target-profile",
+                    "headless": False,
+                    "ws_endpoint": "ws://127.0.0.1:1111/devtools/browser/visible",
+                }
+            ]
         if path == "/api/profiles/stop":
             return {"ok": True}
         return {
@@ -751,15 +759,24 @@ def test_facebook_post_identity_rejects_external_urls() -> None:
     assert facebook_runner._facebook_post_identity_from_url(
         "https://m.facebook.com/100/posts/200"
     ) == ("100", "200")
-    assert facebook_runner._facebook_post_identity_from_url(
-        "https://example.com/100/posts/200"
-    ) is None
+    assert (
+        facebook_runner._facebook_post_identity_from_url(
+            "https://example.com/100/posts/200"
+        )
+        is None
+    )
 
 
 def test_normalized_facebook_post_url_discards_tracking_query() -> None:
-    assert facebook_runner._normalized_facebook_post_url(
-        "https://m.facebook.com/story.php?id=100&story_fbid=200&refid=52"
-    ) == "https://m.facebook.com/story.php?story_fbid=200&id=100"
-    assert facebook_runner._normalized_facebook_post_url(
-        "https://www.facebook.com/100/posts/200?mibextid=abc"
-    ) == "https://m.facebook.com/100/posts/200"
+    assert (
+        facebook_runner._normalized_facebook_post_url(
+            "https://m.facebook.com/story.php?id=100&story_fbid=200&refid=52"
+        )
+        == "https://m.facebook.com/story.php?story_fbid=200&id=100"
+    )
+    assert (
+        facebook_runner._normalized_facebook_post_url(
+            "https://www.facebook.com/100/posts/200?mibextid=abc"
+        )
+        == "https://m.facebook.com/100/posts/200"
+    )

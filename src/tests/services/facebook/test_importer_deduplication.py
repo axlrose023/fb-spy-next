@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.api.modules.ads.models import FacebookAd
 from app.api.modules.runs.models import FacebookRun
-from app.services.facebook.importer import FacebookAdsImporter
+from app.facebook.runs.adapters import FacebookAdsImporter
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
 
@@ -30,19 +30,21 @@ async def test_importer_deduplicates_exact_ad_per_geo_but_keeps_distinct_ads(
         run_dir.mkdir()
         ads_json = run_dir / "ads.json"
         ads_json.write_text(
-            json.dumps([
-                {
-                    "advertiser": "Same Creative",
-                    "ad_type": "link",
-                    "displayed_domain": "duplicate.test",
-                    "headline": "Same headline",
-                    "ad_text": "Same text",
-                    "cta": "Learn More",
-                    "fb_ad_id": fb_ad_id,
-                    "country": country,
-                }
-                for fb_ad_id in fb_ad_ids
-            ]),
+            json.dumps(
+                [
+                    {
+                        "advertiser": "Same Creative",
+                        "ad_type": "link",
+                        "displayed_domain": "duplicate.test",
+                        "headline": "Same headline",
+                        "ad_text": "Same text",
+                        "cta": "Learn More",
+                        "fb_ad_id": fb_ad_id,
+                        "country": country,
+                    }
+                    for fb_ad_id in fb_ad_ids
+                ]
+            ),
             encoding="utf-8",
         )
         run = FacebookRun(

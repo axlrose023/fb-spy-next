@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.api.modules.ads.models import FacebookAd
 from app.api.modules.runs.models import FacebookRun
-from app.services.facebook.importer import FacebookAdsImporter
+from app.facebook.runs.adapters import FacebookAdsImporter
 from app.settings import Config, FacebookConfig, GeminiConfig, MediaStorageConfig
 
 

@@ -11,7 +11,7 @@ import pytest
 from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
 from app.facebook.runs.adapters import FacebookAdsImporter
-from app.services.facebook.runner_process import FacebookRunnerRegistry
+from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
 pytestmark = pytest.mark.integration
