@@ -8,28 +8,9 @@ from uuid import uuid4
 
 import pytest
 
-import app.facebook.calibration as calibration
 from app.facebook.calibration.adapters.persistence import database_targets
-from app.services.facebook import calibration as legacy_calibration
 
 pytestmark = pytest.mark.unit
-
-PERSISTENCE_EXPORTS = (
-    "append_event",
-    "load_engagement_targets_from_ads_json",
-    "load_saved_facebook_targets_from_ads_json",
-    "load_targets_from_ads_json",
-    "load_targets_from_db",
-    "quarantined_facebook_post_urls",
-    "record_facebook_post_target_result",
-    "write_json",
-    "write_targets",
-)
-
-
-def test_legacy_calibration_module_preserves_public_object_identity() -> None:
-    for name in PERSISTENCE_EXPORTS:
-        assert getattr(legacy_calibration, name) is getattr(calibration, name)
 
 
 def test_json_target_exports_do_not_eagerly_load_database_runtime() -> None:

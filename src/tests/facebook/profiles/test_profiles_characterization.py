@@ -6,12 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.facebook.calibration import CalibrationPolicy, baseline_from_history
+from app.facebook.runs import RunMetrics
 from app.services import facebook_orchestrator, facebook_runner
-from app.services.facebook.health import (
-    CalibrationPolicy,
-    RunMetrics,
-    baseline_from_history,
-)
 from app.services.facebook_orchestrator import (
     ProfileConfig,
     _discover_active,

@@ -11,8 +11,6 @@ from app.facebook.calibration import (
     select_calibration_targets,
 )
 from app.facebook.runs import RunMetrics
-from app.services.facebook import calibration as legacy_targets
-from app.services.facebook import health as legacy_health
 
 pytestmark = pytest.mark.unit
 
@@ -98,9 +96,3 @@ def test_target_pool_prioritizes_evidence_and_limits_domain_first() -> None:
     )
 
     assert [target.advertiser for target in targets] == ["Strong", "Other"]
-
-
-def test_legacy_health_and_target_modules_are_thin_public_facades() -> None:
-    assert legacy_health.CalibrationPolicy is CalibrationPolicy
-    assert legacy_health.evaluate_calibration_need is evaluate_calibration_need
-    assert legacy_targets.select_calibration_targets is select_calibration_targets

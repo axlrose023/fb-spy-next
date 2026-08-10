@@ -3,15 +3,16 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.services.facebook.health import (
+from app.facebook.calibration import (
     CalibrationPolicy,
-    MetricBaseline,
-    RunMetrics,
     baseline_from_history,
-    collect_run_metrics,
     evaluate_calibration_need,
     is_good_baseline_candidate,
 )
+from app.facebook.profiles import MetricBaseline
+from app.facebook.runs import RunMetrics, collect_run_metrics
+
+pytestmark = pytest.mark.unit
 
 
 def test_collect_run_metrics_computes_spain_baseline_shape(tmp_path) -> None:

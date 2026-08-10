@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14H1 завершен
+Статус: `IN_PROGRESS` — этап 14H2 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14G COMPLETE`, `14H IN_PROGRESS: 14H1 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14G COMPLETE`, `14H IN_PROGRESS: 14H1-14H2 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3922,6 +3922,41 @@ count для каждого path. Production server, live Octo runtime и ста
 небольшими группами только после отдельного consumer/entrypoint inventory.
 Production server, live Octo runtime и старый репозиторий не менялись. Rollback
 14H1 выполняется revert одного отдельного коммита.
+
+#### 14H2. Calibration-owned facade removal
+
+Результат:
+
+- orchestrator переведён с `app.services.facebook.health` на public
+  `app.facebook.calibration`; `CalibrationDecision` и `CalibrationPolicy`
+  больше не проходят через service facade;
+- после подтверждения нулевого production import count удалены 129 строк
+  identity-only facades: `facebook/calibration.py`, `facebook/engagement.py`,
+  `facebook/health.py` и `facebook/offer_funnel.py`;
+- health tests импортируют calibration policy, profile baseline и run metrics у
+  соответствующих owners; browser engagement и offer-funnel tests используют
+  `app.facebook.calibration` напрямую; orchestrator/profile characterization
+  tests также переведены на canonical paths;
+- удалены только три facade-identity assertions; все policy, metrics,
+  persistence lazy-loading, import-order, Playwright engagement, form security,
+  funnel success и orchestration behavior tests сохранены;
+- architecture denylist расширен четырьмя module paths и одновременно
+  проверяет отсутствие файлов и production imports;
+- orchestrator facade дополнительно сократился с 746 до 744 строк только за
+  счёт прямых canonical imports; focused cutover regression: 205 тестов, полный
+  regression: 896 тестов;
+- wheel содержит canonical calibration model/planning/Playwright modules и не
+  содержит четыре удалённых facade files; Ruff, strict mypy,
+  architecture/contracts, stage-scoped pre-commit, frontend production build и
+  gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14H остается `IN_PROGRESS`: relevance и landing-archive facades требуют
+отдельного CLI/test consumer cutover; historical executable wrappers
+рассматриваются отдельно в 14I. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14H2 выполняется revert одного отдельного
+коммита.
 
 Перед удалением:
 

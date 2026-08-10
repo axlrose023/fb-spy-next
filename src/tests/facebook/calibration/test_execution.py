@@ -4,7 +4,6 @@ import pytest
 
 from app.facebook.calibration import EngagementPolicy, plan_engagement
 from app.services import facebook_calibrator, facebook_orchestrator
-from app.services.facebook import engagement as legacy_engagement
 
 pytestmark = pytest.mark.unit
 
@@ -90,11 +89,10 @@ def test_comments_remain_disabled_when_either_guard_is_zero(
     assert plan.comment is False
 
 
-def test_legacy_policy_defaults_and_facade_identity_are_preserved() -> None:
+def test_engagement_policy_defaults_are_preserved() -> None:
     policy = EngagementPolicy()
 
     assert (policy.comment_every, policy.max_comments) == (2, 5)
-    assert legacy_engagement.EngagementPolicy is EngagementPolicy
 
 
 def test_comments_are_disabled_by_default_in_runtime_entrypoints() -> None:

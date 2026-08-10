@@ -10,7 +10,6 @@ from playwright.sync_api import BrowserContext
 from app.facebook.calibration import (
     CalibrationTarget,
     OfferFunnelPolicy,
-    OfferFunnelSession,
     OfferIdentity,
     domain_allowed,
     load_offer_identity,
@@ -23,7 +22,6 @@ from app.facebook.calibration.funnel.adapters.playwright.landing import (
     open_funnel_landing,
 )
 from app.facebook.calibration.funnel.service import funnel_status
-from app.services.facebook import offer_funnel as legacy_funnel
 
 pytestmark = pytest.mark.unit
 
@@ -44,13 +42,6 @@ def test_offer_identity_requires_name_email_and_phone() -> None:
         OfferIdentity(first_name="First", email="invalid", phone="123").complete
         is False
     )
-
-
-def test_legacy_offer_funnel_module_is_a_public_api_facade() -> None:
-    assert legacy_funnel.OfferFunnelPolicy is OfferFunnelPolicy
-    assert legacy_funnel.OfferFunnelSession is OfferFunnelSession
-    assert legacy_funnel.domain_allowed is domain_allowed
-    assert legacy_funnel.redact_url is redact_url
 
 
 def test_identity_selection_prefers_profile_then_casefolded_country(

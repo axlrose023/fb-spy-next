@@ -8,8 +8,8 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
-from app.facebook.calibration import CalibrationTarget
-from app.services.facebook.offer_funnel import (
+from app.facebook.calibration import (
+    CalibrationTarget,
     OfferFunnelPolicy,
     OfferFunnelSession,
     OfferIdentity,
@@ -20,6 +20,8 @@ from app.services.facebook.offer_funnel import (
     redact_error,
     redact_url,
 )
+
+pytestmark = pytest.mark.integration
 
 
 class _FixtureHandler(BaseHTTPRequestHandler):

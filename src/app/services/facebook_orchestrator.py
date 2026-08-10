@@ -25,8 +25,10 @@ from app.facebook.adapters.octo import (
     OctoPublicProfileSource,
 )
 from app.facebook.calibration import (
+    CalibrationDecision,
     CalibrationPassRequest,
     CalibrationPlan,
+    CalibrationPolicy,
     CalibrationProcessCommandFactory,
     calibration_plan_from_options,
     calibration_timeout_seconds,
@@ -101,10 +103,6 @@ from app.facebook.profiles.adapters import (
     adopt_catalog_country,
     discover_catalog_profiles,
     list_catalog_profiles,
-)
-from app.services.facebook.health import (
-    CalibrationDecision,
-    CalibrationPolicy,
 )
 from app.settings import get_config
 

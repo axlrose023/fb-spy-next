@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.facebook.health import (
+from app.facebook.calibration import (
     CalibrationDecision,
     CalibrationPolicy,
-    RunMetrics,
 )
+from app.facebook.runs import RunMetrics
 from app.services.facebook_orchestrator import (
     FileLock,
     ProfileConfig,
@@ -1267,25 +1267,29 @@ def test_quarantined_posts_are_not_counted_as_calibration_targets(tmp_path) -> N
     collect_dir.mkdir(parents=True)
     post_url = "https://m.facebook.com/100/posts/200"
     (collect_dir.parent / "calibration_pool.json").write_text(
-        json.dumps([
-            {
-                "country": "Spain",
-                "facebook_post_url": post_url,
-                "relevance": {"result": "relevant"},
-            }
-        ]),
+        json.dumps(
+            [
+                {
+                    "country": "Spain",
+                    "facebook_post_url": post_url,
+                    "relevance": {"result": "relevant"},
+                }
+            ]
+        ),
         encoding="utf-8",
     )
     (collect_dir.parent / "calibration_target_health.json").write_text(
-        json.dumps({
-            "version": 1,
-            "targets": {
-                post_url: {
-                    "consecutive_failures": 2,
-                    "quarantined_until": "2099-01-01T00:00:00+00:00",
-                }
-            },
-        }),
+        json.dumps(
+            {
+                "version": 1,
+                "targets": {
+                    post_url: {
+                        "consecutive_failures": 2,
+                        "quarantined_until": "2099-01-01T00:00:00+00:00",
+                    }
+                },
+            }
+        ),
         encoding="utf-8",
     )
     profile = ProfileConfig(

@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 
-from app.facebook.calibration import CalibrationTarget
-from app.facebook.calibration.adapters.playwright import target_engagement
-from app.services import facebook_calibrator
-from app.services.facebook.engagement import (
+import pytest
+
+from app.facebook.calibration import (
+    CalibrationTarget,
     EngagementPolicy,
     click_like,
     find_matching_target,
@@ -14,6 +14,10 @@ from app.services.facebook.engagement import (
     visit_ad_landing,
     wait_for_saved_post,
 )
+from app.facebook.calibration.adapters.playwright import target_engagement
+from app.services import facebook_calibrator
+
+pytestmark = pytest.mark.unit
 
 
 class StubPage:
