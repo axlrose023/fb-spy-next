@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J завершен
+Статус: `IN_PROGRESS` — этап 14K1 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14J COMPLETE`, `14K PENDING`)
+Статус: `IN_PROGRESS` (`14A-14J COMPLETE`, `14K IN_PROGRESS: 14K1 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4383,6 +4383,41 @@ cutover gate и формирует release-readiness report без production de
 live Octo и server changes. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14J8 выполняется revert одного
 отдельного коммита.
+
+#### 14K1. Isolated migration drift closure
+
+Результат:
+
+- clean detached worktree из published 14J commit установлен через
+  `uv sync --frozen --all-extras`; полный clean-environment regression:
+  882 теста;
+- isolated PostgreSQL 18 поднят в локальном Docker на отдельном
+  loopback port; migration chain с пустой DB до `d7b1f4a9c632 (head)`
+  прошла online;
+- initial `alembic check` обнаружил schema drift: partial unique
+  `facebook_ads_geo_fb_ad_id_uidx` создавался migration, но не был
+  зарегистрирован в SQLAlchemy metadata;
+- index metadata вынесена в маленький owning persistence module;
+  lower-country expression, Facebook ID, uniqueness и non-empty partial predicate
+  точно соответствуют migration; SQLite получает эквивалентный
+  test predicate;
+- добавлен explicit dialect contract test, metadata SHA обновлён на
+  исправленный schema contract; focused database/ads regression: 15 тестов;
+- повторный online `alembic check` завершился `No new upgrade
+  operations detected`; новая migration не требуется, так как
+  production index уже существует;
+- historical `user_roles` data migration использует online bind и
+  поэтому не поддерживает `alembic upgrade --sql`; release validation
+  должна выполняться online на isolated database;
+- полный regression после fix: 883 теста; wheel, Ruff,
+  architecture/contracts, frontend production build и gitleaks проходят;
+  `npm audit` сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14K остается `IN_PROGRESS`: после отдельного bugfix commit чистый
+worktree пересоздаётся из нового HEAD, затем выполняются wheel/CLI,
+orchestration fake-process и release-report gates. Production server, live Octo
+runtime и старый репозиторий не менялись. Rollback 14K1 выполняется
+revert одного отдельного коммита.
 
 Перед удалением:
 

@@ -9,6 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, DateTimeMixin, UUID7IDMixin
 
+from .indexes import register_ad_indexes
+
 
 class FacebookAd(Base, UUID7IDMixin, DateTimeMixin):
     __tablename__ = "facebook_ads"
@@ -49,3 +51,6 @@ class FacebookAd(Base, UUID7IDMixin, DateTimeMixin):
         DateTime(timezone=True), nullable=True
     )
     run: Mapped[Any] = relationship("FacebookRun", back_populates="ads")
+
+
+register_ad_indexes(FacebookAd.__table__)
