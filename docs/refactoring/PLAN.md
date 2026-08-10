@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G14 завершен
+Статус: `IN_PROGRESS` — этап 14G15 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -3815,6 +3815,43 @@ import/CLI gates. Production server, live Octo runtime и старый репо�
 граница legacy facade переносятся следующими units, затем выполняются итоговые
 import/CLI gates. Production server, live Octo runtime и старый репозиторий не
 менялись. Rollback 14G14 выполняется revert одного отдельного коммита.
+
+#### 14G15. Calibration process command и intensity options adapters
+
+Результат:
+
+- calibration subprocess environment/argv composition вынесена в 73-строчный
+  `facebook.calibration.adapters.process_commands`; factory зависит от
+  `FacebookConfig`, typed calibration options и существующего narrow invocation
+  builder, но не от argparse, orchestrator, subprocess runner или root settings;
+- runner executable и Octo host/port/headless fallback/override сохраняют
+  прежний порядок; target offset/limit/goal и interaction budgets передаются в
+  builder без преобразований;
+- mapping внешних intensity options в доменный `CalibrationIntensityPolicy`
+  вынесен в отдельный 48-строчный `intensity_options`; recovery,
+  low-relevance, funnel cap и interaction scaling по-прежнему рассчитывает
+  существующая pure domain policy;
+- один calibration pass получает один config snapshot и bound command factory;
+  legacy `_calibrator_command` и `_calibration_plan` сохранены как тонкие
+  compatibility wrappers, а неиспользуемый `_octo_headless` удалён;
+- pure `_effective_calibration_target_goal` и
+  `_calibration_timeout_seconds` оставлены прямыми aliases/wrappers доменных
+  функций: дополнительный runtime слой для них не создавался;
+- добавлено 3 direct contracts: configured Octo fallback, CLI overrides, exact
+  argv composition и полное совпадение options-to-intensity policy mapping;
+- legacy orchestrator сокращен с 767 до 746 строк; focused regression: 73
+  теста, полный regression: 896 тестов;
+- wheel содержит оба новых adapter modules; Ruff, strict mypy,
+  architecture/contracts, stage-scoped pre-commit, frontend production build и
+  gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: выполняются финальный facade symbol/import
+inventory, CLI/import isolation contracts и документирование оставшейся
+compatibility boundary. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14G15 выполняется revert одного отдельного
+коммита.
 
 Перед удалением:
 

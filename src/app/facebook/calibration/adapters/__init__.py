@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from .intensity_options import calibration_plan_from_options
 from .invocation_command import (
     CalibrationProcessEnvironment,
     build_calibration_command,
 )
 from .json_target_pool import JsonCalibrationTargetPool
 from .persistent_target_pool import persistent_target_pool
+from .process_commands import CalibrationProcessCommandFactory
 
 _PERSISTENCE_EXPORTS = {
     "append_event",
@@ -23,8 +25,10 @@ _PERSISTENCE_EXPORTS = {
 
 __all__ = [
     "CalibrationProcessEnvironment",
+    "CalibrationProcessCommandFactory",
     "JsonCalibrationTargetPool",
     "build_calibration_command",
+    "calibration_plan_from_options",
     "persistent_target_pool",
     *_PERSISTENCE_EXPORTS,
 ]

@@ -10,9 +10,11 @@ from .accounting import (
     should_stop_after_target_result,
 )
 from .adapters import (
+    CalibrationProcessCommandFactory,
     CalibrationProcessEnvironment,
     JsonCalibrationTargetPool,
     build_calibration_command,
+    calibration_plan_from_options,
     persistent_target_pool,
 )
 from .adapters.playwright import (
@@ -119,6 +121,7 @@ __all__ = [
     "CalibrationPassService",
     "CalibrationPolicy",
     "CalibrationProcessEnvironment",
+    "CalibrationProcessCommandFactory",
     "CalibrationRunResult",
     "CalibrationService",
     "CalibrationTarget",
@@ -126,6 +129,7 @@ __all__ = [
     "CalibrationTargetExecutor",
     "append_event",
     "calibration_pool_name",
+    "calibration_plan_from_options",
     "EngagementPlan",
     "EngagementPolicy",
     "OfferFunnelPolicy",

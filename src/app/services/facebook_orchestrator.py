@@ -25,15 +25,13 @@ from app.facebook.adapters.octo import (
     OctoPublicProfileSource,
 )
 from app.facebook.calibration import (
-    CalibrationIntensityPolicy,
     CalibrationPassRequest,
     CalibrationPlan,
-    CalibrationProcessEnvironment,
-    build_calibration_command,
+    CalibrationProcessCommandFactory,
+    calibration_plan_from_options,
     calibration_timeout_seconds,
     effective_target_goal,
     persistent_target_pool,
-    plan_calibration_intensity,
 )
 from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
@@ -58,7 +56,6 @@ from app.facebook.orchestration.adapters import (
     FileLock,
     FileStateStore,
     ProcessRegistry,
-    octo_headless,
     profile_lock_path,
     relevance_classification_enabled,
     run_orchestrator_command,
@@ -398,19 +395,12 @@ def _calibrator_command(
     max_comments: int | None = None,
     min_interactions: int | None = None,
 ) -> list[str]:
-    config = get_config()
-    return build_calibration_command(
+    return _calibration_process_commands().build(
         profile,
         args,
         run_dir,
         ads_paths,
         country,
-        CalibrationProcessEnvironment(
-            executable=config.facebook.runner_python,
-            octo_host=args.octo_host or config.facebook.octo_host,
-            octo_port=args.octo_port or config.facebook.octo_port,
-            octo_headless=_octo_headless(args),
-        ),
         target_offset=target_offset,
         target_limit=target_limit,
         min_successful_targets=min_successful_targets,
@@ -421,8 +411,8 @@ def _calibrator_command(
     )
 
 
-def _octo_headless(args) -> bool:
-    return octo_headless(args.octo_headless, get_config().facebook)
+def _calibration_process_commands() -> CalibrationProcessCommandFactory:
+    return CalibrationProcessCommandFactory(get_config().facebook)
 
 
 def _calibration_plan(
@@ -430,22 +420,9 @@ def _calibration_plan(
     args,
     available_targets: int,
 ) -> CalibrationPlan:
-    return plan_calibration_intensity(
+    return calibration_plan_from_options(
         decision,
-        CalibrationIntensityPolicy(
-            standard_limit=args.calibration_limit,
-            standard_goal=args.calibration_target_goal,
-            recovery_limit=args.calibration_recovery_target_limit,
-            recovery_goal=args.calibration_recovery_target_goal,
-            low_relevance_goal=args.calibration_low_relevance_target_goal,
-            funnel_enabled=args.calibration_offer_funnel,
-            funnel_goal=args.calibration_funnel_target_goal,
-            max_reactions=args.calibration_max_reactions,
-            max_follows=args.calibration_max_follows,
-            max_comments=args.calibration_max_comments,
-            min_interactions=args.calibration_min_interactions,
-            comment_every=args.calibration_comment_every,
-        ),
+        args,
         available_targets=available_targets,
     )
 
@@ -464,6 +441,8 @@ def _run_calibration(
     target_offset: int = 0,
     target_limit_cap: int | None = None,
 ) -> dict[str, Any]:
+    commands = _calibration_process_commands()
+
     def calibrator_command(
         pass_profile: Profile,
         run_dir: Path,
@@ -472,7 +451,7 @@ def _run_calibration(
         offset: int,
         plan: CalibrationPlan,
     ) -> list[str]:
-        return _calibrator_command(
+        return commands.build(
             pass_profile,
             args,
             run_dir,
