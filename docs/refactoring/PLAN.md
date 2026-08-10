@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J6 завершен
+Статус: `IN_PROGRESS` — этап 14J7 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J6 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J7 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4328,6 +4328,33 @@ runs composition wrapper и JWT compatibility adapter; они переносят
 legacy API tree — JWT compatibility adapter; его removal выполняется
 отдельным unit с auth contract regression. Production server, live Octo runtime и
 старый репозиторий не менялись. Rollback 14J6 выполняется revert одного
+отдельного коммита.
+
+#### 14J7. JWT compatibility adapter removal
+
+Результат:
+
+- legacy `JwtService` имел только test consumer; production login,
+  refresh и access authentication уже используют `AuthService`,
+  `JwtTokenCodec` и canonical auth router;
+- facade test заменён focused codec contract: access/refresh claims, TTL,
+  expired token, invalid signature, wrong token type и missing subject;
+- active/disabled/missing user handling, exact refresh HTTP errors и public response
+  shape остались покрыты canonical service/API tests; удалены только
+  две дублирующие facade-to-domain assertions;
+- `api.modules.auth.services.jwt`, auth/services package marker и auth package
+  marker удалены и запрещены architecture guard;
+- focused auth/DI/architecture regression: 30 тестов, полный regression:
+  882 теста;
+- source wheel не содержит Python modules в `app/api/modules`;
+- Ruff, architecture/contracts, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: финальный cleanup unit удаляет пустой
+`services/__init__.py` и добавляет prefix-level architecture ban для
+`app.services` и `app.api.modules`. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14J7 выполняется revert одного
 отдельного коммита.
 
 Перед удалением:

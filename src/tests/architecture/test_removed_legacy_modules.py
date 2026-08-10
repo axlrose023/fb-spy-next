@@ -81,6 +81,13 @@ REMOVED_MODULES = {
     "app.api.modules.users": APP_ROOT / "api/modules/users/__init__.py",
     "app.api.modules.runs": APP_ROOT / "api/modules/runs/__init__.py",
     "app.api.modules.runs.service": APP_ROOT / "api/modules/runs/service.py",
+    "app.api.modules.auth": APP_ROOT / "api/modules/auth/__init__.py",
+    "app.api.modules.auth.services": (
+        APP_ROOT / "api/modules/auth/services/__init__.py"
+    ),
+    "app.api.modules.auth.services.jwt": (
+        APP_ROOT / "api/modules/auth/services/jwt.py"
+    ),
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_MODULES)
 
