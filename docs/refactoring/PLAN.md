@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J7 завершен
+Статус: `IN_PROGRESS` — этап 14J завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J7 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14J COMPLETE`, `14K PENDING`)
 
 Closure inventory после этапа 13:
 
@@ -4355,6 +4355,33 @@ legacy API tree — JWT compatibility adapter; его removal выполняет
 `services/__init__.py` и добавляет prefix-level architecture ban для
 `app.services` и `app.api.modules`. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14J7 выполняется revert одного
+отдельного коммита.
+
+#### 14J8. Legacy namespace closure
+
+Результат:
+
+- удалён последний tracked file `services/__init__.py`; source trees
+  `app/services` и `app/api/modules` больше не содержат Python modules;
+- architecture inventory удалённых files вынесен в отдельный
+  88-line data module, а AST guard сокращён до 46 строк;
+- вместо exact-name-only import check введён prefix-level ban: любой
+  будущий production import из `app.services` или `app.api.modules`
+  падает architecture gate, даже если имя новое;
+- historical logger labels оставлены без изменений, так как они не
+  являются imports, а их переименование изменило бы observability
+  contract;
+- focused architecture regression: 15 тестов, полный regression: 882
+  теста;
+- source wheel не содержит Python modules в обоих legacy trees;
+- clean `npm ci`, frontend production build, Ruff, architecture/contracts и
+  gitleaks проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J завершён. Следующий этап 14K выполняет полный локальный
+cutover gate и формирует release-readiness report без production deployment,
+live Octo и server changes. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14J8 выполняется revert одного
 отдельного коммита.
 
 Перед удалением:

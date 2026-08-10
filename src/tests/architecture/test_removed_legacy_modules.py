@@ -5,91 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from .legacy_inventory import FORBIDDEN_IMPORT_PREFIXES, REMOVED_MODULES
+
 pytestmark = pytest.mark.architecture
 
-SRC_ROOT = Path(__file__).parents[2]
-APP_ROOT = SRC_ROOT / "app"
-REMOVED_MODULES = {
-    "app.services.facebook": APP_ROOT / "services/facebook/__init__.py",
-    "app.services.facebook.calibration": (
-        APP_ROOT / "services/facebook/calibration.py"
-    ),
-    "app.services.facebook.engagement": APP_ROOT / "services/facebook/engagement.py",
-    "app.services.facebook.health": APP_ROOT / "services/facebook/health.py",
-    "app.services.facebook.importer": APP_ROOT / "services/facebook/importer.py",
-    "app.services.facebook.language": APP_ROOT / "services/facebook/language.py",
-    "app.services.facebook.landing_archive": (
-        APP_ROOT / "services/facebook/landing_archive.py"
-    ),
-    "app.services.facebook.offer_funnel": (
-        APP_ROOT / "services/facebook/offer_funnel.py"
-    ),
-    "app.services.facebook.runner_process": (
-        APP_ROOT / "services/facebook/runner_process.py"
-    ),
-    "app.services.facebook.relevance": APP_ROOT / "services/facebook/relevance.py",
-    "app.services.facebook_db_importer": (
-        APP_ROOT / "services/facebook_db_importer.py"
-    ),
-    "app.services.facebook_isolated_landing_resolver": (
-        APP_ROOT / "services/facebook_isolated_landing_resolver.py"
-    ),
-    "app.services.facebook_relevance_classifier": (
-        APP_ROOT / "services/facebook_relevance_classifier.py"
-    ),
-    "app.services.facebook_ad_enricher": (
-        APP_ROOT / "services/facebook_ad_enricher.py"
-    ),
-    "app.services.facebook_calibrator": APP_ROOT / "services/facebook_calibrator.py",
-    "app.services.facebook_runner": APP_ROOT / "services/facebook_runner.py",
-    "app.services.facebook_orchestrator": (
-        APP_ROOT / "services/facebook_orchestrator.py"
-    ),
-    "app.services.browser": APP_ROOT / "services/browser/__init__.py",
-    "app.services.browser.context": APP_ROOT / "services/browser/context.py",
-    "app.services.browser.pool": APP_ROOT / "services/browser/pool.py",
-    "app.services.browser.useragent": APP_ROOT / "services/browser/useragent.py",
-    "app.services.logging": APP_ROOT / "services/logging.py",
-    "app.services.media_storage": APP_ROOT / "services/media_storage.py",
-    "app.api.modules.ads.gateway": APP_ROOT / "api/modules/ads/gateway.py",
-    "app.api.modules.ads.models": APP_ROOT / "api/modules/ads/models.py",
-    "app.api.modules.runs.gateway": APP_ROOT / "api/modules/runs/gateway.py",
-    "app.api.modules.runs.models": APP_ROOT / "api/modules/runs/models.py",
-    "app.api.modules.users.gateway": APP_ROOT / "api/modules/users/gateway.py",
-    "app.api.modules.users.models": APP_ROOT / "api/modules/users/models.py",
-    "app.api.modules.ads.routes": APP_ROOT / "api/modules/ads/routes.py",
-    "app.api.modules.ads.schema": APP_ROOT / "api/modules/ads/schema.py",
-    "app.api.modules.auth.routes": APP_ROOT / "api/modules/auth/routes.py",
-    "app.api.modules.auth.schema": APP_ROOT / "api/modules/auth/schema.py",
-    "app.api.modules.auth.service": APP_ROOT / "api/modules/auth/service.py",
-    "app.api.modules.auth.services.auth": (
-        APP_ROOT / "api/modules/auth/services/auth.py"
-    ),
-    "app.api.modules.media.routes": APP_ROOT / "api/modules/media/routes.py",
-    "app.api.modules.runs.routes": APP_ROOT / "api/modules/runs/routes.py",
-    "app.api.modules.runs.schema": APP_ROOT / "api/modules/runs/schema.py",
-    "app.api.modules.stats.routes": APP_ROOT / "api/modules/stats/routes.py",
-    "app.api.modules.stats.schema": APP_ROOT / "api/modules/stats/schema.py",
-    "app.api.modules.users.routes": APP_ROOT / "api/modules/users/routes.py",
-    "app.api.modules.users.schema": APP_ROOT / "api/modules/users/schema.py",
-    "app.api.modules.users.service": APP_ROOT / "api/modules/users/service.py",
-    "app.api.modules.ads": APP_ROOT / "api/modules/ads/__init__.py",
-    "app.api.modules.ads.service": APP_ROOT / "api/modules/ads/service.py",
-    "app.api.modules.media": APP_ROOT / "api/modules/media/__init__.py",
-    "app.api.modules.stats": APP_ROOT / "api/modules/stats/__init__.py",
-    "app.api.modules.stats.service": APP_ROOT / "api/modules/stats/service.py",
-    "app.api.modules.users": APP_ROOT / "api/modules/users/__init__.py",
-    "app.api.modules.runs": APP_ROOT / "api/modules/runs/__init__.py",
-    "app.api.modules.runs.service": APP_ROOT / "api/modules/runs/service.py",
-    "app.api.modules.auth": APP_ROOT / "api/modules/auth/__init__.py",
-    "app.api.modules.auth.services": (
-        APP_ROOT / "api/modules/auth/services/__init__.py"
-    ),
-    "app.api.modules.auth.services.jwt": (
-        APP_ROOT / "api/modules/auth/services/jwt.py"
-    ),
-}
-FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_MODULES)
+APP_ROOT = Path(__file__).parents[2] / "app"
 
 
 def _imports(path: Path) -> set[str]:
@@ -111,7 +31,14 @@ def test_removed_legacy_module_files_do_not_return() -> None:
 def test_production_does_not_import_removed_legacy_modules() -> None:
     violations: list[str] = []
     for path in sorted(APP_ROOT.rglob("*.py")):
-        removed = sorted(_imports(path) & FORBIDDEN_PRODUCTION_IMPORTS)
+        removed = sorted(
+            module
+            for module in _imports(path)
+            if any(
+                module == prefix or module.startswith(f"{prefix}.")
+                for prefix in FORBIDDEN_IMPORT_PREFIXES
+            )
+        )
         if removed:
             relative = path.relative_to(APP_ROOT)
             violations.append(f"{relative}: {', '.join(removed)}")
