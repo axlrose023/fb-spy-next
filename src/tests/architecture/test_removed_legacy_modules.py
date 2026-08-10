@@ -79,6 +79,8 @@ REMOVED_MODULES = {
     "app.api.modules.stats": APP_ROOT / "api/modules/stats/__init__.py",
     "app.api.modules.stats.service": APP_ROOT / "api/modules/stats/service.py",
     "app.api.modules.users": APP_ROOT / "api/modules/users/__init__.py",
+    "app.api.modules.runs": APP_ROOT / "api/modules/runs/__init__.py",
+    "app.api.modules.runs.service": APP_ROOT / "api/modules/runs/service.py",
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_MODULES)
 

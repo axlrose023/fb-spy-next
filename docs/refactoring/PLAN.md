@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J5 завершен
+Статус: `IN_PROGRESS` — этап 14J6 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J5 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J6 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4299,6 +4299,36 @@ server, live Octo runtime и старый репозиторий не менял
 runs composition wrapper и JWT compatibility adapter; они переносятся
 отдельными units. Production server, live Octo runtime и старый репозиторий не
 менялись. Rollback 14J5 выполняется revert одного отдельного коммита.
+
+#### 14J6. Runs composition facade removal
+
+Результат:
+
+- подтверждено, что legacy `FacebookRunService` имел только один
+  test consumer; production router и `FacebookProvider` уже используют
+  canonical `RunService`;
+- integration characterization переведена на `RunService` и те же
+  SQLAlchemy repository/transaction, process runner, legacy importer adapter,
+  artifact stager и config defaults;
+- facade-specific HTTP exceptions заменены owning domain exceptions
+  `RunNotFound`, `RunNotActive` и `RunArtifactsNotFound`; HTTP mapping
+  остаётся в canonical router и endpoint tests;
+- сохранены defaults/explicit-zero, filtering, process stop, external
+  artifact staging и importer update contracts;
+- `api.modules.runs.service` и runs package marker удалены и запрещены
+  architecture guard;
+- focused runs/API/DI regression: 33 теста, полный regression:
+  884 теста;
+- source wheel не содержит Python modules в legacy runs package;
+- Ruff, architecture/contracts, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: единственная оставшаяся реализация в
+legacy API tree — JWT compatibility adapter; его removal выполняется
+отдельным unit с auth contract regression. Production server, live Octo runtime и
+старый репозиторий не менялись. Rollback 14J6 выполняется revert одного
+отдельного коммита.
 
 Перед удалением:
 

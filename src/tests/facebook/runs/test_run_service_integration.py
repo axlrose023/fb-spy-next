@@ -7,16 +7,28 @@ from uuid import UUID
 
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException
 from sqlalchemy import delete
 
-from app.api.modules.runs.service import FacebookRunService
 from app.database.uow import UnitOfWork
-from app.facebook.runs.adapters.persistence import FacebookRun
-from app.facebook.runs.schemas import (
-    RunImportRequest,
-    RunsPaginationParams,
-    RunStartRequest,
+from app.facebook.runs import (
+    ImportRun,
+    Run,
+    RunArtifactsNotFound,
+    RunDefaults,
+    RunNotActive,
+    RunNotFound,
+    RunQuery,
+    RunService,
+    StartRun,
+)
+from app.facebook.runs.adapters import (
+    LegacyRunAdsImporter,
+    RunArtifactDirectoryStager,
+)
+from app.facebook.runs.adapters.persistence import (
+    FacebookRun,
+    SqlAlchemyRunRepository,
+    SqlAlchemyRunTransaction,
 )
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
@@ -25,11 +37,11 @@ pytestmark = pytest.mark.integration
 
 class RecordingRunner:
     def __init__(self) -> None:
-        self.started: list[FacebookRun] = []
+        self.started: list[Run] = []
         self.stop_result = False
         self.stopped: list[UUID] = []
 
-    async def start(self, run: FacebookRun) -> None:
+    async def start(self, run: Run) -> None:
         self.started.append(run)
 
     async def stop(self, run_id: UUID) -> bool:
@@ -87,12 +99,22 @@ def service(
     tmp_path: Path,
     runner: RecordingRunner,
     importer: RecordingImporter | None = None,
-) -> FacebookRunService:
-    return FacebookRunService(
-        uow,
-        make_config(tmp_path),
-        importer or RecordingImporter(),  # type: ignore[arg-type]
-        runner,  # type: ignore[arg-type]
+) -> RunService:
+    config = make_config(tmp_path)
+    facebook = config.facebook
+    return RunService(
+        SqlAlchemyRunRepository(uow.session),
+        SqlAlchemyRunTransaction(uow.session),
+        runner,
+        LegacyRunAdsImporter(uow, importer or RecordingImporter()),
+        RunArtifactDirectoryStager(facebook.data_dir),
+        RunDefaults(
+            minutes=facebook.default_minutes,
+            collect_scrolls=facebook.default_collect_scrolls,
+            resolve_max=facebook.default_resolve_max,
+            scroll_px=facebook.default_scroll_px,
+            octo_profile_uuid=facebook.octo_profile_uuid,
+        ),
     )
 
 
@@ -103,7 +125,7 @@ async def test_start_uses_config_defaults_and_preserves_explicit_zero(
     runner = RecordingRunner()
 
     run = await service(uow, tmp_path, runner).start_run(
-        RunStartRequest(
+        StartRun(
             title="runs contract start",
             resolve_max=0,
             debug=True,
@@ -126,18 +148,17 @@ async def test_list_filters_and_missing_run_contract(
 ) -> None:
     runner = RecordingRunner()
     run_service = service(uow, tmp_path, runner)
-    await run_service.start_run(RunStartRequest(title="runs contract alpha"))
-    await run_service.start_run(RunStartRequest(title="runs contract beta"))
+    await run_service.start_run(StartRun(title="runs contract alpha"))
+    await run_service.start_run(StartRun(title="runs contract beta"))
 
-    page = await run_service.get_runs(
-        RunsPaginationParams(title__search="alpha", page=1, page_size=10)
+    page = await run_service.list_runs(
+        RunQuery(title_search="alpha", page=1, page_size=10)
     )
 
     assert page.total == 1
     assert [run.title for run in page.items] == ["runs contract alpha"]
-    with pytest.raises(HTTPException) as captured:
-        await run_service.get_run_by_id(UUID("00000000-0000-0000-0000-000000000001"))
-    assert (captured.value.status_code, captured.value.detail) == (404, "Run not found")
+    with pytest.raises(RunNotFound):
+        await run_service.get_run(UUID("00000000-0000-0000-0000-000000000001"))
 
 
 async def test_stop_requires_active_process_then_marks_run_stopping(
@@ -146,14 +167,10 @@ async def test_stop_requires_active_process_then_marks_run_stopping(
 ) -> None:
     runner = RecordingRunner()
     run_service = service(uow, tmp_path, runner)
-    run = await run_service.start_run(RunStartRequest(title="runs contract stop"))
+    run = await run_service.start_run(StartRun(title="runs contract stop"))
 
-    with pytest.raises(HTTPException) as captured:
+    with pytest.raises(RunNotActive):
         await run_service.stop_run(run.id)
-    assert (captured.value.status_code, captured.value.detail) == (
-        409,
-        "Run is not active",
-    )
 
     runner.stop_result = True
     stopped = await run_service.stop_run(run.id)
@@ -176,7 +193,7 @@ async def test_import_stages_external_artifacts_and_updates_run_in_one_flow(
     run_service = service(uow, tmp_path, runner, importer)
 
     run = await run_service.import_run(
-        RunImportRequest(
+        ImportRun(
             ads_json_path=str(source / "ads.json"),
             title="runs contract import",
         )
@@ -197,12 +214,7 @@ async def test_import_missing_ads_json_returns_existing_404_contract(
 ) -> None:
     run_service = service(uow, tmp_path, RecordingRunner())
 
-    with pytest.raises(HTTPException) as captured:
+    with pytest.raises(RunArtifactsNotFound):
         await run_service.import_run(
-            RunImportRequest(ads_json_path=str(tmp_path / "missing.json"))
+            ImportRun(ads_json_path=str(tmp_path / "missing.json"))
         )
-
-    assert (captured.value.status_code, captured.value.detail) == (
-        404,
-        "ads.json not found",
-    )
