@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.accounts.auth.adapters import JwtTokenCodec
 from app.accounts.users import UserRole
 from app.accounts.users.adapters.persistence import UserRecord
-from app.api.modules.ads.models import FacebookAd
-from app.api.modules.runs.models import FacebookRun
+from app.ad_library.ads.adapters.persistence import FacebookAd
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.settings import get_config
 
 pytestmark = pytest.mark.integration

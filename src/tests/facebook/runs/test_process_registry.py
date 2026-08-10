@@ -8,9 +8,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
 from app.facebook.runs.adapters import FacebookAdsImporter
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 

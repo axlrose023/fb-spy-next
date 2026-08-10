@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J2 завершен
+Статус: `IN_PROGRESS` — этап 14J3 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J2 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J3 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4220,6 +4220,32 @@ constructor-compatible `services.media_storage`, затем по bounded groups
 models/gateways consumers с `api.modules` на owning packages. Production server,
 live Octo runtime и старый репозиторий не менялись. Rollback 14J2
 выполняется revert одного отдельного коммита.
+
+#### 14J3. Persistence model и gateway alias removal
+
+Результат:
+
+- CLI и tests переведены с `api.modules.{ads,runs,users}.{models,gateway}`
+  на owning persistence adapters в `accounts`, `ad_library` и
+  `facebook.runs`;
+- production CLI больше не зависит от HTTP compatibility tree;
+  SQLAlchemy model identity, table metadata и query behavior не менялись;
+- удалены шесть one-line alias modules: ads/runs/users `models.py` и
+  `gateway.py`; facade-only identity assertions заменены прямыми
+  behavioral UoW/gateway assertions;
+- architecture guard переименован в generic removed-legacy guard и
+  запрещает возврат всех шести paths;
+- focused persistence/API/import regression: 57 тестов, полный
+  regression: 884 теста;
+- source wheel не содержит удалённых model/gateway modules;
+- Ruff, architecture/contracts, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: HTTP route/schema/service wrappers и legacy
+JWT adapter удаляются дальше отдельными bounded units. Production
+server, live Octo runtime и старый репозиторий не менялись. Rollback
+14J3 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

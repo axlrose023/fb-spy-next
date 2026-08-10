@@ -3,9 +3,9 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from app.api.modules.ads.models import FacebookAd
-from app.api.modules.runs.models import FacebookRun
+from app.ad_library.ads.adapters.persistence import FacebookAd
 from app.facebook.runs.adapters import FacebookAdsImporter
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.settings import Config, FacebookConfig, GeminiConfig, MediaStorageConfig
 
 

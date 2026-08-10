@@ -3,7 +3,6 @@ from unittest.mock import create_autospec
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.modules.runs.gateway import FacebookRunGateway
 from app.database.uow import UnitOfWork
 from app.facebook.runs.adapters.persistence import (
     FacebookRun,
@@ -25,9 +24,8 @@ async def test_run_record_gateway_preserves_flush_only_create() -> None:
     session.commit.assert_not_awaited()
 
 
-def test_uow_and_legacy_path_use_owning_run_gateway() -> None:
+def test_uow_uses_owning_run_gateway() -> None:
     session = create_autospec(AsyncSession, instance=True)
     uow = UnitOfWork(session)
 
     assert type(uow.facebook_runs) is SqlAlchemyRunRecordGateway
-    assert FacebookRunGateway is SqlAlchemyRunRecordGateway

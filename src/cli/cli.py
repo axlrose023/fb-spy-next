@@ -12,18 +12,18 @@ from alembic.config import Config
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.accounts.users.adapters.persistence import UserRecord as User
+from app.ad_library.ads.adapters.persistence import FacebookAd
 from app.ad_library.ads.ingestion.language import language_from_raw_ad
 from app.ad_library.media import MEDIA_SPECS
 from app.ad_library.media.configuration import configured_storage
 from app.ad_library.media.paths.object_keys import S3_REFERENCE_PREFIX
-from app.api.modules.ads.models import FacebookAd
-from app.api.modules.runs.models import FacebookRun
-from app.api.modules.users.models import User
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
 from app.facebook.enrichment import archive_filename, archive_landing_http
 from app.facebook.relevance import configured_relevance_service
 from app.facebook.runs.adapters import FacebookAdsImporter
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.ioc import get_async_container
 from app.settings import get_config
 

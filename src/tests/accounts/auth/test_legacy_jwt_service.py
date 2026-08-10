@@ -8,8 +8,9 @@ import jwt
 import pytest
 from fastapi import HTTPException
 
+from app.accounts.users import UserRole
+from app.accounts.users.adapters.persistence import UserRecord as User
 from app.api.modules.auth.services import JwtService
-from app.api.modules.users.models import User, UserRole
 from app.settings import Config, get_config
 
 pytestmark = pytest.mark.unit

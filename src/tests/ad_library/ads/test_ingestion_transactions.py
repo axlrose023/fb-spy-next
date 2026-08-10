@@ -8,11 +8,11 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
+from app.ad_library.ads.adapters.persistence import FacebookAd
 from app.ad_library.media import MediaStorage, MediaStorageError
-from app.api.modules.ads.models import FacebookAd
-from app.api.modules.runs.models import FacebookRun
 from app.database.uow import UnitOfWork
 from app.facebook.runs.adapters import FacebookAdsImporter
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
 pytestmark = pytest.mark.integration

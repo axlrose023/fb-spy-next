@@ -10,7 +10,6 @@ import pytest
 from PIL import Image
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from app.api.modules.runs.models import FacebookRun
 from app.browser import BrowserOperationDeadlineExceeded, hard_deadline
 from app.facebook.adapters import OctoApiError, rewrite_cdp_endpoint_host
 from app.facebook.collection import CollectedAd
@@ -33,6 +32,7 @@ from app.facebook.enrichment.video.adapters.playwright import write_screencast_f
 from app.facebook.feed import DETECT_JS, prepare_passive_media_guard
 from app.facebook.navigation import facebook_login_required, goto_with_retry
 from app.facebook.runs.adapters import FacebookAdsImporter
+from app.facebook.runs.adapters.persistence import FacebookRun
 from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 

@@ -7,7 +7,6 @@ from app.accounts.users.adapters.persistence import (
     SqlAlchemyUserRecordGateway,
     UserRecord,
 )
-from app.api.modules.users.gateway import UserGateway
 from app.database.uow import UnitOfWork
 
 pytestmark = pytest.mark.unit
@@ -26,9 +25,8 @@ async def test_user_record_gateway_preserves_flush_only_writes() -> None:
     session.commit.assert_not_awaited()
 
 
-def test_uow_and_legacy_path_use_owning_user_gateway() -> None:
+def test_uow_uses_owning_user_gateway() -> None:
     session = create_autospec(AsyncSession, instance=True)
     uow = UnitOfWork(session)
 
     assert type(uow.users) is SqlAlchemyUserRecordGateway
-    assert UserGateway is SqlAlchemyUserRecordGateway
