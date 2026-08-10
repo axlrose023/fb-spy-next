@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J4 завершен
+Статус: `IN_PROGRESS` — этап 14J5 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J4 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J5 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4272,6 +4272,33 @@ server, live Octo runtime и старый репозиторий не менял
 legacy JWT переносятся дальше раздельными bounded units. Production
 server, live Octo runtime и старый репозиторий не менялись. Rollback
 14J4 выполняется revert одного отдельного коммита.
+
+#### 14J5. Unused ads/stats composition removal
+
+Результат:
+
+- подтверждён нулевой consumer count legacy `FacebookAdService` и
+  `StatsService`; runtime composition уже выполняется
+  `AdLibraryProvider`, owning routers и application services;
+- удалены `api.modules.ads.service` и `api.modules.stats.service`, а
+  также пустые package markers ads, media, stats и users;
+- catalog/media/statistics service, router и Dishka composition contracts
+  сохранены в owning modules; HTTP и database behavior не менялись;
+- architecture denylist запрещает возврат обоих services и четырёх
+  package markers;
+- focused ad-library/DI/architecture regression: 58 тестов, полный
+  regression: 884 теста;
+- source wheel не содержит Python modules в удалённых feature
+  packages; ignored local caches могут создавать только пустые
+  directory entries;
+- Ruff, architecture/contracts, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: в legacy API tree остались только
+runs composition wrapper и JWT compatibility adapter; они переносятся
+отдельными units. Production server, live Octo runtime и старый репозиторий не
+менялись. Rollback 14J5 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

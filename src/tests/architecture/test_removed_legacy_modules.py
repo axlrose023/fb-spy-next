@@ -73,6 +73,12 @@ REMOVED_MODULES = {
     "app.api.modules.users.routes": APP_ROOT / "api/modules/users/routes.py",
     "app.api.modules.users.schema": APP_ROOT / "api/modules/users/schema.py",
     "app.api.modules.users.service": APP_ROOT / "api/modules/users/service.py",
+    "app.api.modules.ads": APP_ROOT / "api/modules/ads/__init__.py",
+    "app.api.modules.ads.service": APP_ROOT / "api/modules/ads/service.py",
+    "app.api.modules.media": APP_ROOT / "api/modules/media/__init__.py",
+    "app.api.modules.stats": APP_ROOT / "api/modules/stats/__init__.py",
+    "app.api.modules.stats.service": APP_ROOT / "api/modules/stats/service.py",
+    "app.api.modules.users": APP_ROOT / "api/modules/users/__init__.py",
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_MODULES)
 
