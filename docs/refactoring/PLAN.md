@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G13 завершен
+Статус: `IN_PROGRESS` — этап 14G14 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -3781,6 +3781,40 @@ runtime и старый репозиторий не менялись. Rollback 1
 legacy facade переносятся следующими units, затем выполняются итоговые
 import/CLI gates. Production server, live Octo runtime и старый репозиторий не
 менялись. Rollback 14G13 выполняется revert одного отдельного коммита.
+
+#### 14G14. Collection process command factory
+
+Результат:
+
+- composition пяти collection pipeline subprocess commands вынесена в
+  122-строчный `facebook.orchestration.adapters.collection_process_commands`;
+  factory связывает существующие collector, relevance, isolated resolver,
+  enrichment и backend import argv builders с typed `FacebookConfig`;
+- три узких combined Protocol определяют только необходимые builder options и
+  Octo runtime overrides; factory не зависит от argparse, subprocess runner,
+  filesystem state, pipeline policy или root settings loader;
+- Python и Octo environments по-прежнему создаются canonical функциями 14G11;
+  CLI host/port/headless precedence, configured runner executable/module и все
+  argv order/optional flags сохранены;
+- collection pipeline получает один config snapshot и один command factory на
+  run, после чего передаёт его bound methods в canonical command hooks;
+- реально импортируемые private `_collector_command`,
+  `_relevant_enricher_command` и `_backend_import_command` сохранены как
+  compatibility wrappers; неиспользуемые classifier/isolated wrappers и
+  дублирующие Python/Octo environment wrappers удалены;
+- direct composition test сравнивает результаты всех пяти factory methods с
+  ранее покрытыми narrow builders при CLI-over-config Octo overrides;
+- legacy orchestrator сокращен с 810 до 767 строк; focused regression: 108
+  тестов, полный regression: 893 теста;
+- wheel содержит новый adapter; Ruff, strict mypy, architecture/contracts,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: calibration command runtime и финальная
+граница legacy facade переносятся следующими units, затем выполняются итоговые
+import/CLI gates. Production server, live Octo runtime и старый репозиторий не
+менялись. Rollback 14G14 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

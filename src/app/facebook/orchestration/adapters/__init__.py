@@ -1,4 +1,5 @@
 from .backend_import_command import build_backend_import_command
+from .collection_process_commands import CollectionProcessCommandFactory
 from .collector_command import build_collector_command
 from .command_environment import OctoProcessEnvironment, PythonProcessEnvironment
 from .file_lock import FileLock, profile_lock_path
@@ -26,6 +27,7 @@ from .subprocess_runner import (
 __all__ = [
     "FileLock",
     "FileStateStore",
+    "CollectionProcessCommandFactory",
     "OctoProcessEnvironment",
     "OctoRuntimeOptions",
     "ProcessRegistry",

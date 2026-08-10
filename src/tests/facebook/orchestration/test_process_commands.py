@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.facebook.orchestration.adapters import (
+    CollectionProcessCommandFactory,
     OctoProcessEnvironment,
     PythonProcessEnvironment,
     build_backend_import_command,
@@ -15,12 +16,16 @@ from app.facebook.orchestration.adapters import (
     build_relevant_enricher_command,
 )
 from app.facebook.profiles import Profile
+from app.facebook.settings import FacebookConfig
 
 pytestmark = pytest.mark.unit
 
 
 @dataclass
 class PipelineOptions:
+    octo_host: str = ""
+    octo_port: int = 0
+    octo_headless: bool | None = None
     collect_minutes: float = 15
     collect_scrolls: int = 10_000
     resolve_max: int = 200
@@ -178,3 +183,65 @@ def test_isolated_resolver_and_backend_import_commands(tmp_path: Path) -> None:
     assert imported[:3] == ["python", "-m", "app.facebook.runs.commands"]
     assert option_value(imported, "--ads-json") == str(ads_path)
     assert option_value(imported, "--title") == "Spain - collect"
+
+
+def test_collection_factory_composes_all_builders_with_runtime_config(
+    tmp_path: Path,
+) -> None:
+    settings = FacebookConfig(
+        runner_python="configured-python",
+        runner_module="configured.collector",
+        octo_host="configured-host",
+        octo_port=58888,
+        octo_headless=True,
+    )
+    options = PipelineOptions(
+        octo_host="cli-host",
+        octo_port=59999,
+        octo_headless=False,
+    )
+    profile = Profile("profile", label="Canada")
+    source = tmp_path / "ads.gated.json"
+    factory = CollectionProcessCommandFactory(settings)
+    octo = OctoProcessEnvironment(
+        executable="configured-python",
+        collector_module="configured.collector",
+        host="cli-host",
+        port=59999,
+        headless=False,
+    )
+    python = PythonProcessEnvironment("configured-python")
+
+    assert factory.collector(profile, options, tmp_path) == build_collector_command(
+        profile, options, tmp_path, octo
+    )
+    assert factory.classifier(
+        tmp_path,
+        stage="finalize",
+        source=source,
+        include_video=True,
+    ) == build_relevance_classifier_command(
+        tmp_path,
+        python,
+        stage="finalize",
+        source=source,
+        include_video=True,
+    )
+    assert factory.enricher(
+        profile,
+        options,
+        tmp_path,
+        source=source,
+    ) == build_relevant_enricher_command(
+        profile,
+        options,
+        tmp_path,
+        octo,
+        source=source,
+    )
+    assert factory.isolated_resolver(
+        profile, options, tmp_path
+    ) == build_isolated_landing_resolver_command(profile, options, tmp_path, octo)
+    assert factory.backend_import(profile, source) == build_backend_import_command(
+        profile, source, python
+    )

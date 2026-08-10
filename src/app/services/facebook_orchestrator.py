@@ -54,20 +54,12 @@ from app.facebook.orchestration import (
     RecoverySchedulePolicy as RecoverySchedulePolicy,
 )
 from app.facebook.orchestration.adapters import (
+    CollectionProcessCommandFactory,
     FileLock,
     FileStateStore,
-    OctoProcessEnvironment,
     ProcessRegistry,
-    PythonProcessEnvironment,
-    build_backend_import_command,
-    build_collector_command,
-    build_isolated_landing_resolver_command,
-    build_relevance_classifier_command,
-    build_relevant_enricher_command,
     octo_headless,
-    octo_process_environment,
     profile_lock_path,
-    python_process_environment,
     relevance_classification_enabled,
     run_orchestrator_command,
 )
@@ -292,6 +284,7 @@ def _run_collection_pipeline(
     args,
     collect_dir: Path,
 ) -> CollectionPipelineState:
+    commands = _collection_process_commands()
     return run_collection_command(
         CollectionCommandRequest(
             profile=profile,
@@ -314,13 +307,13 @@ def _run_collection_pipeline(
                 log_path,
                 timeout_seconds=timeout,
             ),
-            collector_command=lambda cycle_profile, run_dir: _collector_command(
+            collector_command=lambda cycle_profile, run_dir: commands.collector(
                 cycle_profile,
                 args,
                 run_dir,
             ),
             classifier_command=lambda run_dir, stage, source, include_video: (
-                _relevance_classifier_command(
+                commands.classifier(
                     run_dir,
                     stage=stage,
                     source=source,
@@ -328,17 +321,15 @@ def _run_collection_pipeline(
                 )
             ),
             isolated_resolver_command=lambda cycle_profile, run_dir: (
-                _isolated_landing_resolver_command(cycle_profile, args, run_dir)
+                commands.isolated_resolver(cycle_profile, args, run_dir)
             ),
-            enricher_command=lambda cycle_profile, run_dir, source: (
-                _relevant_enricher_command(
-                    cycle_profile,
-                    args,
-                    run_dir,
-                    source=source,
-                )
+            enricher_command=lambda cycle_profile, run_dir, source: commands.enricher(
+                cycle_profile,
+                args,
+                run_dir,
+                source=source,
             ),
-            backend_import_command=_backend_import_command,
+            backend_import_command=commands.backend_import,
             stop_requested=_STOP_EVENT.is_set,
             relevance_enabled=lambda: _relevance_classification_enabled(args),
             artifact_exists=lambda path: path.exists(),
@@ -356,23 +347,7 @@ def _interest_safe_collection_violations(run_dir: Path) -> list[str]:
 
 
 def _collector_command(profile: ProfileConfig, args, run_dir: Path) -> list[str]:
-    return build_collector_command(profile, args, run_dir, _octo_environment(args))
-
-
-def _relevance_classifier_command(
-    run_dir: Path,
-    *,
-    stage: str = "standard",
-    source: Path | None = None,
-    include_video: bool = False,
-) -> list[str]:
-    return build_relevance_classifier_command(
-        run_dir,
-        _python_environment(),
-        stage=stage,
-        source=source,
-        include_video=include_video,
-    )
+    return _collection_process_commands().collector(profile, args, run_dir)
 
 
 def _relevant_enricher_command(
@@ -382,25 +357,11 @@ def _relevant_enricher_command(
     *,
     source: Path | None = None,
 ) -> list[str]:
-    return build_relevant_enricher_command(
+    return _collection_process_commands().enricher(
         profile,
         args,
         run_dir,
-        _octo_environment(args),
         source=source,
-    )
-
-
-def _isolated_landing_resolver_command(
-    profile: ProfileConfig,
-    args,
-    run_dir: Path,
-) -> list[str]:
-    return build_isolated_landing_resolver_command(
-        profile,
-        args,
-        run_dir,
-        _octo_environment(args),
     )
 
 
@@ -415,15 +376,11 @@ def _backend_import_command(
     profile: ProfileConfig,
     ads_json_path: Path,
 ) -> list[str]:
-    return build_backend_import_command(profile, ads_json_path, _python_environment())
+    return _collection_process_commands().backend_import(profile, ads_json_path)
 
 
-def _python_environment() -> PythonProcessEnvironment:
-    return python_process_environment(get_config().facebook)
-
-
-def _octo_environment(args) -> OctoProcessEnvironment:
-    return octo_process_environment(args, get_config().facebook)
+def _collection_process_commands() -> CollectionProcessCommandFactory:
+    return CollectionProcessCommandFactory(get_config().facebook)
 
 
 def _calibrator_command(
