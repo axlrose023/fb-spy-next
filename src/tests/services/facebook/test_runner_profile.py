@@ -11,15 +11,29 @@ from PIL import Image
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from app.api.modules.runs.models import FacebookRun
+from app.browser import BrowserOperationDeadlineExceeded, hard_deadline
+from app.facebook.adapters import OctoApiError, rewrite_cdp_endpoint_host
+from app.facebook.collection import CollectedAd
 from app.facebook.collection.adapters.playwright import (
     candidate_media,
     candidate_resolution,
+    collect_feed,
+)
+from app.facebook.collection.adapters.playwright import (
+    collector as collection_collector,
 )
 from app.facebook.collection.artifacts import files as collection_artifacts
+from app.facebook.enrichment.post import (
+    facebook_post_identity_from_url,
+    normalized_facebook_post_url,
+    resolve_facebook_post_url,
+)
 from app.facebook.enrichment.video.adapters.playwright import recorder as video_recorder
+from app.facebook.enrichment.video.adapters.playwright import write_screencast_frame
+from app.facebook.feed import DETECT_JS, prepare_passive_media_guard
+from app.facebook.navigation import facebook_login_required, goto_with_retry
 from app.facebook.runs.adapters import FacebookAdsImporter
 from app.facebook.runs.adapters.processes import FacebookRunnerRegistry
-from app.services import facebook_runner
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
 
@@ -61,7 +75,7 @@ class ProxyCertificateNavigationPage(FlakyNavigationPage):
         self.context = FakeBrowserContext()
 
 
-def test_goto_retries_transient_proxy_failure(monkeypatch) -> None:
+def test_goto_retries_transient_proxy_failure() -> None:
     page = FlakyNavigationPage(
         [
             RuntimeError("net::ERR_SOCKS_CONNECTION_FAILED"),
@@ -69,12 +83,12 @@ def test_goto_retries_transient_proxy_failure(monkeypatch) -> None:
         ]
     )
     delays = []
-    monkeypatch.setattr(facebook_runner.time, "sleep", delays.append)
 
-    result = facebook_runner._goto_with_retry(
+    result = goto_with_retry(
         page,
         "https://m.facebook.com/",
         timeout=20_000,
+        sleeper=delays.append,
     )
 
     assert result == "loaded"
@@ -82,19 +96,19 @@ def test_goto_retries_transient_proxy_failure(monkeypatch) -> None:
     assert delays == [1.5, 3.0]
 
 
-def test_goto_retries_playwright_navigation_timeout(monkeypatch) -> None:
+def test_goto_retries_playwright_navigation_timeout() -> None:
     page = FlakyNavigationPage(
         [
             PlaywrightTimeoutError("Page.goto: Timeout 20000ms exceeded."),
         ]
     )
     delays = []
-    monkeypatch.setattr(facebook_runner.time, "sleep", delays.append)
 
-    result = facebook_runner._goto_with_retry(
+    result = goto_with_retry(
         page,
         "https://m.facebook.com/",
         timeout=20_000,
+        sleeper=delays.append,
     )
 
     assert result == "loaded"
@@ -102,12 +116,11 @@ def test_goto_retries_playwright_navigation_timeout(monkeypatch) -> None:
     assert delays == [1.5]
 
 
-def test_goto_does_not_retry_non_transient_failure(monkeypatch) -> None:
+def test_goto_does_not_retry_non_transient_failure() -> None:
     page = FlakyNavigationPage([RuntimeError("net::ERR_CERT_INVALID")])
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
 
     with pytest.raises(RuntimeError, match="ERR_CERT_INVALID"):
-        facebook_runner._goto_with_retry(
+        goto_with_retry(
             page,
             "https://m.facebook.com/",
             timeout=20_000,
@@ -119,10 +132,11 @@ def test_goto_does_not_retry_non_transient_failure(monkeypatch) -> None:
 def test_goto_accepts_proxy_certificate_authority_for_cdp_session() -> None:
     page = ProxyCertificateNavigationPage()
 
-    result = facebook_runner._goto_with_retry(
+    result = goto_with_retry(
         page,
         "https://m.facebook.com/",
         timeout=20_000,
+        sleeper=lambda _seconds: None,
     )
 
     assert result == "loaded"
@@ -145,12 +159,8 @@ class FacebookSessionPage:
 
 
 def test_facebook_login_required_probe_detects_logged_out_page() -> None:
-    assert facebook_runner._facebook_login_required(
-        FacebookSessionPage(login_required=True)
-    )
-    assert not facebook_runner._facebook_login_required(
-        FacebookSessionPage(login_required=False)
-    )
+    assert facebook_login_required(FacebookSessionPage(login_required=True))
+    assert not facebook_login_required(FacebookSessionPage(login_required=False))
 
 
 class PassiveGuardPage:
@@ -180,7 +190,7 @@ class PassiveGuardRoute:
 def test_passive_media_guard_is_ready_before_navigation() -> None:
     page = PassiveGuardPage()
 
-    stats = facebook_runner.prepare_passive_media_guard(page)
+    stats = prepare_passive_media_guard(page)
 
     assert stats["init_script_installed"] is True
     assert stats["media_route_installed"] is True
@@ -201,9 +211,9 @@ def test_collect_stops_logged_out_profile_without_counting_empty_feed(
     monkeypatch,
 ) -> None:
     page = FacebookSessionPage(login_required=True)
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(collection_collector.time, "sleep", lambda _seconds: None)
 
-    ads = facebook_runner.collect(
+    ads = collect_feed(
         page,
         object(),
         tmp_path,
@@ -227,9 +237,9 @@ def test_interest_safe_collect_overrides_all_active_flags(
     monkeypatch,
 ) -> None:
     page = FacebookSessionPage(login_required=True)
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(collection_collector.time, "sleep", lambda _seconds: None)
 
-    facebook_runner.collect(
+    collect_feed(
         page,
         object(),
         tmp_path,
@@ -259,7 +269,7 @@ def test_interest_safe_collect_overrides_all_active_flags(
 
 
 def test_octo_proxy_start_failure_writes_machine_readable_metrics(tmp_path) -> None:
-    reason = facebook_runner._write_octo_start_failure(
+    reason = collection_artifacts.write_octo_start_failure(
         tmp_path,
         profile_uuid="profile-uuid",
         octo_host="host.docker.internal",
@@ -268,7 +278,7 @@ def test_octo_proxy_start_failure_writes_machine_readable_metrics(tmp_path) -> N
         requested_minutes=15,
         started_at="2026-07-17T06:00:00+00:00",
         elapsed_seconds=1.25,
-        error=facebook_runner.OctoApiError('HTTP 400 {"code":"profiles.proxy_error"}'),
+        error=OctoApiError('HTTP 400 {"code":"profiles.proxy_error"}'),
     )
 
     meta = json.loads((tmp_path / "run_meta.json").read_text(encoding="utf-8"))
@@ -294,7 +304,7 @@ def test_browser_operation_timeout_uses_successful_fast_exit(
     exit_codes = []
     monkeypatch.setattr(collection_artifacts.os, "_exit", exit_codes.append)
 
-    facebook_runner._fast_exit_after_browser_operation_timeout(tmp_path)
+    collection_artifacts.fast_exit_after_browser_operation_timeout(tmp_path)
 
     assert exit_codes == [0]
 
@@ -307,7 +317,7 @@ def test_normal_stop_reason_does_not_use_fast_exit(tmp_path, monkeypatch) -> Non
     exit_codes = []
     monkeypatch.setattr(collection_artifacts.os, "_exit", exit_codes.append)
 
-    facebook_runner._fast_exit_after_browser_operation_timeout(tmp_path)
+    collection_artifacts.fast_exit_after_browser_operation_timeout(tmp_path)
 
     assert exit_codes == []
 
@@ -338,7 +348,7 @@ class ResolveTimeoutPage:
         self.url = url
 
     def evaluate(self, script, *_args):
-        if script != facebook_runner.DETECT_JS:
+        if script != DETECT_JS:
             raise AssertionError("unexpected page evaluation")
         return [
             {
@@ -368,7 +378,7 @@ class VideoTimeoutPage(ResolveTimeoutPage):
 
 class ImmediateDeadline:
     def __enter__(self):
-        raise facebook_runner._OperationDeadlineExceeded("blocked landing")
+        raise BrowserOperationDeadlineExceeded("blocked landing")
 
     def __exit__(self, *_args) -> None:
         pass
@@ -445,8 +455,8 @@ class ScreencastVideoPage:
 def test_hard_deadline_interrupts_blocking_resolve_work() -> None:
     started = time.monotonic()
 
-    with pytest.raises(facebook_runner._OperationDeadlineExceeded):
-        with facebook_runner._hard_deadline(0.05, "test resolve"):
+    with pytest.raises(BrowserOperationDeadlineExceeded):
+        with hard_deadline(0.05, "test resolve"):
             time.sleep(5)
 
     assert time.monotonic() - started < 1
@@ -458,9 +468,9 @@ def test_resolve_timeout_saves_ad_and_ends_cycle(tmp_path, monkeypatch) -> None:
         "hard_deadline",
         lambda *_args, **_kwargs: ImmediateDeadline(),
     )
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(collection_collector.time, "sleep", lambda _seconds: None)
 
-    ads = facebook_runner.collect(
+    ads = collect_feed(
         ResolveTimeoutPage(),
         object(),
         tmp_path,
@@ -489,9 +499,9 @@ def test_video_timeout_saves_ad_and_ends_cycle(tmp_path, monkeypatch) -> None:
         "hard_deadline",
         lambda *_args, **_kwargs: ImmediateDeadline(),
     )
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(collection_collector.time, "sleep", lambda _seconds: None)
 
-    ads = facebook_runner.collect(
+    ads = collect_feed(
         VideoTimeoutPage(),
         object(),
         tmp_path,
@@ -547,7 +557,7 @@ def test_video_uses_screencast_frames_without_screenshot_commands(
 
     monkeypatch.setattr(video_recorder, "encode_video_frames", fake_encode)
 
-    ok, issue = facebook_runner.record_ad_video(
+    ok, issue = video_recorder.record_ad_video(
         page,
         output_path,
         "ad-1",
@@ -570,7 +580,7 @@ def test_write_screencast_frame_crops_to_element(tmp_path) -> None:
     source.save(buffer, format="JPEG")
     output = tmp_path / "frame.png"
 
-    ok, issue = facebook_runner._write_screencast_frame(
+    ok, issue = write_screencast_frame(
         base64.b64encode(buffer.getvalue()).decode(),
         output,
         clip={
@@ -621,112 +631,13 @@ def test_runner_registry_command_uses_run_profile_and_exact_run_dir(tmp_path) ->
     assert "--out" not in command
 
 
-def test_get_cdp_endpoint_uses_matching_active_profile(monkeypatch) -> None:
-    monkeypatch.setattr(facebook_runner, "OCTO_PROFILE_UUID", "target-profile")
-
-    def fake_octo(method, path, body=None):
-        assert method == "GET"
-        assert path == "/api/profiles/active"
-        assert body is None
-        return [
-            {
-                "uuid": "other-profile",
-                "ws_endpoint": "ws://127.0.0.1:1111/devtools/browser/other",
-                "connection_data": {"country": "Germany"},
-            },
-            {
-                "uuid": "target-profile",
-                "ws_endpoint": "ws://127.0.0.1:2222/devtools/browser/target",
-                "connection_data": {"country": "France", "ip": "203.0.113.10"},
-            },
-        ]
-
-    monkeypatch.setattr(facebook_runner, "octo", fake_octo)
-
-    ws_endpoint, connection_data = facebook_runner.get_cdp_endpoint()
-
-    assert ws_endpoint == "ws://127.0.0.1:2222/devtools/browser/target"
-    assert connection_data == {"country": "France", "ip": "203.0.113.10"}
-
-
-def test_get_cdp_endpoint_starts_requested_profile_when_not_active(monkeypatch) -> None:
-    monkeypatch.setattr(facebook_runner, "OCTO_PROFILE_UUID", "target-profile")
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
-    calls = []
-
-    def fake_octo(method, path, body=None):
-        calls.append((method, path, body))
-        if method == "GET" and path == "/api/profiles/active":
-            return [
-                {
-                    "uuid": "other-profile",
-                    "ws_endpoint": "ws://127.0.0.1:1111/devtools/browser/other",
-                },
-            ]
-        assert method == "POST"
-        assert path == "/api/profiles/start"
-        assert body["uuid"] == "target-profile"
-        return {
-            "ws_endpoint": "ws://127.0.0.1:2222/devtools/browser/target",
-            "connection_data": {"country": "France", "ip": "203.0.113.10"},
-        }
-
-    monkeypatch.setattr(facebook_runner, "octo", fake_octo)
-
-    ws_endpoint, connection_data = facebook_runner.get_cdp_endpoint()
-
-    assert ws_endpoint == "ws://127.0.0.1:2222/devtools/browser/target"
-    assert connection_data["country"] == "France"
-    assert calls[1][2]["uuid"] == "target-profile"
-    assert calls[1][2]["timeout"] == 120
-
-
-def test_get_cdp_endpoint_restarts_profile_when_headless_mode_differs(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(facebook_runner, "OCTO_PROFILE_UUID", "target-profile")
-    monkeypatch.setattr(facebook_runner, "OCTO_HEADLESS", True)
-    monkeypatch.setattr(facebook_runner.time, "sleep", lambda _seconds: None)
-    calls = []
-
-    def fake_octo(method, path, body=None):
-        calls.append((method, path, body))
-        if method == "GET":
-            return [
-                {
-                    "uuid": "target-profile",
-                    "headless": False,
-                    "ws_endpoint": "ws://127.0.0.1:1111/devtools/browser/visible",
-                }
-            ]
-        if path == "/api/profiles/stop":
-            return {"ok": True}
-        return {
-            "ws_endpoint": "ws://127.0.0.1:2222/devtools/browser/headless",
-            "connection_data": {"country": "Spain"},
-        }
-
-    monkeypatch.setattr(facebook_runner, "octo", fake_octo)
-
-    ws_endpoint, connection_data = facebook_runner.get_cdp_endpoint()
-
-    assert ws_endpoint.endswith("/headless")
-    assert connection_data["country"] == "Spain"
-    assert calls[1] == (
-        "POST",
-        "/api/profiles/stop",
-        {"uuid": "target-profile"},
-    )
-    assert calls[2][2]["headless"] is True
-
-
 def test_rewrite_cdp_endpoint_resolves_remote_host_for_chromium(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.facebook.adapters.octo.mapping.socket.gethostbyname",
         lambda host: "192.0.2.10" if host == "host.docker.internal" else host,
     )
 
-    endpoint = facebook_runner.rewrite_cdp_endpoint_host(
+    endpoint = rewrite_cdp_endpoint_host(
         "ws://127.0.0.1:59345/devtools/browser/browser-id",
         "host.docker.internal",
     )
@@ -736,12 +647,12 @@ def test_rewrite_cdp_endpoint_resolves_remote_host_for_chromium(monkeypatch) -> 
 
 def test_static_ad_permalink_is_resolved_by_opening_comments_read_only() -> None:
     page = StaticAdPage()
-    ad = facebook_runner.Ad(
+    ad = CollectedAd(
         advertiser="Saved advertiser",
         ad_type="link",
     )
 
-    resolved = facebook_runner.resolve_facebook_post_url(
+    resolved = resolve_facebook_post_url(
         page,
         ad,
         "feed-element",
@@ -756,26 +667,22 @@ def test_static_ad_permalink_is_resolved_by_opening_comments_read_only() -> None
 
 
 def test_facebook_post_identity_rejects_external_urls() -> None:
-    assert facebook_runner._facebook_post_identity_from_url(
-        "https://m.facebook.com/100/posts/200"
-    ) == ("100", "200")
-    assert (
-        facebook_runner._facebook_post_identity_from_url(
-            "https://example.com/100/posts/200"
-        )
-        is None
+    assert facebook_post_identity_from_url("https://m.facebook.com/100/posts/200") == (
+        "100",
+        "200",
     )
+    assert facebook_post_identity_from_url("https://example.com/100/posts/200") is None
 
 
 def test_normalized_facebook_post_url_discards_tracking_query() -> None:
     assert (
-        facebook_runner._normalized_facebook_post_url(
+        normalized_facebook_post_url(
             "https://m.facebook.com/story.php?id=100&story_fbid=200&refid=52"
         )
         == "https://m.facebook.com/story.php?story_fbid=200&id=100"
     )
     assert (
-        facebook_runner._normalized_facebook_post_url(
+        normalized_facebook_post_url(
             "https://www.facebook.com/100/posts/200?mibextid=abc"
         )
         == "https://m.facebook.com/100/posts/200"

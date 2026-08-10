@@ -11,7 +11,6 @@ from app.facebook.enrichment.post import (
     resolve_facebook_post_url,
     valid_post_url,
 )
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -129,16 +128,3 @@ def test_permalink_recovery_updates_ad_and_restores_feed() -> None:
         "https://m.facebook.com/story.php?story_fbid=200&id=100"
     )
     assert page.url == "https://m.facebook.com/"
-
-
-def test_runner_post_aliases_share_canonical_implementation() -> None:
-    assert facebook_runner.OPEN_COMMENTS_FOR_PERMALINK_JS is (
-        OPEN_COMMENTS_FOR_PERMALINK_JS
-    )
-    assert facebook_runner._facebook_post_identity_from_url is (
-        facebook_post_identity_from_url
-    )
-    assert facebook_runner._normalized_facebook_post_url is (
-        normalized_facebook_post_url
-    )
-    assert facebook_runner.resolve_facebook_post_url is resolve_facebook_post_url

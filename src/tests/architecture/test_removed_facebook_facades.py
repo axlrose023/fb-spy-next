@@ -41,11 +41,9 @@ REMOVED_FACADES = {
         APP_ROOT / "services/facebook_ad_enricher.py"
     ),
     "app.services.facebook_calibrator": APP_ROOT / "services/facebook_calibrator.py",
+    "app.services.facebook_runner": APP_ROOT / "services/facebook_runner.py",
 }
-FORBIDDEN_PRODUCTION_IMPORTS = {
-    *REMOVED_FACADES,
-    "app.services.facebook_runner",
-}
+FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_FACADES)
 
 
 def _imports(path: Path) -> set[str]:

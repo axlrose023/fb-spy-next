@@ -9,14 +9,12 @@ from PIL import Image
 from app.facebook.collection import CollectedAd
 from app.facebook.enrichment import EnrichmentOptions
 from app.facebook.enrichment.adapters.playwright import video as video_adapter
-from app.facebook.enrichment.video.adapters import playwright as video_capture
 from app.facebook.enrichment.video.adapters.playwright import (
     encoder,
     frames,
     playback,
     recorder,
 )
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -33,28 +31,6 @@ class VisibleElement:
 class RecordingPage:
     def locator(self, _selector: str) -> VisibleElement:
         return VisibleElement()
-
-
-def test_runner_video_exports_are_canonical_aliases() -> None:
-    assert facebook_runner.VIDEO_PREP_JS is video_capture.VIDEO_PREP_JS
-    assert facebook_runner.record_ad_video is video_capture.record_ad_video
-    assert facebook_runner._pause_ad_video is video_capture.pause_ad_video
-    assert (
-        facebook_runner._capture_screencast_frames
-        is video_capture.capture_screencast_frames
-    )
-    assert (
-        facebook_runner._write_screencast_frame is video_capture.write_screencast_frame
-    )
-    assert (
-        facebook_runner._prepare_video_playback is video_capture.prepare_video_playback
-    )
-    assert facebook_runner._element_viewport_clip is video_capture.element_viewport_clip
-    assert (
-        facebook_runner._trim_static_tail_frames
-        is video_capture.trim_static_tail_frames
-    )
-    assert facebook_runner._encode_video_frames is video_capture.encode_video_frames
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 from app.facebook.collection.adapters.playwright import DebugRecorder
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -146,7 +145,3 @@ def test_recorder_attaches_each_page_once_and_records_trace_network_events(
         "trace_stopped",
         "debug_finished",
     ]
-
-
-def test_runner_debug_recorder_alias_preserves_identity() -> None:
-    assert facebook_runner.DebugRecorder is DebugRecorder

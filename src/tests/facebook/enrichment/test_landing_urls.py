@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from app.facebook.enrichment import external_landing_url, parse_landing
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -58,8 +57,3 @@ def test_external_landing_url_unwraps_only_external_http_targets(
     expected: str | None,
 ) -> None:
     assert external_landing_url(url) == expected
-
-
-def test_runner_landing_aliases_share_canonical_implementation() -> None:
-    assert facebook_runner.parse_landing is parse_landing
-    assert facebook_runner._external_landing_url is external_landing_url

@@ -34,7 +34,7 @@ Ad detail: advertiser, text, domain, CTA, creative URL, FB screenshot URL, landi
 
 `POST /runs`
 
-Starts the existing Facebook runner as a subprocess. Current runner is intentionally kept as a single file at `src/app/services/facebook_runner.py`.
+Starts the Facebook collection workflow through the unified `facebook-spy collect` command. Collection behavior is owned by `src/app/facebook/collection/`, while browser, feed, profile, and enrichment concerns remain in their dedicated modules.
 
 ```json
 {

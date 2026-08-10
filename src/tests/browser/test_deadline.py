@@ -8,7 +8,6 @@ import pytest
 
 import app.browser.deadline as deadline_module
 from app.browser import BrowserOperationDeadlineExceeded, hard_deadline
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -83,10 +82,3 @@ def test_hard_deadline_restores_previous_handler_and_timer(
     assert handler_calls[0][0] == signal.SIGALRM
     assert callable(handler_calls[0][1])
     assert handler_calls[1] == (signal.SIGALRM, previous_handler)
-
-
-def test_runner_private_deadline_aliases_preserve_identity() -> None:
-    assert facebook_runner._hard_deadline is hard_deadline
-    assert (
-        facebook_runner._OperationDeadlineExceeded is BrowserOperationDeadlineExceeded
-    )

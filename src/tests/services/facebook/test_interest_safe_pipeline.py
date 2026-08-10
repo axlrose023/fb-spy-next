@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.facebook.calibration import CalibrationTarget
+from app.facebook.collection import CollectedAd
 from app.facebook.enrichment import EnrichmentOptions, EnrichmentService
 from app.facebook.enrichment.adapters.playwright import post as enrichment_post
 from app.facebook.enrichment.adapters.playwright.post import recover_allowed_post_url
@@ -27,7 +28,7 @@ from app.facebook.relevance.evidence import (
     resolution_candidate,
     summarize_isolated_resolutions,
 )
-from app.services import facebook_orchestrator, facebook_runner
+from app.services import facebook_orchestrator
 from app.services.facebook_orchestrator import ProfileConfig
 
 
@@ -191,12 +192,12 @@ def test_allowed_post_url_is_recovered_from_neutralized_feed_history(
     context = SimpleNamespace(pages=[page])
     neutralized = []
     monkeypatch.setattr(
-        facebook_runner,
+        enrichment_post,
         "prepare_passive_media_guard",
         lambda _page: {"init_script_installed": True},
     )
     monkeypatch.setattr(
-        facebook_runner,
+        enrichment_post,
         "install_passive_media_guard",
         lambda _page: True,
     )
@@ -615,7 +616,7 @@ def test_orchestrator_rejects_active_artifact_in_passive_collection(
 
 
 def test_passive_ad_model_keeps_cta_href_without_using_it_as_an_action() -> None:
-    ad = facebook_runner.Ad(
+    ad = CollectedAd(
         advertiser="Advertiser",
         ad_type="link",
         cta_href="https://l.facebook.com/l.php?u=https%3A%2F%2Fexample.test",

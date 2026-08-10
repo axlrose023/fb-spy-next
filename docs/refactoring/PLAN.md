@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14I3 завершен
+Статус: `IN_PROGRESS` — этап 14I4 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -4080,6 +4080,35 @@ characterization tests на owning modules и удаляет transitional facade
 этого отдельно выполняется orchestrator cutover. Production server, live Octo
 runtime и старый репозиторий не менялись. Rollback 14I3 выполняется revert
 одного отдельного коммита.
+
+#### 14I4. Collection runner facade removal
+
+Результат:
+
+- transitional `app.services.facebook_runner` удалён; architecture denylist
+  запрещает возвращение файла и production imports этого пути;
+- remaining collection characterization tests переведены на публичные owners:
+  `browser`, `facebook/navigation`, `facebook/feed`, `facebook/collection`,
+  `facebook/enrichment` и Octo adapters;
+- compatibility identity assertions удалены, но behavioral coverage
+  навигации, passive media guard, collection stop reasons, active-action
+  overrides, timeouts, video, permalink, artifacts и CLI сохранён;
+- три старых Octo-session сценария удалены из runner characterization как
+  дубликаты более полных adapter-level tests;
+- CLI contract теперь проверяет `facebook-spy collect`; README больше не
+  документирует удалённый single-file runner;
+- focused cutover regression: 52 теста, полный regression: 888 тестов;
+- wheel содержит canonical collection command и `facebook/feed/detector.js`,
+  но не содержит `app/services/facebook_runner.py`;
+- Ruff, strict stage-scoped mypy, architecture/contracts, staged pre-commit,
+  frontend production build и gitleaks проходят; frontend source/lock не
+  менялись; `npm audit` сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14I остается `IN_PROGRESS`: следующий unit выполняет orchestrator CLI и
+process cutover, после чего legacy `facebook_orchestrator.py` можно удалить
+отдельным проверяемым изменением. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14I4 выполняется revert одного отдельного
+коммита.
 
 Перед удалением:
 

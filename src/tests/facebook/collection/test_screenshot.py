@@ -14,7 +14,6 @@ from app.facebook.collection.adapters.playwright import (
     screenshot_has_blank_media,
 )
 from app.facebook.collection.adapters.playwright import screenshot as screenshot_module
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -155,11 +154,3 @@ def test_video_creative_probe_is_best_effort() -> None:
     assert has_video_creative(FakePage(video=True), "feed-element") is True
     assert has_video_creative(FakePage(video=False), "feed-element") is False
     assert has_video_creative(FakePage(video=True), None) is False
-
-
-def test_runner_screenshot_aliases_share_canonical_implementation() -> None:
-    assert facebook_runner.MEDIA_READY_JS is MEDIA_READY_JS
-    assert facebook_runner.VIDEO_CREATIVE_JS is VIDEO_CREATIVE_JS
-    assert facebook_runner._screenshot_has_blank_media is screenshot_has_blank_media
-    assert facebook_runner.save_ad_screenshot is save_ad_screenshot
-    assert facebook_runner.has_video_creative is has_video_creative

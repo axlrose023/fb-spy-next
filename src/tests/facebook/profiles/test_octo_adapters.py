@@ -21,7 +21,6 @@ from app.facebook.adapters.octo import (
     rewrite_cdp_endpoint_host,
 )
 from app.facebook.profiles import ProfileConnection, ProfileSession, ProfileSourceError
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -268,10 +267,8 @@ def test_local_runtime_maps_profile_source_error() -> None:
     )
 
 
-def test_legacy_runner_reuses_canonical_octo_contracts() -> None:
+def test_public_adapter_reuses_canonical_octo_error() -> None:
     assert PublicOctoApiError is OctoApiError
-    assert facebook_runner.OctoApiError is OctoApiError
-    assert facebook_runner.OCTO_START_FLAGS == list(DEFAULT_OCTO_START_FLAGS)
 
 
 def test_active_source_returns_safe_discovery_shape() -> None:

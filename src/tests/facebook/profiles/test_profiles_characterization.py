@@ -7,8 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.facebook.calibration import CalibrationPolicy, baseline_from_history
+from app.facebook.profiles import normalize_country
 from app.facebook.runs import RunMetrics
-from app.services import facebook_orchestrator, facebook_runner
+from app.services import facebook_orchestrator
 from app.services.facebook_orchestrator import (
     ProfileConfig,
     _discover_active,
@@ -129,9 +130,9 @@ def test_country_adoption_is_write_once_and_unknown_geo_is_not_invented(
     _persist_profile_country(profiles_path, "profile", "Canada")
 
     assert _load_profiles(profiles_path)[0].expected_country == "Spain"
-    assert facebook_runner.normalize_country("TR") == "Turkey"
-    assert facebook_runner.normalize_country("  Serbia  ") == "Serbia"
-    assert facebook_runner.normalize_country("   ") is None
+    assert normalize_country("TR") == "Turkey"
+    assert normalize_country("  Serbia  ") == "Serbia"
+    assert normalize_country("   ") is None
 
 
 def test_baseline_only_uses_comparable_good_profile_windows() -> None:

@@ -10,11 +10,9 @@ from app.facebook.enrichment.landing.adapters.playwright import (
     SCROLL_CTA_JS,
     artifacts,
     capture,
-    close_landing_tabs,
     neutralize_profile_pages,
     resolve_in_view,
 )
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -307,10 +305,3 @@ def test_profile_neutralization_preserves_feed_page_and_devtools() -> None:
     assert feed.goto_calls == [
         ("about:blank", {"wait_until": "commit", "timeout": 5000})
     ]
-
-
-def test_runner_landing_runtime_aliases_share_canonical_implementation() -> None:
-    assert facebook_runner.SCROLL_CTA_JS is SCROLL_CTA_JS
-    assert facebook_runner._close_landing_tabs is close_landing_tabs
-    assert facebook_runner.neutralize_profile_pages is neutralize_profile_pages
-    assert facebook_runner.resolve_in_view is resolve_in_view

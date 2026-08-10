@@ -11,12 +11,10 @@ from app.facebook.navigation import (
     TRANSIENT_NAVIGATION_ERRORS,
     facebook_login_required,
     goto_with_retry,
-    ignore_proxy_certificate_errors,
     is_facebook_feed_url,
     is_transient_navigation_error,
     recover_facebook_feed,
 )
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -154,18 +152,6 @@ def test_feed_recovery_swallows_navigation_failure() -> None:
     recover_facebook_feed(page, sleeper=lambda _seconds: None)
 
     assert len(page.calls) == 1
-
-
-def test_runner_compatibility_aliases_share_canonical_policy() -> None:
-    assert facebook_runner._goto_with_retry is goto_with_retry
-    assert facebook_runner._facebook_login_required is facebook_login_required
-    assert (
-        facebook_runner._ignore_proxy_certificate_errors
-        is ignore_proxy_certificate_errors
-    )
-    assert facebook_runner._is_fb_feed_url is is_facebook_feed_url
-    assert facebook_runner._recover_feed is recover_facebook_feed
-    assert facebook_runner.TRANSIENT_NAVIGATION_ERRORS is TRANSIENT_NAVIGATION_ERRORS
 
 
 def test_calibration_uses_shared_transient_navigation_policy() -> None:

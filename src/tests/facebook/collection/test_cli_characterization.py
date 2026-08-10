@@ -9,35 +9,19 @@ import pytest
 
 from app.facebook import commands as facebook_commands
 from app.facebook.adapters import OctoApiError
+from app.facebook.collection import CollectedAd
 from app.facebook.collection import commands as collection_commands
-from app.facebook.collection.cli import artifacts, runtime, session
+from app.facebook.collection.cli import runtime, session
 from app.facebook.profiles import ProfileConnection, ProfileSession
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
 
-def test_collection_command_owns_public_and_legacy_entrypoints() -> None:
+def test_collection_command_owns_public_entrypoint() -> None:
     collect = next(
         command for command in facebook_commands.COMMANDS if command.name == "collect"
     )
     assert collect.module == "app.facebook.collection.commands"
-    assert facebook_runner.main is collection_commands.main
-    assert facebook_runner._write_ads is artifacts.write_ads
-    assert facebook_runner._write_json_atomic is artifacts.write_json_atomic
-    assert facebook_runner._write_text_atomic is artifacts.write_text_atomic
-    assert facebook_runner._write_run_meta is artifacts.write_run_meta
-    assert (
-        facebook_runner._fast_exit_after_browser_operation_timeout
-        is artifacts.fast_exit_after_browser_operation_timeout
-    )
-    assert (
-        facebook_runner._octo_start_failure_reason
-        is artifacts.octo_start_failure_reason
-    )
-    assert (
-        facebook_runner._write_octo_start_failure is artifacts.write_octo_start_failure
-    )
 
 
 class FakePage:
@@ -202,10 +186,10 @@ def test_collection_cli_maps_passive_topic_run_without_active_actions(
         ctx: FakeContext,
         run_dir: Path,
         **kwargs: Any,
-    ) -> dict[str, facebook_runner.Ad]:
+    ) -> dict[str, CollectedAd]:
         collect_call.update(page=page, context=ctx, run_dir=run_dir, kwargs=kwargs)
         return {
-            "one": facebook_runner.Ad(
+            "one": CollectedAd(
                 advertiser="Relevant",
                 ad_type="link",
                 country="Canada",
@@ -215,7 +199,7 @@ def test_collection_cli_maps_passive_topic_run_without_active_actions(
     monkeypatch.setattr(runtime, "collect_feed", collect)
     run_dir = tmp_path / "exact-run"
 
-    result = facebook_runner.main(
+    result = collection_commands.main(
         [
             "--run-dir",
             str(run_dir),
@@ -264,7 +248,7 @@ def test_collection_cli_writes_octo_failure_and_returns_two(
     )
     run_dir = tmp_path / "failed-run"
 
-    result = facebook_runner.main(
+    result = collection_commands.main(
         [
             "--run-dir",
             str(run_dir),

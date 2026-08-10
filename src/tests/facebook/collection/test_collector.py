@@ -10,7 +10,6 @@ from app.facebook.collection.adapters.playwright import collect_feed
 from app.facebook.collection.adapters.playwright.feed_reader import SCROLL_JS
 from app.facebook.feed import DETECT_JS
 from app.facebook.navigation.adapters.playwright import FACEBOOK_LOGIN_PROBE_JS
-from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
 
@@ -87,7 +86,3 @@ def test_explicit_stop_callback_prevents_candidate_processing(
     assert summary["stop_reason"] == "interrupted"
     assert summary["captured_candidates"] == 0
     assert summary["scrolls"] == 0
-
-
-def test_legacy_collect_is_canonical_alias() -> None:
-    assert facebook_runner.collect is collect_feed

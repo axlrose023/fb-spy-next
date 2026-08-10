@@ -50,12 +50,7 @@ CLI_COMMANDS = {
         "run",
         "--help",
     ],
-    "runner": [
-        sys.executable,
-        "-m",
-        "app.services.facebook_runner",
-        "--help",
-    ],
+    "collector": [FACEBOOK_CLI, "collect", "--help"],
 }
 
 for command in (
@@ -103,7 +98,7 @@ EXPECTED_HELP_SHA256 = {
     "orchestrator-evaluate": "4498b56d8700d17caaaa8b2645a4c7271f04bd32192c600d8fb240af4d111c5a",
     "orchestrator-run": "50842f3e25be4c6e9ca4d06efe79d1bbd269607974c54cd37426f6ec04623bc4",
     "orchestrator-seed-baseline": "667983d735da5d1be83bda62c30567f168b35cd3f4168e585a4f242ad53e7fda",
-    "runner": "31cf884acde04991471679e1ea297d84f59979b40a015770a30bba1d1533dc98",
+    "collector": "ab4b1c34f5553466e6c2dac8dd9cb5fa0dfb93bcba6063fcd48ac38fbbb46a68",
 }
 
 
