@@ -289,7 +289,7 @@ so one account cannot suppress a target for other profiles.
 Seed the current farmed Spain profile as a baseline:
 
 ```bash
-uv run python -m app.services.facebook_orchestrator seed-baseline \
+uv run facebook-spy orchestrate seed-baseline \
   --profile-uuid 282c4c93625740239ad7261235bd088b \
   --label spain \
   --expected-country Spain \
@@ -300,7 +300,7 @@ uv run python -m app.services.facebook_orchestrator seed-baseline \
 Run one cycle for all enabled profiles in parallel:
 
 ```bash
-uv run python -m app.services.facebook_orchestrator run \
+uv run facebook-spy orchestrate run \
   --profiles-json storage/facebook/orchestrator/profiles.json \
   --octo-host 127.0.0.1 \
   --octo-port 58888 \
@@ -343,7 +343,7 @@ Override these flags per run when doing a deeper manual capture.
 Run continuously:
 
 ```bash
-uv run python -m app.services.facebook_orchestrator run \
+uv run facebook-spy orchestrate run \
   --profiles-json storage/facebook/orchestrator/profiles.json \
   --octo-host 127.0.0.1 \
   --octo-port 58888 \
@@ -418,7 +418,7 @@ reliably expose active profiles.
 # APP__FACEBOOK__OCTO_SEARCH_TAGS in .env.
 export OCTO_API_TOKEN="..."
 
-uv run python -m app.services.facebook_orchestrator run \
+uv run facebook-spy orchestrate run \
   --profiles-json storage/facebook/orchestrator/profiles.json \
   --discover-octo-profiles \
   --octo-search-tags "OCTO_TAG_UUID" \

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14I4 завершен
+Статус: `IN_PROGRESS` — этап 14I5 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1-14I3 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1-14I5 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4108,6 +4108,39 @@ runtime и старый репозиторий не менялись. Rollback 1
 process cutover, после чего legacy `facebook_orchestrator.py` можно удалить
 отдельным проверяемым изменением. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14I4 выполняется revert одного отдельного
+коммита.
+
+#### 14I5. Orchestrator production cutover
+
+Результат:
+
+- outer composition перенесена из 744-строчного historical wrapper в
+  `facebook/orchestration/runtime`; package разделён на process context,
+  application entrypoint, profile discovery, collection, calibration, cycle и
+  file adapters размером 29–201 строк;
+- `RuntimeContext` явно владеет config provider, process registry, stop event и
+  output; signal handling и subprocess execution больше не зависят от
+  module-global state legacy wrapper;
+- `facebook-spy orchestrate` динамически загружает canonical runtime, а
+  production Compose и README используют этот единый release path вместо
+  `python -m app.services.facebook_orchestrator`;
+- architecture contract подтверждает ноль production consumers legacy module;
+  cross-module Octo/profile dependencies проходят только через публичные
+  package API;
+- отдельный integrated dry-run прошёл parser, scheduler, profile cycle,
+  collection composition и state persistence без запуска subprocess или Octo;
+- focused orchestration regression: 305 тестов, полный regression: 894 теста;
+- Compose проходит `docker compose config`; wheel содержит canonical runtime и
+  command gateway. Transitional `facebook_orchestrator.py` пока остаётся только
+  для переноса legacy characterization tests в следующем unit;
+- Ruff, strict mypy, architecture/contracts, staged pre-commit, frontend
+  production build и gitleaks проходят; frontend source/lock не менялись;
+  `npm audit` сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14I остается `IN_PROGRESS`: следующий unit переводит оставшиеся tests на
+canonical runtime/owners, удаляет `facebook_orchestrator.py` и запрещает его
+возврат architecture guard. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14I5 выполняется revert одного отдельного
 коммита.
 
 Перед удалением:

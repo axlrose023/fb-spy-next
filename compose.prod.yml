@@ -108,9 +108,8 @@ services:
     profiles: ["facebook-orchestrator"]
     stop_grace_period: 45s
     command:
-      - python
-      - -m
-      - app.services.facebook_orchestrator
+      - facebook-spy
+      - orchestrate
       - run
       - --profiles-json
       - storage/facebook/orchestrator/profiles.json

@@ -14,7 +14,7 @@ APP_ROOT = SRC_ROOT / "app"
 PROJECT_ROOT = SRC_ROOT.parent
 LEGACY_MODULE = "app.services.facebook_orchestrator"
 LEGACY_PATH = APP_ROOT / "services" / "facebook_orchestrator.py"
-GATEWAY_PATH = APP_ROOT / "facebook" / "commands.py"
+CANONICAL_MODULE = "app.facebook.orchestration.runtime"
 
 
 def _legacy_references(path: Path) -> tuple[bool, bool]:
@@ -31,7 +31,7 @@ def _legacy_references(path: Path) -> tuple[bool, bool]:
     return direct_import, dynamic_reference
 
 
-def test_legacy_orchestrator_has_one_lazy_production_consumer() -> None:
+def test_legacy_orchestrator_has_no_production_consumers() -> None:
     direct_consumers: list[Path] = []
     dynamic_consumers: list[Path] = []
     for path in sorted(APP_ROOT.rglob("*.py")):
@@ -44,7 +44,15 @@ def test_legacy_orchestrator_has_one_lazy_production_consumer() -> None:
             dynamic_consumers.append(path.relative_to(APP_ROOT))
 
     assert direct_consumers == []
-    assert dynamic_consumers == [GATEWAY_PATH.relative_to(APP_ROOT)]
+    assert dynamic_consumers == []
+
+
+def test_facebook_gateway_uses_canonical_orchestrator() -> None:
+    from app.facebook.commands import COMMANDS
+
+    command = next(item for item in COMMANDS if item.name == "orchestrate")
+
+    assert command.module == CANONICAL_MODULE
 
 
 def test_canonical_facebook_apis_import_without_legacy_orchestrator() -> None:
@@ -53,6 +61,7 @@ def test_canonical_facebook_apis_import_without_legacy_orchestrator() -> None:
         "app.facebook.orchestration",
         "app.facebook.orchestration.adapters",
         "app.facebook.orchestration.commands",
+        "app.facebook.orchestration.runtime",
         "app.facebook.calibration",
         "app.facebook.profiles",
     )

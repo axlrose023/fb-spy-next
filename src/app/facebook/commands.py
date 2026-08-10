@@ -20,7 +20,7 @@ COMMANDS = (
     CommandSpec("collect", "app.facebook.collection.commands", "Collect feed ads."),
     CommandSpec(
         "orchestrate",
-        "app.services.facebook_orchestrator",
+        "app.facebook.orchestration.runtime",
         "Run profile orchestration cycles.",
     ),
     CommandSpec(

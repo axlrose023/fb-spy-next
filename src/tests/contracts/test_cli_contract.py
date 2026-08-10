@@ -15,7 +15,6 @@ PROJECT_ROOT = Path(__file__).parents[3]
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 APP_CLI = str(Path(sys.executable).with_name("cli"))
 FACEBOOK_CLI = str(Path(sys.executable).with_name("facebook-spy"))
-ORCHESTRATOR = "app.services.facebook_orchestrator"
 
 CLI_COMMANDS = {
     "app-cli": [APP_CLI, "--help"],
@@ -38,15 +37,13 @@ CLI_COMMANDS = {
         "--help",
     ],
     "orchestrator": [
-        sys.executable,
-        "-m",
-        ORCHESTRATOR,
+        FACEBOOK_CLI,
+        "orchestrate",
         "--help",
     ],
     "orchestrator-run": [
-        sys.executable,
-        "-m",
-        ORCHESTRATOR,
+        FACEBOOK_CLI,
+        "orchestrate",
         "run",
         "--help",
     ],
@@ -68,9 +65,8 @@ for command in (
 
 for command in ("evaluate", "seed-baseline", "discover-active", "discover-octo"):
     CLI_COMMANDS[f"orchestrator-{command}"] = [
-        sys.executable,
-        "-m",
-        ORCHESTRATOR,
+        FACEBOOK_CLI,
+        "orchestrate",
         command,
         "--help",
     ]
@@ -92,12 +88,12 @@ EXPECTED_HELP_SHA256 = {
     "enricher": "ffcb9d3376518e3ed9c12c08f6e17c0d1613647befffe1e88d1299c5983bdb41",
     "facebook-spy": "1f7bf50c4378e2a7beba8b3335b0050946841d8e2ce0eafdfaab6464cad8bf28",
     "isolated-landing": "72f0b8cefca79b2ca74b59a0065790489b72b168843c5a3d4737010ba1cb76a2",
-    "orchestrator": "df20956c24924f7ec8d1e9a1e01def00f3a3c6028912e4346a42696d55759085",
-    "orchestrator-discover-active": "3a266b115336739881d481fc7f953c1c0a01ae754eaa768e6bae1444f94a6899",
-    "orchestrator-discover-octo": "bbce841883d8e3e3df04ac12ac387aabd81d6c75f484e028601c2e2714e1c8ce",
-    "orchestrator-evaluate": "4498b56d8700d17caaaa8b2645a4c7271f04bd32192c600d8fb240af4d111c5a",
-    "orchestrator-run": "50842f3e25be4c6e9ca4d06efe79d1bbd269607974c54cd37426f6ec04623bc4",
-    "orchestrator-seed-baseline": "667983d735da5d1be83bda62c30567f168b35cd3f4168e585a4f242ad53e7fda",
+    "orchestrator": "d90f06cae7590f837e0b3cb508a38ae1013acff32f1cf5b9e95096b64e8d51a1",
+    "orchestrator-discover-active": "c0b4d411b51be1ef066d019a0127aa118a1f42a5ae5fa56d32074fd8690ffa2a",
+    "orchestrator-discover-octo": "daeaf15af879b6a0783509eb2932eaa79818e057006ba99cfc4ebca238b986bf",
+    "orchestrator-evaluate": "0be62bd831d451a764b80078fb6addb937642caab63a0966240ca186c0844940",
+    "orchestrator-run": "4e09688cb47eef34a0aac2158ef3ed243f5f00aca2df5ec03f07d70159243606",
+    "orchestrator-seed-baseline": "dc9e6331817f3fefe9be1393298396f05ff859bcacaf360bd8bb91bc5d0f5b87",
     "collector": "ab4b1c34f5553466e6c2dac8dd9cb5fa0dfb93bcba6063fcd48ac38fbbb46a68",
 }
 

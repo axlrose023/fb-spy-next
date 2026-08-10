@@ -1,3 +1,9 @@
+from .adapters import (
+    OctoPayloadProfileSource,
+    adopt_catalog_country,
+    discover_catalog_profiles,
+    list_catalog_profiles,
+)
 from .baseline import (
     BaselineBuildOptions,
     BaselineRequirements,
@@ -26,6 +32,7 @@ __all__ = [
     "DiscoveredProfile",
     "DiscoveryResult",
     "MetricBaseline",
+    "OctoPayloadProfileSource",
     "Profile",
     "ProfileCatalog",
     "ProfileConnection",
@@ -38,7 +45,10 @@ __all__ = [
     "ProfileSessions",
     "ProfileSourceError",
     "build_metric_baseline",
+    "adopt_catalog_country",
+    "discover_catalog_profiles",
     "is_baseline_candidate",
+    "list_catalog_profiles",
     "normalize_country",
     "window_bucket",
 ]
