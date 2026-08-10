@@ -4,7 +4,9 @@ import pytest
 
 from app.facebook.calibration import EngagementPolicy, plan_engagement
 from app.facebook.calibration.cli import build_parser as build_calibration_parser
-from app.services import facebook_orchestrator
+from app.facebook.orchestration.commands import (
+    build_parser as build_orchestration_parser,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -98,7 +100,7 @@ def test_engagement_policy_defaults_are_preserved() -> None:
 
 def test_comments_are_disabled_by_default_in_runtime_entrypoints() -> None:
     calibration_args = build_calibration_parser().parse_args([])
-    orchestration_args = facebook_orchestrator._build_parser().parse_args(["run"])
+    orchestration_args = build_orchestration_parser().parse_args(["run"])
 
     assert (calibration_args.comment_every, calibration_args.max_comments) == (0, 0)
     assert (

@@ -6,6 +6,7 @@ from argparse import Namespace
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 import pytest
@@ -15,30 +16,19 @@ from app.facebook.orchestration.commands import (
     CommandHandlers,
     RunCommandHooks,
     build_parser,
-    calibration_policy_from_args,
     dispatch,
-    profile_rest_seconds_from_args,
     run_command,
-    schedule_policy_from_args,
 )
 from app.facebook.profiles import Profile
-from app.services import facebook_orchestrator
 
 pytestmark = pytest.mark.unit
 
 
-def test_legacy_orchestrator_uses_canonical_parser() -> None:
-    assert facebook_orchestrator._build_parser is build_parser
-    assert facebook_orchestrator._dispatch_command is dispatch
+def request_stop(_signum: int, _frame: FrameType | None) -> None:
+    pass
 
 
-def test_legacy_run_option_helpers_are_canonical_aliases() -> None:
-    assert facebook_orchestrator._calibration_policy is calibration_policy_from_args
-    assert facebook_orchestrator._profile_rest_seconds is profile_rest_seconds_from_args
-    assert facebook_orchestrator._profile_schedule_policy is schedule_policy_from_args
-
-
-def test_commands_package_does_not_load_legacy_orchestrator() -> None:
+def test_commands_package_does_not_load_runtime_composition() -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -46,7 +36,7 @@ def test_commands_package_does_not_load_legacy_orchestrator() -> None:
             (
                 "import sys; "
                 "import app.facebook.orchestration.commands; "
-                "assert 'app.services.facebook_orchestrator' not in sys.modules"
+                "assert 'app.facebook.orchestration.runtime' not in sys.modules"
             ),
         ],
         check=False,
@@ -114,7 +104,7 @@ def test_run_dispatch_installs_signal_handlers(
     result = dispatch(
         ["run"],
         handlers=harness.handlers(),
-        request_stop=facebook_orchestrator._request_orchestrator_stop,
+        request_stop=request_stop,
     )
 
     assert result == 11
@@ -148,7 +138,7 @@ def test_maintenance_dispatch_routes_exact_handler(
     result = dispatch(
         argv,
         handlers=harness.handlers(),
-        request_stop=facebook_orchestrator._request_orchestrator_stop,
+        request_stop=request_stop,
     )
 
     assert result == expected_result
@@ -163,7 +153,7 @@ def test_missing_command_prints_help_and_returns_two(
     result = dispatch(
         [],
         handlers=harness.handlers(),
-        request_stop=facebook_orchestrator._request_orchestrator_stop,
+        request_stop=request_stop,
     )
 
     assert result == 2

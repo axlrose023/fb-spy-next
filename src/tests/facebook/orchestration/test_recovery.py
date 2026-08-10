@@ -7,33 +7,12 @@ import pytest
 
 from app.facebook.orchestration import (
     RecoveryCycleCoordinator,
-    calibration_allows_followup,
-    calibration_pass_target_cap,
     calibration_passes_for_cycle,
-    calibration_targets_consumed,
     relevance_result_meaningfully_improved,
     remaining_daily_calibration_attempts,
 )
 from app.facebook.profiles import Profile
 from app.facebook.runs import RunMetrics
-from app.services.facebook_orchestrator import (
-    _calibration_allows_followup as legacy_calibration_allows_followup,
-)
-from app.services.facebook_orchestrator import (
-    _calibration_pass_target_cap as legacy_calibration_pass_target_cap,
-)
-from app.services.facebook_orchestrator import (
-    _calibration_passes_for_cycle as legacy_calibration_passes_for_cycle,
-)
-from app.services.facebook_orchestrator import (
-    _calibration_targets_consumed as legacy_calibration_targets_consumed,
-)
-from app.services.facebook_orchestrator import (
-    _relevance_result_meaningfully_improved as legacy_relevance_improved,
-)
-from app.services.facebook_orchestrator import (
-    _remaining_daily_calibration_attempts as legacy_remaining_daily_attempts,
-)
 
 pytestmark = pytest.mark.unit
 
@@ -202,12 +181,3 @@ def test_recovery_pass_count_resets_when_relevance_meaningfully_improves() -> No
         )
         == 1
     )
-
-
-def test_legacy_recovery_helper_names_are_exact_aliases() -> None:
-    assert legacy_calibration_allows_followup is calibration_allows_followup
-    assert legacy_calibration_pass_target_cap is calibration_pass_target_cap
-    assert legacy_calibration_passes_for_cycle is calibration_passes_for_cycle
-    assert legacy_calibration_targets_consumed is calibration_targets_consumed
-    assert legacy_relevance_improved is relevance_result_meaningfully_improved
-    assert legacy_remaining_daily_attempts is remaining_daily_calibration_attempts

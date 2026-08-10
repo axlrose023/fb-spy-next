@@ -13,6 +13,10 @@ from app.facebook.enrichment.adapters.playwright import post as enrichment_post
 from app.facebook.enrichment.adapters.playwright.post import recover_allowed_post_url
 from app.facebook.enrichment.post import matching_visible_feed_row, valid_post_url
 from app.facebook.enrichment.service import denied_enrichment
+from app.facebook.orchestration.commands import build_parser
+from app.facebook.orchestration.runtime import RuntimeContext
+from app.facebook.orchestration.runtime import collection as orchestration_collection
+from app.facebook.profiles import Profile
 from app.facebook.relevance import (
     RelevanceResult,
     apply_prefilter_uncertainty_guard,
@@ -28,8 +32,17 @@ from app.facebook.relevance.evidence import (
     resolution_candidate,
     summarize_isolated_resolutions,
 )
-from app.services import facebook_orchestrator
-from app.services.facebook_orchestrator import ProfileConfig
+from app.settings import Config, MediaStorageConfig
+
+
+def orchestration_context() -> RuntimeContext:
+    config = Config(
+        media=MediaStorageConfig(
+            backend="local",
+            signing_secret="test-media-signing-secret-at-least-32-characters",
+        )
+    )
+    return RuntimeContext(config_provider=lambda: config)
 
 
 def test_model_json_accepts_uncertain_only_for_explicit_prefilter() -> None:
@@ -526,10 +539,15 @@ def test_isolated_summary_fails_closed_without_cookie_audit() -> None:
 
 
 def test_orchestrator_enables_passive_collection_by_default(tmp_path: Path) -> None:
-    args = facebook_orchestrator._build_parser().parse_args(["run"])
-    profile = ProfileConfig(octo_profile_uuid="profile")
+    args = build_parser().parse_args(["run"])
+    profile = Profile(octo_profile_uuid="profile")
 
-    command = facebook_orchestrator._collector_command(profile, args, tmp_path)
+    command = orchestration_collection.collector_command(
+        profile,
+        args,
+        tmp_path,
+        orchestration_context(),
+    )
 
     assert "--passive-collect" in command
     assert args.interest_safe_collection is True
@@ -540,14 +558,15 @@ def test_orchestrator_enables_passive_collection_by_default(tmp_path: Path) -> N
 def test_orchestrator_passes_gated_source_to_active_enricher(
     tmp_path: Path,
 ) -> None:
-    args = facebook_orchestrator._build_parser().parse_args(["run"])
-    profile = ProfileConfig(octo_profile_uuid="profile")
+    args = build_parser().parse_args(["run"])
+    profile = Profile(octo_profile_uuid="profile")
     source = tmp_path / "ads.gated.json"
 
-    command = facebook_orchestrator._relevant_enricher_command(
+    command = orchestration_collection.relevant_enricher_command(
         profile,
         args,
         tmp_path,
+        orchestration_context(),
         source=source,
     )
 
@@ -579,7 +598,7 @@ def test_orchestrator_validates_passive_collection_artifacts(tmp_path: Path) -> 
         encoding="utf-8",
     )
 
-    assert facebook_orchestrator._interest_safe_collection_violations(tmp_path) == []
+    assert orchestration_collection.interest_safe_collection_violations(tmp_path) == []
 
 
 def test_orchestrator_rejects_active_artifact_in_passive_collection(
@@ -609,7 +628,7 @@ def test_orchestrator_rejects_active_artifact_in_passive_collection(
         encoding="utf-8",
     )
 
-    violations = facebook_orchestrator._interest_safe_collection_violations(tmp_path)
+    violations = orchestration_collection.interest_safe_collection_violations(tmp_path)
 
     assert "nonzero_cta_click_attempts" in violations
     assert "passive_ad_contains_landing_full" in violations

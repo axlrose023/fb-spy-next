@@ -8,25 +8,8 @@ import pytest
 
 from app.facebook.calibration import CalibrationDecision, CalibrationPolicy
 from app.facebook.orchestration.adapters import FileStateStore
-from app.facebook.orchestration.lifecycle import (
-    baseline_from_run_records,
-    calibration_was_effective,
-    is_healthy_relevance_result,
-)
 from app.facebook.profiles import Profile
 from app.facebook.runs import RunMetrics
-from app.services.facebook_orchestrator import (
-    StateStore as LegacyStateStore,
-)
-from app.services.facebook_orchestrator import (
-    _baseline_from_run_records as legacy_baseline_from_run_records,
-)
-from app.services.facebook_orchestrator import (
-    _calibration_was_effective as legacy_calibration_was_effective,
-)
-from app.services.facebook_orchestrator import (
-    _is_healthy_relevance_result as legacy_is_healthy_relevance_result,
-)
 
 pytestmark = pytest.mark.unit
 
@@ -225,10 +208,3 @@ def test_state_queries_handle_legacy_fallbacks_and_invalid_offsets(
         ).recovery_burst_count
         == 2
     )
-
-
-def test_legacy_state_store_and_policy_names_remain_exact_aliases() -> None:
-    assert LegacyStateStore is FileStateStore
-    assert legacy_baseline_from_run_records is baseline_from_run_records
-    assert legacy_calibration_was_effective is calibration_was_effective
-    assert legacy_is_healthy_relevance_result is is_healthy_relevance_result

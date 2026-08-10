@@ -7,7 +7,6 @@ import pytest
 
 from app.facebook.orchestration.adapters import FileLock, profile_lock_path
 from app.facebook.orchestration.exceptions import ProfileLockError
-from app.services.facebook_orchestrator import FileLock as LegacyFileLock
 
 pytestmark = pytest.mark.unit
 
@@ -41,7 +40,3 @@ def test_file_lock_releases_when_profile_cycle_raises(tmp_path: Path) -> None:
 
     with FileLock(lock_path):
         pass
-
-
-def test_legacy_file_lock_name_is_preserved() -> None:
-    assert LegacyFileLock is FileLock

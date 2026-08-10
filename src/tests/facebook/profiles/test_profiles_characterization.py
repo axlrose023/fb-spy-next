@@ -7,22 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 from app.facebook.calibration import CalibrationPolicy, baseline_from_history
-from app.facebook.profiles import normalize_country
+from app.facebook.orchestration.runtime import RuntimeContext
+from app.facebook.orchestration.runtime import profiles as profile_runtime
+from app.facebook.profiles import Profile, normalize_country
 from app.facebook.runs import RunMetrics
-from app.services import facebook_orchestrator
-from app.services.facebook_orchestrator import (
-    ProfileConfig,
-    _discover_active,
-    _load_profiles,
-    _merge_public_profiles,
-    _persist_profile_country,
-)
 
 pytestmark = pytest.mark.contract
 
 
 def test_profile_config_preserves_defaults_names_and_recovery_bounds() -> None:
-    profile = ProfileConfig.from_dict(
+    profile = Profile.from_dict(
         {
             "octo_profile_uuid": "12345678-profile-id",
             "label": "Spain Mobile / Main",
@@ -39,25 +33,38 @@ def test_profile_config_preserves_defaults_names_and_recovery_bounds() -> None:
 
 def test_public_discovery_deduplicates_and_does_not_adopt_proxy_geo(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text('{"profiles": []}', encoding="utf-8")
-    monkeypatch.setattr(
-        facebook_orchestrator,
-        "_octo_public_profiles",
-        lambda _token, **_kwargs: [
+
+    def payloads(_token: str, _tags: str) -> list[dict[str, object]]:
+        return [
             {
                 "uuid": "public-profile",
                 "title": "Public profile",
                 "proxy": {"country": "TR", "password": "must-not-persist"},
                 "extra_info": {"geo": "Turkey"},
             }
-        ],
-    )
+        ]
 
-    assert _merge_public_profiles(profiles_path, token="secret", enable_new=True) == 1
-    assert _merge_public_profiles(profiles_path, token="secret", enable_new=True) == 0
+    assert (
+        profile_runtime.merge_public_profiles(
+            profiles_path,
+            token="secret",
+            enable_new=True,
+            payload_loader=payloads,
+        )
+        == 1
+    )
+    assert (
+        profile_runtime.merge_public_profiles(
+            profiles_path,
+            token="secret",
+            enable_new=True,
+            payload_loader=payloads,
+        )
+        == 0
+    )
 
     payload = json.loads(profiles_path.read_text(encoding="utf-8"))
     assert payload == {
@@ -94,8 +101,8 @@ def test_local_active_discovery_is_authority_for_geo_and_adds_once(
         },
     ]
     monkeypatch.setattr(
-        facebook_orchestrator,
-        "_octo_local_get",
+        profile_runtime,
+        "local_octo_get",
         lambda *_args: active,
     )
     args = SimpleNamespace(
@@ -105,10 +112,11 @@ def test_local_active_discovery_is_authority_for_geo_and_adds_once(
         enable_new=True,
     )
 
-    assert _discover_active(args) == 0
-    assert _discover_active(args) == 0
+    context = RuntimeContext(output=lambda _message, _flush: None)
+    assert profile_runtime.discover_active(args, context) == 0
+    assert profile_runtime.discover_active(args, context) == 0
 
-    profiles = _load_profiles(profiles_path)
+    profiles = profile_runtime.load_profiles(profiles_path)
     assert [profile.octo_profile_uuid for profile in profiles] == [
         "known",
         "new-local",
@@ -126,10 +134,10 @@ def test_country_adoption_is_write_once_and_unknown_geo_is_not_invented(
         encoding="utf-8",
     )
 
-    _persist_profile_country(profiles_path, "profile", "Spain")
-    _persist_profile_country(profiles_path, "profile", "Canada")
+    profile_runtime.persist_profile_country(profiles_path, "profile", "Spain")
+    profile_runtime.persist_profile_country(profiles_path, "profile", "Canada")
 
-    assert _load_profiles(profiles_path)[0].expected_country == "Spain"
+    assert profile_runtime.load_profiles(profiles_path)[0].expected_country == "Spain"
     assert normalize_country("TR") == "Turkey"
     assert normalize_country("  Serbia  ") == "Serbia"
     assert normalize_country("   ") is None

@@ -14,11 +14,6 @@ from app.facebook.orchestration.adapters import (
     SubprocessCommandRunner,
     signal_process_group,
 )
-from app.services.facebook_orchestrator import (
-    _PROCESS_REGISTRY as legacy_process_registry,
-)
-from app.services.facebook_orchestrator import _STOP_EVENT as legacy_stop_event
-from app.services.facebook_orchestrator import _request_orchestrator_stop
 
 pytestmark = pytest.mark.unit
 
@@ -224,27 +219,3 @@ def test_registry_signals_every_active_process_from_a_snapshot(
     registry.discard(as_popen(first))
     registry.discard(as_popen(second))
     assert registry.snapshot() == ()
-
-
-def test_legacy_stop_handler_sets_event_and_interrupts_registered_processes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = FakeProcess([0])
-    sent: list[signal.Signals] = []
-
-    def record_signal(_process: object, sig: signal.Signals) -> None:
-        sent.append(sig)
-
-    monkeypatch.setattr(
-        "app.facebook.orchestration.adapters.subprocess_runner.signal_process_group",
-        record_signal,
-    )
-    legacy_process_registry.register(as_popen(fake))
-    legacy_stop_event.clear()
-    try:
-        _request_orchestrator_stop(None, None)
-        assert legacy_stop_event.is_set()
-        assert sent == [signal.SIGINT]
-    finally:
-        legacy_process_registry.discard(as_popen(fake))
-        legacy_stop_event.clear()

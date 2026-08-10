@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14I5 завершен
+Статус: `IN_PROGRESS` — этап 14I завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1-14I5 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J NEXT`)
 
 Closure inventory после этапа 13:
 
@@ -4142,6 +4142,33 @@ canonical runtime/owners, удаляет `facebook_orchestrator.py` и запр�
 возврат architecture guard. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14I5 выполняется revert одного отдельного
 коммита.
+
+#### 14I6. Orchestrator facade removal
+
+Результат:
+
+- все remaining test consumers переведены с
+  `app.services.facebook_orchestrator` на canonical commands, policies,
+  adapters и `orchestration/runtime` composition;
+- state-store, recovery, process-control, locking, discovery, calibration и
+  profile-cycle behavioral tests сохранены; удалены только assertions
+  тождественности legacy aliases;
+- `facebook_orchestrator.py` удалён и добавлен в общий architecture denylist
+  вместе с другими historical executable wrappers;
+- gateway и canonical import contracts сохранены отдельно от removed-file
+  guard, поэтому release path и отсутствие eager legacy imports проверяются
+  независимо;
+- focused post-removal regression: 260 тестов, полный regression: 887 тестов;
+- wheel содержит canonical `facebook-spy collect` и orchestration runtime, но
+  не содержит `facebook_runner.py` или `facebook_orchestrator.py`;
+- Ruff, strict stage-scoped mypy, architecture/contracts, staged pre-commit,
+  frontend production build и gitleaks проходят; frontend source/lock не
+  менялись; `npm audit` сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14I завершён. Следующий этап 14J удаляет оставшиеся простые `services` и
+`api.modules` compatibility trees только после отдельного inventory их
+consumers. Production server, live Octo runtime и старый репозиторий не
+менялись. Rollback 14I6 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

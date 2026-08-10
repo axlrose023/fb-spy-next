@@ -42,6 +42,9 @@ REMOVED_FACADES = {
     ),
     "app.services.facebook_calibrator": APP_ROOT / "services/facebook_calibrator.py",
     "app.services.facebook_runner": APP_ROOT / "services/facebook_runner.py",
+    "app.services.facebook_orchestrator": (
+        APP_ROOT / "services/facebook_orchestrator.py"
+    ),
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_FACADES)
 

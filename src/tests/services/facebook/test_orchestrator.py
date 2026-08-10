@@ -8,44 +8,128 @@ import pytest
 
 from app.facebook.calibration import (
     CalibrationDecision,
+    CalibrationPlan,
     CalibrationPolicy,
 )
-from app.facebook.runs import RunMetrics
-from app.services.facebook_orchestrator import (
-    FileLock,
-    ProfileConfig,
+from app.facebook.orchestration import (
     ProfileCycleSchedule,
     RecoverySchedulePolicy,
-    StateStore,
-    _backend_import_command,
-    _baseline_from_run_records,
-    _build_parser,
-    _calibration_ads_paths,
-    _calibration_pass_target_cap,
-    _calibration_passes_for_cycle,
-    _calibration_plan,
-    _calibration_policy,
-    _calibration_timeout_seconds,
-    _calibration_was_effective,
-    _calibrator_command,
-    _count_calibration_targets,
-    _discover_profiles,
-    _effective_calibration_target_goal,
-    _load_profiles,
-    _merge_public_profiles,
-    _next_profile_schedule,
-    _persist_profile_country,
-    _profile_evaluation_policy,
-    _profile_rest_seconds,
-    _profile_schedule_policy,
-    _remaining_daily_calibration_attempts,
-    _remaining_profile_rest_seconds,
-    _run,
-    _run_calibration,
-    _run_command,
-    _run_profile_cycle,
-    _update_calibration_pools,
+    calibration_pass_target_cap,
+    calibration_passes_for_cycle,
+    next_profile_schedule,
+    recovery_evaluation_policy,
+    remaining_daily_calibration_attempts,
+    remaining_profile_rest_seconds,
 )
+from app.facebook.orchestration.adapters import FileLock, FileStateStore
+from app.facebook.orchestration.commands import (
+    build_parser,
+    calibration_policy_from_args,
+    profile_rest_seconds_from_args,
+    schedule_policy_from_args,
+)
+from app.facebook.orchestration.lifecycle import (
+    baseline_from_run_records,
+    calibration_was_effective,
+)
+from app.facebook.orchestration.runtime import DEFAULT_CONTEXT
+from app.facebook.orchestration.runtime import application as runtime_application
+from app.facebook.orchestration.runtime import calibration as runtime_calibration
+from app.facebook.orchestration.runtime import collection as runtime_collection
+from app.facebook.orchestration.runtime import cycle as runtime_cycle
+from app.facebook.orchestration.runtime import profiles as runtime_profiles
+from app.facebook.profiles import Profile
+from app.facebook.runs import RunMetrics
+
+ProfileConfig = Profile
+StateStore = FileStateStore
+_baseline_from_run_records = baseline_from_run_records
+_build_parser = build_parser
+_calibration_ads_paths = runtime_calibration.calibration_ads_paths
+_calibration_pass_target_cap = calibration_pass_target_cap
+_calibration_passes_for_cycle = calibration_passes_for_cycle
+_calibration_policy = calibration_policy_from_args
+_calibration_was_effective = calibration_was_effective
+_count_calibration_targets = runtime_calibration.count_calibration_targets
+_effective_calibration_target_goal = (
+    runtime_calibration.effective_calibration_target_goal
+)
+_load_profiles = runtime_profiles.load_profiles
+_merge_public_profiles = runtime_profiles.merge_public_profiles
+_next_profile_schedule = next_profile_schedule
+_persist_profile_country = runtime_profiles.persist_profile_country
+_profile_evaluation_policy = recovery_evaluation_policy
+_profile_rest_seconds = profile_rest_seconds_from_args
+_profile_schedule_policy = schedule_policy_from_args
+_remaining_daily_calibration_attempts = remaining_daily_calibration_attempts
+_remaining_profile_rest_seconds = remaining_profile_rest_seconds
+_update_calibration_pools = runtime_calibration.update_calibration_pools
+
+
+def _backend_import_command(profile: Profile, ads_json_path) -> list[str]:
+    return runtime_collection.backend_import_command(
+        profile,
+        ads_json_path,
+        DEFAULT_CONTEXT,
+    )
+
+
+def _calibration_plan(
+    decision: CalibrationDecision,
+    args,
+    available_targets: int,
+) -> CalibrationPlan:
+    return runtime_calibration.calibration_plan(decision, args, available_targets)
+
+
+def _calibration_timeout_seconds(args, *, target_limit=None) -> float:
+    return runtime_calibration.timeout_seconds(args, target_limit=target_limit)
+
+
+def _calibrator_command(profile, args, run_dir, ads_paths, country, **kwargs):
+    return runtime_calibration.calibrator_command(
+        profile,
+        args,
+        run_dir,
+        ads_paths,
+        country,
+        DEFAULT_CONTEXT,
+        **kwargs,
+    )
+
+
+def _discover_profiles(args, *, fail_fast: bool) -> None:
+    runtime_profiles.discover_profiles(args, DEFAULT_CONTEXT, fail_fast=fail_fast)
+
+
+def _run(args) -> int:
+    return runtime_application.run(args, DEFAULT_CONTEXT)
+
+
+def _run_calibration(profile, args, collect_dir, root_dir, **kwargs):
+    return runtime_calibration.run_calibration(
+        profile,
+        args,
+        collect_dir,
+        root_dir,
+        DEFAULT_CONTEXT,
+        **kwargs,
+    )
+
+
+def _run_command(command, log_path, **kwargs) -> int:
+    return DEFAULT_CONTEXT.run_command(command, log_path, **kwargs)
+
+
+def _run_profile_cycle(profile, args, store, policy, root_dir):
+    return runtime_cycle.run_profile_cycle(
+        profile,
+        args,
+        store,
+        policy,
+        root_dir,
+        DEFAULT_CONTEXT,
+    )
 
 
 def test_profile_file_lock_releases_immediately(tmp_path) -> None:
@@ -273,7 +357,7 @@ def test_loop_reschedules_profile_without_waiting_for_other_profile(
         slow_finished.set()
 
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._run_profile_cycle",
+        "app.facebook.orchestration.runtime.cycle.run_profile_cycle",
         fake_cycle,
     )
     args = _build_parser().parse_args(
@@ -339,7 +423,7 @@ def test_loop_queues_profiles_beyond_parallel_limit_without_losing_them(
         return ProfileCycleSchedule(kind="normal", rest_seconds=0)
 
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._run_profile_cycle",
+        "app.facebook.orchestration.runtime.cycle.run_profile_cycle",
         fake_cycle,
     )
     args = _build_parser().parse_args(
@@ -398,7 +482,7 @@ def test_immediate_recovery_does_not_starve_older_due_profile(
         return ProfileCycleSchedule(kind="normal", rest_seconds=0)
 
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._run_profile_cycle",
+        "app.facebook.orchestration.runtime.cycle.run_profile_cycle",
         fake_cycle,
     )
     args = _build_parser().parse_args(
@@ -827,7 +911,7 @@ def test_profile_cycle_imports_classified_run_into_backend(
     )
     command_order: list[str] = []
 
-    def fake_command(command, log_path, **_kwargs):
+    def fake_command(_context, command, log_path, **_kwargs):
         run_dir = log_path.parent
         if log_path.name == "runner.log":
             command_order.append("collect")
@@ -873,11 +957,11 @@ def test_profile_cycle_imports_classified_run_into_backend(
         return 0
 
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._run_command",
+        "app.facebook.orchestration.runtime.context.RuntimeContext.run_command",
         fake_command,
     )
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._stop_octo_profile",
+        "app.facebook.orchestration.runtime.profiles.stop_octo_profile",
         lambda *_args: command_order.append("stop"),
     )
     args = _build_parser().parse_args(
@@ -918,13 +1002,14 @@ def test_missing_public_api_token_does_not_block_configured_profiles(
     )
     monkeypatch.delenv("OCTO_API_TOKEN", raising=False)
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator.get_config",
+        DEFAULT_CONTEXT,
+        "config_provider",
         lambda: SimpleNamespace(
             facebook=SimpleNamespace(octo_api_token="", octo_search_tags=""),
         ),
     )
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._merge_public_profiles",
+        "app.facebook.orchestration.runtime.profiles.merge_public_profiles",
         lambda *_args, **_kwargs: pytest.fail("public discovery must be skipped"),
     )
     args = _build_parser().parse_args(
@@ -1168,7 +1253,7 @@ def test_calibration_pass_cap_preserves_unused_targets_for_followup(
     args = _build_parser().parse_args(["run"])
     captured_command: list[str] = []
 
-    def fake_command(command, log_path, **_kwargs):
+    def fake_command(_context, command, log_path, **_kwargs):
         captured_command.extend(command)
         (log_path.parent / "summary.json").write_text(
             json.dumps(
@@ -1184,7 +1269,7 @@ def test_calibration_pass_cap_preserves_unused_targets_for_followup(
         return 0
 
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._run_command",
+        "app.facebook.orchestration.runtime.context.RuntimeContext.run_command",
         fake_command,
     )
     record = _run_calibration(
@@ -1343,7 +1428,7 @@ def test_two_bad_windows_run_calibration_after_collector_stops(
     )
     command_order: list[str] = []
 
-    def fake_command(command, log_path, **_kwargs):
+    def fake_command(_context, command, log_path, **_kwargs):
         run_dir = log_path.parent
         if log_path.name == "runner.log":
             command_order.append("collect")
@@ -1399,11 +1484,11 @@ def test_two_bad_windows_run_calibration_after_collector_stops(
         return 0
 
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._run_command",
+        "app.facebook.orchestration.runtime.context.RuntimeContext.run_command",
         fake_command,
     )
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._stop_octo_profile",
+        "app.facebook.orchestration.runtime.profiles.stop_octo_profile",
         lambda *_args: command_order.append("stop"),
     )
     args = _build_parser().parse_args(
@@ -1555,8 +1640,8 @@ def test_public_discovery_adds_profile_once_and_geo_can_be_adopted(
     profiles_path = tmp_path / "profiles.json"
     profiles_path.write_text('{"profiles": []}', encoding="utf-8")
     monkeypatch.setattr(
-        "app.services.facebook_orchestrator._octo_public_profiles",
-        lambda _token, **_kwargs: [
+        "app.facebook.orchestration.runtime.profiles.public_profile_payloads",
+        lambda _token, _tags: [
             {
                 "uuid": "new-profile",
                 "title": "New Facebook profile",
