@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G15 завершен
+Статус: `IN_PROGRESS` — этап 14G завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14F COMPLETE`, `14G IN_PROGRESS: 14G1-14G11 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14G COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -3851,6 +3851,43 @@ import/CLI gates. Production server, live Octo runtime и старый репо�
 inventory, CLI/import isolation contracts и документирование оставшейся
 compatibility boundary. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14G15 выполняется revert одного отдельного
+коммита.
+
+#### 14G16. Orchestrator facade closure
+
+Результат:
+
+- выполнен повторный symbol/import inventory всех оставшихся definitions и
+  aliases: каждый используется runtime composition либо явно зафиксированным
+  compatibility contract; доказанно мёртвых symbols после 14G10-14G15 не
+  осталось;
+- единственным production consumer исторического
+  `app.services.facebook_orchestrator` является lazy строковый target команды
+  `orchestrate` в `app.facebook.commands`; прямых production imports — ноль;
+- добавлен AST architecture guard, запрещающий новые direct consumers и
+  разрешающий ровно один lazy gateway; изменение списка production-файлов
+  немедленно ломает контракт;
+- отдельный subprocess contract подтверждает, что импорт canonical
+  `facebook.commands`, `orchestration`, `orchestration.adapters`,
+  `orchestration.commands`, `calibration` и `profiles` не загружает legacy
+  orchestrator;
+- module docstring теперь явно фиксирует роль historical executable, outer
+  composition root и compatibility boundary; бизнес-логика и CLI не менялись;
+- все orchestrator и gateway CLI help SHA-256 остались прежними; focused
+  architecture/CLI regression: 46 тестов, полный regression: 898 тестов;
+- legacy orchestrator завершает 14G на 746 строках против 1 379 в начале 14G:
+  parser, dispatch, workflows, policies, process commands, environments,
+  discovery/catalog и target-pool implementations находятся у owning modules;
+- wheel содержит historical entrypoint и canonical orchestration/calibration
+  modules; Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit,
+  frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G завершен. Следующий независимый этап — 14H, удаление простых Facebook
+compatibility facades только после подтверждения нулевого production import
+count для каждого path. Production server, live Octo runtime и старый
+репозиторий не менялись. Rollback 14G16 выполняется revert одного отдельного
 коммита.
 
 Перед удалением:

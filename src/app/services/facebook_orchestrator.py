@@ -1,8 +1,8 @@
-"""Profile-level Facebook collector orchestrator.
+"""Compatibility entrypoint and outer composition for profile orchestration.
 
-This is intentionally a thin CLI layer over the existing runner and calibrator.
-It keeps state in JSON files, runs one job per Octo profile at a time, and does
-not require backend or frontend changes.
+Canonical policies, workflows, adapters, and CLI parsing live under
+``app.facebook``. This module preserves the historical executable and private
+test seams while wiring those components to process-level runtime state.
 """
 
 from __future__ import annotations
