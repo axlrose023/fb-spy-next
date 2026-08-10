@@ -10,7 +10,6 @@ from playwright.async_api import Browser, Playwright
 import app.browser.pool as pool_module
 from app.browser import BrowserPool
 from app.browser.settings import PlaywrightConfig
-from app.services.browser.pool import BrowserPool as LegacyBrowserPool
 
 pytestmark = pytest.mark.unit
 
@@ -103,10 +102,6 @@ async def test_pool_scales_slots_and_closes_removed_browsers(
     assert pool.browser_count == 0
     assert playwright.chromium.browsers[0].closed is True
     assert playwright.stopped is True
-
-
-def test_legacy_pool_preserves_class_identity() -> None:
-    assert LegacyBrowserPool is BrowserPool
 
 
 @pytest.mark.parametrize(

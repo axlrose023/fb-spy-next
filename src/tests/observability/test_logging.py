@@ -3,7 +3,6 @@ import logging
 import pytest
 
 from app.observability import RedactMediaTokenFilter, setup_logging
-from app.services import logging as legacy_logging
 
 pytestmark = pytest.mark.unit
 
@@ -37,8 +36,3 @@ def test_storage_sdk_wire_logging_is_never_enabled() -> None:
 
     for logger_name in ("boto3", "botocore", "s3transfer", "urllib3"):
         assert logging.getLogger(logger_name).level >= logging.WARNING
-
-
-def test_legacy_logging_module_is_an_identity_preserving_facade() -> None:
-    assert legacy_logging.RedactMediaTokenFilter is RedactMediaTokenFilter
-    assert legacy_logging.setup_logging is setup_logging

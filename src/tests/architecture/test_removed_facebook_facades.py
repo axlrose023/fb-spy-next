@@ -45,6 +45,11 @@ REMOVED_FACADES = {
     "app.services.facebook_orchestrator": (
         APP_ROOT / "services/facebook_orchestrator.py"
     ),
+    "app.services.browser": APP_ROOT / "services/browser/__init__.py",
+    "app.services.browser.context": APP_ROOT / "services/browser/context.py",
+    "app.services.browser.pool": APP_ROOT / "services/browser/pool.py",
+    "app.services.browser.useragent": APP_ROOT / "services/browser/useragent.py",
+    "app.services.logging": APP_ROOT / "services/logging.py",
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_FACADES)
 

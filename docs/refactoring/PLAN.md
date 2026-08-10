@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14I завершен
+Статус: `IN_PROGRESS` — этап 14J1 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J NEXT`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4169,6 +4169,31 @@ canonical runtime/owners, удаляет `facebook_orchestrator.py` и запр�
 `api.modules` compatibility trees только после отдельного inventory их
 consumers. Production server, live Octo runtime и старый репозиторий не
 менялись. Rollback 14I6 выполняется revert одного отдельного коммита.
+
+#### 14J1. Browser и logging facade removal
+
+Результат:
+
+- подтверждён нулевой production consumer count для `services.browser` и
+  `services.logging`; browser и observability behavior уже принадлежит
+  `app.browser` и `app.observability`;
+- удалены четыре browser compatibility files и logging facade; architecture
+  denylist запрещает возврат всех пяти paths;
+- tests больше не проверяют identity legacy aliases, сохраняя behavioral
+  coverage browser pool, context, user-agent fallback и media-token redaction;
+- focused regression: 13 тестов, полный regression: 884 теста;
+- source wheel не содержит удалённых Python modules; локальная empty directory
+  entry может появляться только из ignored `__pycache__` и отсутствует в clean
+  checkout build;
+- Ruff, strict mypy, architecture/contracts, staged pre-commit, frontend
+  production build и gitleaks проходят; frontend source/lock не менялись;
+  `npm audit` сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: следующим отдельным unit удаляется
+constructor-compatible `services.media_storage`, затем по bounded groups
+переводятся consumers `api.modules`. Production server, live Octo runtime и
+старый репозиторий не менялись. Rollback 14J1 выполняется revert одного
+отдельного коммита.
 
 Перед удалением:
 

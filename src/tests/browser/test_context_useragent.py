@@ -11,12 +11,6 @@ import app.browser.context as context_module
 import app.browser.useragent as useragent_module
 from app.browser import ContextFactory, UserAgentProvider
 from app.browser.settings import UserAgentConfig, ViewportConfig
-from app.services.browser import (
-    ContextFactory as LegacyContextFactory,
-)
-from app.services.browser import (
-    UserAgentProvider as LegacyUserAgentProvider,
-)
 
 pytestmark = pytest.mark.unit
 
@@ -95,8 +89,3 @@ def test_user_agent_provider_falls_back_when_random_lookup_fails(
     provider = UserAgentProvider(UserAgentConfig(fallback="fallback-agent"))
 
     assert provider.get() == "fallback-agent"
-
-
-def test_legacy_browser_components_preserve_class_identity() -> None:
-    assert LegacyContextFactory is ContextFactory
-    assert LegacyUserAgentProvider is UserAgentProvider
