@@ -10,14 +10,14 @@ import pytest_asyncio
 from fastapi import HTTPException
 from sqlalchemy import delete
 
-from app.api.modules.runs.schema import (
+from app.api.modules.runs.service import FacebookRunService
+from app.database.uow import UnitOfWork
+from app.facebook.runs.adapters.persistence import FacebookRun
+from app.facebook.runs.schemas import (
     RunImportRequest,
     RunsPaginationParams,
     RunStartRequest,
 )
-from app.api.modules.runs.service import FacebookRunService
-from app.database.uow import UnitOfWork
-from app.facebook.runs.adapters.persistence import FacebookRun
 from app.settings import Config, FacebookConfig, MediaStorageConfig
 
 pytestmark = pytest.mark.integration

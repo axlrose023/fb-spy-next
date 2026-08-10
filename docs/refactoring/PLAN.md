@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14J3 завершен
+Статус: `IN_PROGRESS` — этап 14J4 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J3 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14I COMPLETE`, `14J IN_PROGRESS: 14J1-14J4 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4246,6 +4246,32 @@ live Octo runtime и старый репозиторий не менялись. 
 JWT adapter удаляются дальше отдельными bounded units. Production
 server, live Octo runtime и старый репозиторий не менялись. Rollback
 14J3 выполняется revert одного отдельного коммита.
+
+#### 14J4. HTTP route и schema alias removal
+
+Результат:
+
+- подтверждено, что `app.api.router` уже подключает owning routers
+  accounts/ad-library/facebook напрямую, а старые route aliases не
+  имеют runtime consumers;
+- единственный test consumer runs schemas переведён на
+  `app.facebook.runs.schemas`;
+- удалены route/schema re-exports ads, auth, media, runs, stats и users,
+  а также simple aliases `auth.service`, `auth.services.auth` и
+  `users.service`; HTTP paths, tags, dependencies, schemas и response models не
+  менялись;
+- architecture denylist дополнен всеми 14 removed paths;
+- focused endpoint/schema/architecture regression: 33 теста, полный
+  regression: 884 теста;
+- source wheel не содержит удалённых HTTP alias modules;
+- Ruff, architecture/contracts, frontend production build и gitleaks
+  проходят; frontend source/lock не менялись; `npm audit`
+  сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14J остается `IN_PROGRESS`: composition wrappers ads/stats, runs и
+legacy JWT переносятся дальше раздельными bounded units. Production
+server, live Octo runtime и старый репозиторий не менялись. Rollback
+14J4 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

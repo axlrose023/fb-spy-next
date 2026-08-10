@@ -57,6 +57,22 @@ REMOVED_MODULES = {
     "app.api.modules.runs.models": APP_ROOT / "api/modules/runs/models.py",
     "app.api.modules.users.gateway": APP_ROOT / "api/modules/users/gateway.py",
     "app.api.modules.users.models": APP_ROOT / "api/modules/users/models.py",
+    "app.api.modules.ads.routes": APP_ROOT / "api/modules/ads/routes.py",
+    "app.api.modules.ads.schema": APP_ROOT / "api/modules/ads/schema.py",
+    "app.api.modules.auth.routes": APP_ROOT / "api/modules/auth/routes.py",
+    "app.api.modules.auth.schema": APP_ROOT / "api/modules/auth/schema.py",
+    "app.api.modules.auth.service": APP_ROOT / "api/modules/auth/service.py",
+    "app.api.modules.auth.services.auth": (
+        APP_ROOT / "api/modules/auth/services/auth.py"
+    ),
+    "app.api.modules.media.routes": APP_ROOT / "api/modules/media/routes.py",
+    "app.api.modules.runs.routes": APP_ROOT / "api/modules/runs/routes.py",
+    "app.api.modules.runs.schema": APP_ROOT / "api/modules/runs/schema.py",
+    "app.api.modules.stats.routes": APP_ROOT / "api/modules/stats/routes.py",
+    "app.api.modules.stats.schema": APP_ROOT / "api/modules/stats/schema.py",
+    "app.api.modules.users.routes": APP_ROOT / "api/modules/users/routes.py",
+    "app.api.modules.users.schema": APP_ROOT / "api/modules/users/schema.py",
+    "app.api.modules.users.service": APP_ROOT / "api/modules/users/service.py",
 }
 FORBIDDEN_PRODUCTION_IMPORTS = set(REMOVED_MODULES)
 
