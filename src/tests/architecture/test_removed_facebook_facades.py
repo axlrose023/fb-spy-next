@@ -37,6 +37,10 @@ REMOVED_FACADES = {
     "app.services.facebook_relevance_classifier": (
         APP_ROOT / "services/facebook_relevance_classifier.py"
     ),
+    "app.services.facebook_ad_enricher": (
+        APP_ROOT / "services/facebook_ad_enricher.py"
+    ),
+    "app.services.facebook_calibrator": APP_ROOT / "services/facebook_calibrator.py",
 }
 
 

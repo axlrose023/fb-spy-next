@@ -1,13 +1,16 @@
 from types import SimpleNamespace
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.calibration import (
     CalibrationTarget,
     EngagementPolicy,
+    calibration_target_ok,
     click_like,
     find_matching_target,
     follow_advertiser,
+    interaction_counts,
     live_ad_key,
     post_comment,
     target_match_score,
@@ -15,7 +18,7 @@ from app.facebook.calibration import (
     wait_for_saved_post,
 )
 from app.facebook.calibration.adapters.playwright import target_engagement
-from app.services import facebook_calibrator
+from app.facebook.calibration.cli import legacy as calibration_legacy
 
 pytestmark = pytest.mark.unit
 
@@ -136,7 +139,7 @@ class DirectPostContext:
 
 class ClosedDirectPostContext(DirectPostContext):
     def new_page(self) -> DirectPostPage:
-        raise facebook_calibrator.PlaywrightError(
+        raise PlaywrightError(
             "BrowserContext.new_page: Target page, context or browser has been closed",
         )
 
@@ -151,7 +154,7 @@ class TransientDirectPostPage(DirectPostPage):
         self.requested_urls.append(url)
         if self.failures_left:
             self.failures_left -= 1
-            raise facebook_calibrator.PlaywrightError(
+            raise PlaywrightError(
                 "Page.goto: net::ERR_SOCKS_CONNECTION_FAILED",
             )
         self.url = "https://m.facebook.com/"
@@ -497,7 +500,7 @@ def test_reaction_is_confirmed_after_facebook_replaces_card(monkeypatch) -> None
         lambda _page, _target: {"status": "located", "element_id": "replacement-post"},
     )
 
-    result = facebook_calibrator._engage_reaction(
+    result = target_engagement.engage_reaction(
         object(),
         {"advertiser": "Relevant advertiser"},
         "original-post",
@@ -510,7 +513,7 @@ def test_reaction_is_confirmed_after_facebook_replaces_card(monkeypatch) -> None
 
 
 def test_interaction_counts_distinguish_existing_and_new_actions() -> None:
-    counts = facebook_calibrator._interaction_counts(
+    counts = interaction_counts(
         [
             {
                 "ok": True,
@@ -532,7 +535,7 @@ def test_interaction_counts_distinguish_existing_and_new_actions() -> None:
 
 
 def test_interaction_counts_report_funnel_quality_outcomes() -> None:
-    counts = facebook_calibrator._interaction_counts(
+    counts = interaction_counts(
         [
             {
                 "ok": True,
@@ -592,25 +595,25 @@ def test_interaction_counts_report_funnel_quality_outcomes() -> None:
 
 
 def test_offer_funnel_is_required_when_enabled_for_saved_post() -> None:
-    assert not facebook_calibrator._calibration_target_ok(
+    assert not calibration_target_ok(
         post_viewed=True,
         funnel_ok=False,
         funnel_required=True,
         post_required=True,
     )
-    assert facebook_calibrator._calibration_target_ok(
+    assert calibration_target_ok(
         post_viewed=True,
         funnel_ok=True,
         funnel_required=True,
         post_required=True,
     )
-    assert facebook_calibrator._calibration_target_ok(
+    assert calibration_target_ok(
         post_viewed=False,
         funnel_ok=True,
         funnel_required=True,
         post_required=False,
     )
-    assert facebook_calibrator._calibration_target_ok(
+    assert calibration_target_ok(
         post_viewed=True,
         funnel_ok=False,
         funnel_required=False,
@@ -632,7 +635,7 @@ def test_already_active_interaction_does_not_finish_calibration() -> None:
         }
     ]
 
-    assert facebook_calibrator._calibration_goals_met(results, args) is False
+    assert calibration_legacy.calibration_goals_met(results, args) is False
 
 
 def test_calibration_goals_stop_after_eight_opened_posts() -> None:
@@ -640,8 +643,8 @@ def test_calibration_goals_stop_after_eight_opened_posts() -> None:
     results = [{"ok": True, "actions": []} for _ in range(8)]
     results[0]["actions"] = [{"action": "reaction", "status": "clicked"}]
 
-    assert facebook_calibrator._calibration_goals_met(results[:7], args) is False
-    assert facebook_calibrator._calibration_goals_met(results, args) is True
+    assert calibration_legacy.calibration_goals_met(results[:7], args) is False
+    assert calibration_legacy.calibration_goals_met(results, args) is True
 
 
 def test_calibration_with_three_target_goal_still_reaches_fifth_comment() -> None:
@@ -655,19 +658,15 @@ def test_calibration_with_three_target_goal_still_reaches_fifth_comment() -> Non
     results[0]["actions"] = [{"action": "reaction", "status": "clicked"}]
 
     assert (
-        facebook_calibrator._calibration_goals_met(
-            results[:3], args, targets_available=5
-        )
+        calibration_legacy.calibration_goals_met(results[:3], args, targets_available=5)
         is False
     )
     assert (
-        facebook_calibrator._calibration_goals_met(results, args, targets_available=5)
+        calibration_legacy.calibration_goals_met(results, args, targets_available=5)
         is True
     )
     assert (
-        facebook_calibrator._calibration_goals_met(
-            results[:3], args, targets_available=4
-        )
+        calibration_legacy.calibration_goals_met(results[:3], args, targets_available=4)
         is True
     )
 
@@ -703,7 +702,7 @@ def test_comment_is_posted_on_configured_relevant_ad_interval(monkeypatch) -> No
     )
     budget = {"reaction": 0, "follow": 0, "comment": 0, "successful": 0}
 
-    first = facebook_calibrator._engage_row(
+    first = calibration_legacy.engage_row(
         object(),
         {"element_id": "ad-1"},
         CalibrationTarget(
@@ -715,7 +714,7 @@ def test_comment_is_posted_on_configured_relevant_ad_interval(monkeypatch) -> No
         args,
         relevant_ad_number=1,
     )
-    second = facebook_calibrator._engage_row(
+    second = calibration_legacy.engage_row(
         object(),
         {"element_id": "ad-2"},
         CalibrationTarget(
@@ -807,7 +806,7 @@ def test_calibration_visits_landing_without_commenting(monkeypatch) -> None:
         cta="Learn more",
     )
 
-    result = facebook_calibrator._engage_row(
+    result = calibration_legacy.engage_row(
         object(),
         {"element_id": "saved-post"},
         target,
@@ -862,7 +861,7 @@ def test_calibration_opens_saved_post_without_scanning_feed(tmp_path) -> None:
         "opened": 4,
     }
 
-    result = facebook_calibrator._calibrate_saved_ad(
+    result = calibration_legacy.calibrate_saved_ad(
         context,
         target,
         1,
@@ -906,7 +905,7 @@ def test_calibration_retries_transient_proxy_navigation_errors(tmp_path) -> None
         "opened": 0,
     }
 
-    result = facebook_calibrator._calibrate_saved_ad(
+    result = calibration_legacy.calibrate_saved_ad(
         context,
         target,
         1,
@@ -949,7 +948,7 @@ def test_calibration_aborts_cleanly_after_exhausted_proxy_errors(tmp_path) -> No
         comment_template=[],
     )
 
-    result = facebook_calibrator._calibrate_saved_ad(
+    result = calibration_legacy.calibrate_saved_ad(
         context,
         target,
         1,
@@ -999,7 +998,7 @@ def test_calibration_treats_closed_browser_context_as_infrastructure_error(
         comment_template=[],
     )
 
-    result = facebook_calibrator._calibrate_saved_ad(
+    result = calibration_legacy.calibrate_saved_ad(
         ClosedDirectPostContext(),
         target,
         1,
@@ -1048,7 +1047,7 @@ def test_calibration_treats_direct_post_403_as_infrastructure_error(tmp_path) ->
         comment_template=[],
     )
 
-    result = facebook_calibrator._calibrate_saved_ad(
+    result = calibration_legacy.calibrate_saved_ad(
         context,
         target,
         1,

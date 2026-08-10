@@ -21,9 +21,8 @@ CLI_COMMANDS = {
     "app-cli": [APP_CLI, "--help"],
     "facebook-spy": [FACEBOOK_CLI, "--help"],
     "calibrator": [
-        sys.executable,
-        "-m",
-        "app.services.facebook_calibrator",
+        FACEBOOK_CLI,
+        "calibrate",
         "--help",
     ],
     "db-importer": [
@@ -31,6 +30,7 @@ CLI_COMMANDS = {
         "import-run",
         "--help",
     ],
+    "enricher": [FACEBOOK_CLI, "enrich", "--help"],
     "classifier": [FACEBOOK_CLI, "classify", "--help"],
     "isolated-landing": [
         FACEBOOK_CLI,
@@ -91,9 +91,10 @@ EXPECTED_HELP_SHA256 = {
     "app-cli-migrations": "df30a54b7d0bba38fa9e73ac6ca59b3ed868b71eb90641a97815103b5eb9d564",
     "app-cli-sync-facebook-media": "212253c239675682158b31c252992f3583e7650293588eedb9b7138e3dba06cb",
     "app-cli-upgrade": "f8c22eb67d684f89015f39e61d11772abab0977c76838a6b893123670260f9ab",
-    "calibrator": "38c2ae20e7db6528c62a00417901c95dbb319dd79335bb1c6af771508c3973ec",
+    "calibrator": "5a79c71e633fd0885188b1c6b0818212a6aec569c3c5025b3b313eacfaef5dd9",
     "classifier": "2d2ec608e0241dabddbfcde14297ee89aa9585ac511510cbb4d8b7b16b703bfd",
     "db-importer": "71395b0a5b0e680cac68828911b09957cf9e30564cbb61d5512740be9677f747",
+    "enricher": "ffcb9d3376518e3ed9c12c08f6e17c0d1613647befffe1e88d1299c5983bdb41",
     "facebook-spy": "1f7bf50c4378e2a7beba8b3335b0050946841d8e2ce0eafdfaab6464cad8bf28",
     "isolated-landing": "72f0b8cefca79b2ca74b59a0065790489b72b168843c5a3d4737010ba1cb76a2",
     "orchestrator": "df20956c24924f7ec8d1e9a1e01def00f3a3c6028912e4346a42696d55759085",

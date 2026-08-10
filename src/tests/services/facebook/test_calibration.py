@@ -14,7 +14,7 @@ from app.facebook.calibration import (
     select_calibration_targets,
     write_targets,
 )
-from app.services.facebook_calibrator import _should_stop_after_target_result
+from app.facebook.calibration.cli.legacy import should_stop_after_result
 
 
 def test_manual_batch_can_continue_after_one_transient_navigation_error() -> None:
@@ -23,11 +23,11 @@ def test_manual_batch_can_continue_after_one_transient_navigation_error() -> Non
         "transient_navigation_error": True,
     }
 
-    assert not _should_stop_after_target_result(
+    assert not should_stop_after_result(
         result,
         SimpleNamespace(continue_on_target_navigation_error=True),
     )
-    assert _should_stop_after_target_result(
+    assert should_stop_after_result(
         result,
         SimpleNamespace(continue_on_target_navigation_error=False),
     )
@@ -40,7 +40,7 @@ def test_manual_batch_still_stops_when_browser_context_closed() -> None:
         "browser_context_closed": True,
     }
 
-    assert _should_stop_after_target_result(
+    assert should_stop_after_result(
         result,
         SimpleNamespace(continue_on_target_navigation_error=True),
     )
@@ -171,17 +171,19 @@ def test_load_targets_from_ads_json_and_write_artifacts(tmp_path) -> None:
 def test_load_targets_can_require_explicit_relevance(tmp_path) -> None:
     ads_json = tmp_path / "ads.json"
     ads_json.write_text(
-        json.dumps([
-            {
-                "landing_full": "https://accepted.example",
-                "relevance": {"result": "relevant"},
-            },
-            {
-                "landing_full": "https://rejected.example",
-                "relevance": {"result": "not_relevant"},
-            },
-            {"landing_full": "https://unknown.example"},
-        ]),
+        json.dumps(
+            [
+                {
+                    "landing_full": "https://accepted.example",
+                    "relevance": {"result": "relevant"},
+                },
+                {
+                    "landing_full": "https://rejected.example",
+                    "relevance": {"result": "not_relevant"},
+                },
+                {"landing_full": "https://unknown.example"},
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -196,19 +198,21 @@ def test_load_targets_can_require_explicit_relevance(tmp_path) -> None:
 def test_engagement_targets_include_relevant_ads_without_landings(tmp_path) -> None:
     ads_json = tmp_path / "ads.relevant.json"
     ads_json.write_text(
-        json.dumps([
-            {
-                "advertiser": "Saved advertiser",
-                "displayed_domain": "relevant.example",
-                "headline": "Saved headline",
-                "feed_element_id": "fbspy-current",
-                "relevance": {"result": "relevant"},
-            },
-            {
-                "advertiser": "Rejected advertiser",
-                "relevance": {"result": "not_relevant"},
-            },
-        ]),
+        json.dumps(
+            [
+                {
+                    "advertiser": "Saved advertiser",
+                    "displayed_domain": "relevant.example",
+                    "headline": "Saved headline",
+                    "feed_element_id": "fbspy-current",
+                    "relevance": {"result": "relevant"},
+                },
+                {
+                    "advertiser": "Rejected advertiser",
+                    "relevance": {"result": "not_relevant"},
+                },
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -222,38 +226,40 @@ def test_engagement_targets_include_relevant_ads_without_landings(tmp_path) -> N
 def test_saved_facebook_targets_require_relevant_direct_post_urls(tmp_path) -> None:
     ads_json = tmp_path / "ads.relevant.json"
     ads_json.write_text(
-        json.dumps([
-            {
-                "advertiser": "Direct relevant",
-                "country": "Spain",
-                "fb_ad_id": "ad-1",
-                "facebook_post_url": "https://m.facebook.com/100/posts/200",
-                "landing_full": "https://landing.example/one",
-                "landing_clean": "https://landing.example/one",
-                "cta": "Learn more",
-                "relevance": {"result": "relevant"},
-            },
-            {
-                "advertiser": "No permalink",
-                "country": "Spain",
-                "landing_full": "https://landing.example/two",
-                "relevance": {"result": "relevant"},
-            },
-            {
-                "advertiser": "Not relevant",
-                "country": "Spain",
-                "facebook_post_url": "https://m.facebook.com/300/posts/400",
-                "relevance": {"result": "not_relevant"},
-            },
-            {
-                "advertiser": "Story relevant",
-                "country": "Spain",
-                "facebook_post_url": (
-                    "https://m.facebook.com/story.php?story_fbid=600&id=500"
-                ),
-                "relevance": {"result": "relevant"},
-            },
-        ]),
+        json.dumps(
+            [
+                {
+                    "advertiser": "Direct relevant",
+                    "country": "Spain",
+                    "fb_ad_id": "ad-1",
+                    "facebook_post_url": "https://m.facebook.com/100/posts/200",
+                    "landing_full": "https://landing.example/one",
+                    "landing_clean": "https://landing.example/one",
+                    "cta": "Learn more",
+                    "relevance": {"result": "relevant"},
+                },
+                {
+                    "advertiser": "No permalink",
+                    "country": "Spain",
+                    "landing_full": "https://landing.example/two",
+                    "relevance": {"result": "relevant"},
+                },
+                {
+                    "advertiser": "Not relevant",
+                    "country": "Spain",
+                    "facebook_post_url": "https://m.facebook.com/300/posts/400",
+                    "relevance": {"result": "not_relevant"},
+                },
+                {
+                    "advertiser": "Story relevant",
+                    "country": "Spain",
+                    "facebook_post_url": (
+                        "https://m.facebook.com/story.php?story_fbid=600&id=500"
+                    ),
+                    "relevance": {"result": "relevant"},
+                },
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -273,13 +279,15 @@ def test_saved_facebook_targets_skip_quarantined_urls(tmp_path) -> None:
     post_url = "https://m.facebook.com/100/posts/200"
     ads_json = tmp_path / "ads.relevant.json"
     ads_json.write_text(
-        json.dumps([
-            {
-                "country": "Spain",
-                "facebook_post_url": post_url,
-                "relevance": {"result": "relevant"},
-            }
-        ]),
+        json.dumps(
+            [
+                {
+                    "country": "Spain",
+                    "facebook_post_url": post_url,
+                    "relevance": {"result": "relevant"},
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -297,19 +305,21 @@ def test_funnel_targets_keep_full_offer_when_mobile_post_is_unavailable(
 ) -> None:
     ads_json = tmp_path / "ads.relevant.json"
     ads_json.write_text(
-        json.dumps([
-            {
-                "advertiser": "Relevant offer",
-                "country": "Spain",
-                "fb_ad_id": "1202475030516302598",
-                "landing_full": (
-                    "https://offer.example/click?ad_id=1202475030516302598"
-                    "&campaign_id=1202475030517202598"
-                ),
-                "landing_clean": "https://offer.example/click",
-                "relevance": {"result": "relevant"},
-            }
-        ]),
+        json.dumps(
+            [
+                {
+                    "advertiser": "Relevant offer",
+                    "country": "Spain",
+                    "fb_ad_id": "1202475030516302598",
+                    "landing_full": (
+                        "https://offer.example/click?ad_id=1202475030516302598"
+                        "&campaign_id=1202475030517202598"
+                    ),
+                    "landing_clean": "https://offer.example/click",
+                    "relevance": {"result": "relevant"},
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -328,14 +338,16 @@ def test_funnel_targets_keep_full_offer_when_mobile_post_is_unavailable(
 def test_funnel_target_can_use_saved_cta_href(tmp_path) -> None:
     ads_json = tmp_path / "ads.relevant.json"
     ads_json.write_text(
-        json.dumps([
-            {
-                "country": "Canada",
-                "fb_ad_id": "cta-only",
-                "cta_href": "https://offer.example/click?campaign=authorized-test",
-                "relevance": {"result": "relevant"},
-            }
-        ]),
+        json.dumps(
+            [
+                {
+                    "country": "Canada",
+                    "fb_ad_id": "cta-only",
+                    "cta_href": "https://offer.example/click?campaign=authorized-test",
+                    "relevance": {"result": "relevant"},
+                }
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -380,15 +392,20 @@ def test_target_health_quarantines_repeated_missing_post_and_resets_on_success(
         {"url": post_url, "ok": True},
         now=started_at + timedelta(minutes=2),
     )
-    assert quarantined_facebook_post_urls(
-        health_path,
-        now=started_at + timedelta(minutes=2),
-    ) == set()
+    assert (
+        quarantined_facebook_post_urls(
+            health_path,
+            now=started_at + timedelta(minutes=2),
+        )
+        == set()
+    )
 
 
 def test_rotate_calibration_targets_wraps_without_dropping_targets() -> None:
     targets = [
-        CalibrationTarget(url=f"https://example.com/{advertiser}", advertiser=advertiser)
+        CalibrationTarget(
+            url=f"https://example.com/{advertiser}", advertiser=advertiser
+        )
         for advertiser in ["A", "B", "C", "D", "E"]
     ]
 

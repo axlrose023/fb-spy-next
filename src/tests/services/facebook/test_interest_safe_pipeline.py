@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.facebook.calibration import CalibrationTarget
+from app.facebook.enrichment import EnrichmentOptions, EnrichmentService
 from app.facebook.enrichment.adapters.playwright import post as enrichment_post
+from app.facebook.enrichment.adapters.playwright.post import recover_allowed_post_url
+from app.facebook.enrichment.post import matching_visible_feed_row, valid_post_url
+from app.facebook.enrichment.service import denied_enrichment
 from app.facebook.relevance import (
     RelevanceResult,
     apply_prefilter_uncertainty_guard,
@@ -24,14 +28,6 @@ from app.facebook.relevance.evidence import (
     summarize_isolated_resolutions,
 )
 from app.services import facebook_orchestrator, facebook_runner
-from app.services.facebook_ad_enricher import (
-    _candidate_indexes,
-    _enrich_one,
-    _matching_visible_feed_row,
-    _recover_allowed_post_url,
-    _summary,
-    _valid_post_url,
-)
 from app.services.facebook_orchestrator import ProfileConfig
 
 
@@ -119,7 +115,7 @@ def test_only_allowed_rows_can_enter_active_enrichment() -> None:
         {"relevance_gate": "allow"},
     ]
 
-    assert _candidate_indexes(rows) == [1, 3]
+    assert EnrichmentService().prepare(rows) == [1, 3]
 
 
 def test_enrichment_summary_detects_any_action_on_blocked_row() -> None:
@@ -138,25 +134,22 @@ def test_enrichment_summary_detects_any_action_on_blocked_row() -> None:
         },
     ]
 
-    result = _summary(rows, status="completed")
+    result = EnrichmentService().summary(rows, status="completed")
 
     assert result["active_actions_on_blocked_ads"] == 1
     assert result["active_candidates"] == 2
     assert result["landing_click_attempts"] == 1
 
 
-def test_enrich_one_refuses_blocked_row_before_browser_access(tmp_path: Path) -> None:
-    enriched, result = _enrich_one(
-        None,
+def test_enrichment_refuses_blocked_row_before_browser_access() -> None:
+    denied = denied_enrichment(
         {
             "advertiser": "Blocked",
             "relevance_gate": "deny",
             "facebook_post_url": "https://m.facebook.com/123/posts/456",
         },
-        sequence=1,
-        run_dir=tmp_path,
-        args=SimpleNamespace(),
     )
+    enriched, result = denied.ad, denied.details
 
     assert result["status"] == "blocked_by_relevance_gate"
     assert result["active_actions_started"] is False
@@ -164,10 +157,10 @@ def test_enrich_one_refuses_blocked_row_before_browser_access(tmp_path: Path) ->
 
 
 def test_post_url_recovery_refuses_blocked_row_before_browser_access() -> None:
-    post_url, result = _recover_allowed_post_url(
+    post_url, result = recover_allowed_post_url(
         None,
         {"relevance_gate": "deny"},
-        args=SimpleNamespace(),
+        options=EnrichmentOptions(),
     )
 
     assert post_url == ""
@@ -226,10 +219,10 @@ def test_allowed_post_url_is_recovered_from_neutralized_feed_history(
         "advertiser": "Relevant ad",
     }
 
-    post_url, result = _recover_allowed_post_url(
+    post_url, result = recover_allowed_post_url(
         context,
         raw,
-        args=SimpleNamespace(timeout_ms=1000, wait_after_load=0),
+        options=EnrichmentOptions(timeout_ms=1000, wait_after_load=0),
     )
 
     assert page.went_back is True
@@ -261,7 +254,7 @@ def test_feed_recovery_requires_strict_metadata_match() -> None:
         },
     ]
 
-    result = _matching_visible_feed_row(rows, expected)
+    result = matching_visible_feed_row(rows, expected)
 
     assert result is not None
     assert result["element_id"] == "right"
@@ -278,7 +271,7 @@ def test_feed_recovery_requires_strict_metadata_match() -> None:
     ],
 )
 def test_enricher_accepts_only_direct_facebook_post_urls(url, valid) -> None:
-    assert bool(_valid_post_url(url)) is valid
+    assert bool(valid_post_url(url)) is valid
 
 
 class _RecordingFilter:
@@ -399,7 +392,7 @@ async def test_unresolved_hold_never_enters_authenticated_profile(
 
     assert relevance_filter.calls == []
     assert gated[0]["relevance_gate"] == "hold"
-    assert _candidate_indexes(gated) == []
+    assert EnrichmentService().prepare(gated) == []
 
 
 def test_isolated_url_decodes_fb_redirect_and_removes_profile_tracking() -> None:

@@ -175,7 +175,7 @@ Octo session ends. Comments remain disabled by the production defaults.
 Use a previously classified relevant-ad file:
 
 ```bash
-uv run python -m app.services.facebook_calibrator \
+uv run facebook-spy calibrate \
   --octo-profile-uuid "OCTO_PROFILE_UUID" \
   --ads-json storage/facebook/runs/run_x/ads.relevant.json \
   --limit 20 \
@@ -188,7 +188,7 @@ uv run python -m app.services.facebook_calibrator \
 Multiple saved relevant-ad files can be supplied:
 
 ```bash
-uv run python -m app.services.facebook_calibrator \
+uv run facebook-spy calibrate \
   --octo-profile-uuid "OCTO_PROFILE_UUID" \
   --country "Turkey" \
   --ads-json storage/facebook/runs/run_x/ads.relevant.json \
@@ -322,7 +322,7 @@ The orchestrator passes collection-safe defaults to the runner:
   exact advertiser/CTA card, and follows only that CTA. Private-network targets
   and Meta tracking from the external landing are blocked. The context is
   destroyed after one card, and the second gate is written to `ads.gated.json`;
-- only `allow` rows enter `facebook_ad_enricher`, which reopens the saved direct
+- only `allow` rows enter the enrichment stage, which reopens the saved direct
   Facebook post and captures its video/landing. Denied or unresolved rows cannot
   start authenticated profile actions;
 - the persistent profile page is paused, closed down to one tab, and navigated

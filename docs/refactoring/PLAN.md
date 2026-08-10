@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14I1 завершен
+Статус: `IN_PROGRESS` — этап 14I2 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1-14I2 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4016,6 +4016,36 @@ Production server, live Octo runtime и старый репозиторий не
 runtime/default/Compose cutovers. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14I1 выполняется revert одного отдельного
 коммита.
+
+#### 14I2. Enrichment и calibration CLI cutover
+
+Результат:
+
+- manual calibration и relevant-only enrichment release paths переведены на
+  `facebook-spy calibrate` и `facebook-spy enrich`; README больше не направляет
+  оператора к service wrappers;
+- CLI contract suite фиксирует оба unified gateway command, их прежние options
+  и help surface; для enrichment добавлен отсутствовавший release-path contract;
+- удалены агрегирующие executable wrappers `facebook_ad_enricher.py` и
+  `facebook_calibrator.py`; architecture denylist запрещает возврат файлов и
+  production imports;
+- interest-safety tests используют `EnrichmentService`, post policy и
+  Playwright recovery adapter напрямую; blocked rows по-прежнему не получают
+  browser access;
+- calibration tests используют accounting functions, `cli.legacy` adapter,
+  parser и target-engagement owner напрямую; wrapper-level aliases и
+  Playwright error re-export удалены без потери behavioral assertions;
+- focused cutover regression: 212 тестов, полный regression: 898 тестов;
+- wheel содержит canonical enrichment/calibration commands и services, но не
+  содержит два удалённых wrappers; Ruff, mypy, architecture/contracts,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14I остается `IN_PROGRESS`: collection runner и orchestrator имеют
+отдельные stateful runtime contracts и переносятся последовательно. Production
+server, live Octo runtime и старый репозиторий не менялись. Rollback 14I2
+выполняется revert одного отдельного коммита.
 
 Перед удалением:
 
