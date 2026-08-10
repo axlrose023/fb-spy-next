@@ -19,6 +19,10 @@ from app.facebook.settings import FacebookConfig
 pytestmark = pytest.mark.unit
 
 
+def test_default_collector_module_is_canonical() -> None:
+    assert FacebookConfig().runner_module == "app.facebook.collection.commands"
+
+
 @dataclass
 class OctoOptions:
     octo_host: str = ""

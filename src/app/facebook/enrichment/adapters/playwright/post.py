@@ -5,8 +5,12 @@ from typing import Any
 from app.facebook.enrichment.landing.adapters.playwright import (
     neutralize_profile_pages,
 )
+from app.facebook.feed import (
+    DETECT_JS,
+    install_passive_media_guard,
+    prepare_passive_media_guard,
+)
 from app.facebook.navigation import goto_with_retry
-from app.services import facebook_runner
 
 from ...models import EnrichmentOptions
 from ...post import (
@@ -44,7 +48,7 @@ def recover_allowed_post_url(
         recovery["status"] = "missing_profile_page"
         return "", recovery
     try:
-        recovery["media_guard"] = facebook_runner.prepare_passive_media_guard(page)
+        recovery["media_guard"] = prepare_passive_media_guard(page)
         recovery["profile_navigation_started"] = True
         _restore_feed(page, options)
         element_id = str(raw.get("feed_element_id") or "")
@@ -52,7 +56,7 @@ def recover_allowed_post_url(
             recovery["matched_by"] = "preserved_feed_element_id"
         else:
             observed = matching_visible_feed_row(
-                page.evaluate(facebook_runner.DETECT_JS),
+                page.evaluate(DETECT_JS),
                 raw,
             )
             if observed is None:
@@ -99,7 +103,7 @@ def _restore_feed(page: Any, options: EnrichmentOptions) -> None:
             timeout=max(1, options.timeout_ms),
             attempts=3,
         )
-    facebook_runner.install_passive_media_guard(page)
+    install_passive_media_guard(page)
     if options.wait_after_load > 0:
         page.wait_for_timeout(round(options.wait_after_load * 1000))
 

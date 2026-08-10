@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
 
-from ...models import utc_now
+from app.facebook.timing import utc_now
 
 
 class _TeeStream:

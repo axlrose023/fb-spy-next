@@ -3,10 +3,12 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from app.facebook.feed import passive_media_guard_stats
+from app.facebook.timing import utc_now
+
 from ...artifacts import write_ads, write_json_atomic
-from ...models import CollectedAd, utc_now
+from ...models import CollectedAd
 from ...summary import ad_summary
-from .passive_media import passive_media_guard_stats
 from .state import CollectionRunState
 
 
@@ -88,4 +90,5 @@ def finalize_collection(
             refreshes=state.refreshes,
         )
         write_ads(options.run_dir / "ads.partial.json", state.ads)
-    return state.ads
+    ads: dict[str, CollectedAd] = state.ads
+    return ads

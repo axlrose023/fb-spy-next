@@ -7,7 +7,7 @@ from typing import Any
 from playwright.sync_api import Page
 
 from app.facebook.navigation import ignore_proxy_certificate_errors
-from app.services import facebook_runner
+from app.facebook.timing import utc_now
 
 from ..accounting import calibration_goals_met as goals_met
 from ..accounting import should_stop_after_target_result as should_stop
@@ -102,7 +102,7 @@ def calibrate_saved_ad(
         budget=budget,
         options=browser_options_from_args(args),
         write_event=append_event,
-        utc_now=facebook_runner.utc_now,
+        utc_now=utc_now,
         ignore_certificate_errors=ignore_proxy_certificate_errors,
         funnel_session=funnel_session,
     )

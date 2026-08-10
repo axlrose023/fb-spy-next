@@ -13,9 +13,9 @@ from app.facebook.adapters import (
 )
 from app.facebook.collection import CollectedAd
 from app.facebook.profiles import ProfileSession
+from app.facebook.timing import utc_now
 
 from ..adapters.playwright import DebugRecorder, collect_feed
-from ..models import utc_now
 from ..stop import stop_requested
 from .artifacts import (
     COLLECTOR_METRIC_VERSION,

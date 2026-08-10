@@ -9,10 +9,11 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
+from app.facebook.adapters import acquire_command_session
 from app.facebook.enrichment.landing.adapters.playwright import (
     neutralize_profile_pages,
 )
-from app.services import facebook_runner
+from app.facebook.timing import utc_now
 from app.settings import get_config
 
 from ...files import append_event, load_ads, write_json
@@ -30,14 +31,14 @@ def run(args: Any, *, stop_requested: Callable[[], bool]) -> int:
         )
         return 2
     rows = load_ads(paths["source"])
-    service = EnrichmentService(clock=facebook_runner.utc_now)
+    service = EnrichmentService(clock=utc_now)
     candidate_indexes = service.prepare(rows)
     if not candidate_indexes:
         write_json(paths["output"], rows)
         write_json(paths["summary"], service.summary(rows, status="completed"))
         print("[enrichment] no allowed candidates; no browser actions", flush=True)
         return 0
-    _configure_profile(args)
+    profile_uuid = args.octo_profile_uuid or get_config().facebook.octo_profile_uuid
     try:
         status, infrastructure_error = _run_candidates(
             args,
@@ -46,6 +47,7 @@ def run(args: Any, *, stop_requested: Callable[[], bool]) -> int:
             candidate_indexes,
             service,
             stop_requested,
+            profile_uuid=profile_uuid,
         )
         summary = _write_completed(
             paths,
@@ -85,25 +87,29 @@ def _run_candidates(
     candidate_indexes: list[int],
     service: EnrichmentService,
     stop_requested: Callable[[], bool],
+    *,
+    profile_uuid: str,
 ) -> tuple[str, str | None]:
-    ws_endpoint, connection_data = facebook_runner.get_cdp_endpoint()
-    ws_endpoint = facebook_runner.rewrite_cdp_endpoint_host(ws_endpoint, args.octo_host)
+    session = acquire_command_session(
+        host=args.octo_host,
+        port=args.octo_port,
+        profile_uuid=profile_uuid,
+        headless=args.octo_headless,
+    )
     append_event(
         paths["events"],
         {
-            "at": facebook_runner.utc_now(),
+            "at": utc_now(),
             "kind": "started",
-            "profile_uuid": facebook_runner.OCTO_PROFILE_UUID,
-            "profile_country": facebook_runner.normalize_country(
-                connection_data.get("country")
-            ),
+            "profile_uuid": profile_uuid,
+            "profile_country": session.connection.country,
             "candidates": len(candidate_indexes),
         },
     )
     executor = PlaywrightRelevantAdExecutor(EnrichmentOptions.from_namespace(args))
     infrastructure_error = None
     with sync_playwright() as playwright:
-        browser = playwright.chromium.connect_over_cdp(ws_endpoint)
+        browser = playwright.chromium.connect_over_cdp(session.ws_endpoint)
         context = browser.contexts[0] if browser.contexts else browser.new_context()
         seen_targets: set[str] = set()
         for sequence, row_index in enumerate(candidate_indexes, start=1):
@@ -164,15 +170,6 @@ def _paths(args: Any) -> dict[str, Path]:
     }
 
 
-def _configure_profile(args: Any) -> None:
-    config = get_config()
-    facebook_runner.OCTO_API = f"http://{args.octo_host}:{args.octo_port}"
-    facebook_runner.OCTO_PROFILE_UUID = (
-        args.octo_profile_uuid or config.facebook.octo_profile_uuid
-    )
-    facebook_runner.OCTO_HEADLESS = args.octo_headless
-
-
 def _record_candidate(
     paths: dict[str, Path],
     rows: list[dict[str, Any]],
@@ -182,7 +179,7 @@ def _record_candidate(
     append_event(
         paths["events"],
         {
-            "at": facebook_runner.utc_now(),
+            "at": utc_now(),
             "kind": "candidate_finished",
             "row_index": row_index,
             **details,
@@ -206,7 +203,7 @@ def _write_completed(
     write_json(paths["summary"], summary)
     append_event(
         paths["events"],
-        {"at": facebook_runner.utc_now(), "kind": "finished", **summary},
+        {"at": utc_now(), "kind": "finished", **summary},
     )
     return summary
 

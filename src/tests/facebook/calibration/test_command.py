@@ -25,7 +25,7 @@ def _saved_ad() -> dict[str, Any]:
 
 
 def _args(ads_json: Path, run_dir: Path, *extra: str) -> argparse.Namespace:
-    return build_parser().parse_args(
+    args: argparse.Namespace = build_parser().parse_args(
         [
             "--country",
             "Canada",
@@ -36,6 +36,7 @@ def _args(ads_json: Path, run_dir: Path, *extra: str) -> argparse.Namespace:
             *extra,
         ]
     )
+    return args
 
 
 def _prepare_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -46,9 +47,6 @@ def _prepare_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
             facebook=SimpleNamespace(octo_profile_uuid="default-profile")
         ),
     )
-    monkeypatch.setattr(runtime.facebook_runner, "OCTO_API", "original-api")
-    monkeypatch.setattr(runtime.facebook_runner, "OCTO_PROFILE_UUID", "original")
-    monkeypatch.setattr(runtime.facebook_runner, "OCTO_HEADLESS", False)
 
 
 def test_dry_run_writes_legacy_artifact_contract_without_connecting(
@@ -60,9 +58,9 @@ def test_dry_run_writes_legacy_artifact_contract_without_connecting(
     ads_json.write_text(json.dumps([_saved_ad()]), encoding="utf-8")
     run_dir = tmp_path / "calibration"
     monkeypatch.setattr(
-        runtime.facebook_runner,
-        "get_cdp_endpoint",
-        lambda: (_ for _ in ()).throw(
+        runtime,
+        "acquire_command_session",
+        lambda **_kwargs: (_ for _ in ()).throw(
             AssertionError("country-scoped dry run must not connect to Octo")
         ),
     )
@@ -113,7 +111,11 @@ def test_runtime_maps_service_result_to_orchestrator_summary(
     ads_json = tmp_path / "ads.json"
     ads_json.write_text(json.dumps([_saved_ad()]), encoding="utf-8")
     run_dir = tmp_path / "calibration"
-    monkeypatch.setattr(runtime, "_connect", lambda _args: ("ws://octo", {}, "Canada"))
+    monkeypatch.setattr(
+        runtime,
+        "_connect",
+        lambda _args, _profile_uuid: ("ws://octo", {}, "Canada"),
+    )
 
     def fake_session(
         *_args: Any,

@@ -17,12 +17,53 @@ from app.facebook.adapters.octo import (
     OctoLocalRuntime,
     OctoProfileSessionManager,
     OctoPublicProfileSource,
+    command_session,
     rewrite_cdp_endpoint_host,
 )
-from app.facebook.profiles import ProfileSourceError
+from app.facebook.profiles import ProfileConnection, ProfileSession, ProfileSourceError
 from app.services import facebook_runner
 
 pytestmark = pytest.mark.unit
+
+
+def test_command_session_uses_explicit_profile_options_and_rewrites_cdp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[tuple[str, str, bool]] = []
+
+    class Runtime:
+        def __init__(
+            self,
+            api_url: str,
+            profile_uuid: str,
+            *,
+            headless: bool,
+        ) -> None:
+            created.append((api_url, profile_uuid, headless))
+
+        def acquire(self) -> ProfileSession:
+            return ProfileSession(
+                "ws://127.0.0.1:9000/browser",
+                ProfileConnection(country="Canada", ip="203.0.113.10"),
+            )
+
+    monkeypatch.setattr(command_session, "OctoLocalRuntime", Runtime)
+    monkeypatch.setattr(
+        command_session,
+        "rewrite_cdp_endpoint_host",
+        lambda endpoint, host: f"{endpoint}?host={host}",
+    )
+
+    session = command_session.acquire_command_session(
+        host="octo.internal",
+        port=58888,
+        profile_uuid="profile-1",
+        headless=True,
+    )
+
+    assert created == [("http://octo.internal:58888", "profile-1", True)]
+    assert session.ws_endpoint.endswith("?host=octo.internal")
+    assert session.connection.country == "Canada"
 
 
 class RecordingTransport:

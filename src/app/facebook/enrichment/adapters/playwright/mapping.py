@@ -4,13 +4,13 @@ from dataclasses import fields
 from typing import Any
 
 from app.facebook.calibration import CalibrationTarget
-from app.services import facebook_runner
+from app.facebook.collection import CollectedAd
 
 
-def ad_from_raw(raw: dict[str, Any], *, element_id: str) -> facebook_runner.Ad:
+def ad_from_raw(raw: dict[str, Any], *, element_id: str) -> CollectedAd:
     values = {
         field.name: raw.get(field.name)
-        for field in fields(facebook_runner.Ad)
+        for field in fields(CollectedAd)
         if field.name in raw
     }
     values["advertiser"] = str(raw.get("advertiser") or "")
@@ -31,7 +31,7 @@ def ad_from_raw(raw: dict[str, Any], *, element_id: str) -> facebook_runner.Ad:
     values["screenshot_ok"] = raw.get("screenshot_ok") is not False
     values["utm"] = raw.get("utm") if isinstance(raw.get("utm"), dict) else {}
     values["feed_element_id"] = element_id
-    return facebook_runner.Ad(**values)  # type: ignore[arg-type]
+    return CollectedAd(**values)  # type: ignore[arg-type]
 
 
 def target_from_raw(raw: dict[str, Any], post_url: str) -> CalibrationTarget:
@@ -51,8 +51,8 @@ def target_from_raw(raw: dict[str, Any], post_url: str) -> CalibrationTarget:
     )
 
 
-def merge_ad_fields(raw: dict[str, Any], ad: facebook_runner.Ad) -> None:
-    for field in fields(facebook_runner.Ad):
+def merge_ad_fields(raw: dict[str, Any], ad: CollectedAd) -> None:
+    for field in fields(CollectedAd):
         raw[field.name] = getattr(ad, field.name)
 
 

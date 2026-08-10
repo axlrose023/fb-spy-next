@@ -4,11 +4,11 @@ import random
 import time
 from typing import Any
 
+from app.facebook.feed import install_passive_media_guard
 from app.facebook.navigation import goto_with_retry
 
 from ...artifacts import write_ads
 from .debug_recorder import DebugRecorder
-from .passive_media import install_passive_media_guard
 from .state import CollectionRunState
 
 

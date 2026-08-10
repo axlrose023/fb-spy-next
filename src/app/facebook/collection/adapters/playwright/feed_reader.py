@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
-from .detector import DETECT_JS
-from .passive_media import pause_all_videos
+from app.facebook.feed import DETECT_JS, pause_all_videos
 
 SCROLL_JS = 'dy => window.scrollBy({top: dy, left: 0, behavior: "smooth"})'
 

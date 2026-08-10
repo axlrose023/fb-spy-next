@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14I2 завершен
+Статус: `IN_PROGRESS` — этап 14I3 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -2808,7 +2808,7 @@ Production server, Octo runtime и старый репозиторий не ме
 
 ### Этап 14. Удаление legacy и финальный cutover
 
-Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1-14I2 COMPLETE`)
+Статус: `IN_PROGRESS` (`14A-14H COMPLETE`, `14I IN_PROGRESS: 14I1-14I3 COMPLETE`)
 
 Closure inventory после этапа 13:
 
@@ -4046,6 +4046,40 @@ runtime/default/Compose cutovers. Production server, live Octo runtime и ста
 отдельные stateful runtime contracts и переносятся последовательно. Production
 server, live Octo runtime и старый репозиторий не менялись. Rollback 14I2
 выполняется revert одного отдельного коммита.
+
+#### 14I3. Collection runner production cutover
+
+Результат:
+
+- default collection subprocess module переключён с
+  `app.services.facebook_runner` на `app.facebook.collection.commands`; settings
+  snapshot и отдельный canonical-default contract обновлены намеренно;
+- calibration, enrichment и isolated-relevance runtimes больше не изменяют
+  process-global `OCTO_API`, `OCTO_PROFILE_UUID` и `OCTO_HEADLESS`; новый
+  `acquire_command_session` принимает explicit host/port/profile/headless,
+  приобретает `ProfileSession` и нормализует CDP endpoint;
+- production import count `app.services.facebook_runner` уменьшен до нуля и
+  защищён architecture guard; dry-run и no-candidate tests подтверждают, что
+  Octo session в этих режимах не приобретается;
+- canonical `CollectedAd` заменил runner re-export в relevance/enrichment;
+  общий `facebook/timing.py` устранил зависимость clock users от collection
+  model facade;
+- detector и passive-media guard, совместно используемые collection и
+  enrichment, перенесены из Playwright internals в public `facebook/feed`;
+  architecture guard подтверждает корректную межмодульную границу;
+- focused cutover regression: 337 тестов, полный regression: 900 тестов;
+- wheel содержит canonical collector, Octo command-session, timing, feed Python
+  modules и `detector.js`; старые feed-internal paths отсутствуют; transitional
+  `facebook_runner.py` пока сохранён только для следующего test/facade cleanup;
+- Ruff, strict mypy, architecture/contracts, stage-scoped pre-commit, frontend
+  production build и gitleaks проходят; frontend source/lock не менялись;
+  `npm audit` сохраняет 6 известных findings (3 moderate, 3 high).
+
+Этап 14I остается `IN_PROGRESS`: следующий unit переводит оставшиеся runner
+characterization tests на owning modules и удаляет transitional facade; после
+этого отдельно выполняется orchestrator cutover. Production server, live Octo
+runtime и старый репозиторий не менялись. Rollback 14I3 выполняется revert
+одного отдельного коммита.
 
 Перед удалением:
 

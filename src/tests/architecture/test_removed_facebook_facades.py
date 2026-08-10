@@ -42,6 +42,10 @@ REMOVED_FACADES = {
     ),
     "app.services.facebook_calibrator": APP_ROOT / "services/facebook_calibrator.py",
 }
+FORBIDDEN_PRODUCTION_IMPORTS = {
+    *REMOVED_FACADES,
+    "app.services.facebook_runner",
+}
 
 
 def _imports(path: Path) -> set[str]:
@@ -63,7 +67,7 @@ def test_removed_facebook_facade_files_do_not_return() -> None:
 def test_production_does_not_import_removed_facebook_facades() -> None:
     violations: list[str] = []
     for path in sorted(APP_ROOT.rglob("*.py")):
-        removed = sorted(_imports(path) & REMOVED_FACADES.keys())
+        removed = sorted(_imports(path) & FORBIDDEN_PRODUCTION_IMPORTS)
         if removed:
             relative = path.relative_to(APP_ROOT)
             violations.append(f"{relative}: {', '.join(removed)}")

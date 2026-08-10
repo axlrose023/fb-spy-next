@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
-from .passive_media import pause_all_videos
+from app.facebook.feed import pause_all_videos
 
 MEDIA_READY_JS = r"""
 (elementId) => {

@@ -6,7 +6,8 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
-from app.services import facebook_runner
+from app.facebook.adapters import acquire_command_session
+from app.facebook.timing import utc_now
 from app.settings import get_config
 
 from ..funnel import redact_error
@@ -28,19 +29,16 @@ def run_command(
 ) -> int:
     config = get_config()
     profile_uuid = args.octo_profile_uuid or config.facebook.octo_profile_uuid
-    facebook_runner.OCTO_API = f"http://{args.octo_host}:{args.octo_port}"
-    facebook_runner.OCTO_PROFILE_UUID = profile_uuid
-    facebook_runner.OCTO_HEADLESS = args.octo_headless
 
     run_dir = resolve_run_dir(args)
     run_dir.mkdir(parents=True, exist_ok=True)
     artifacts = CalibrationArtifacts(
         run_dir,
         target_health_path=args.target_health_json,
-        utc_now=facebook_runner.utc_now,
+        utc_now=utc_now,
     )
     try:
-        ws_endpoint, connection_data, profile_country = _connect(args)
+        ws_endpoint, connection_data, profile_country = _connect(args, profile_uuid)
         selected_country = (
             None if args.no_country_filter else (args.country or profile_country)
         )
@@ -62,13 +60,13 @@ def run_command(
             flush=True,
         )
         if not targets:
-            artifacts.finish(_empty_summary(facebook_runner.utc_now()))
+            artifacts.finish(_empty_summary(utc_now()))
             return 1
         if args.dry_run:
             artifacts.finish(
                 {
                     "status": "dry_run",
-                    "finished_at": facebook_runner.utc_now(),
+                    "finished_at": utc_now(),
                     "targets": len(targets),
                     "ok": 0,
                     "failed": 0,
@@ -100,7 +98,7 @@ def run_command(
     except Exception as exc:
         summary = {
             "status": "failed",
-            "finished_at": facebook_runner.utc_now(),
+            "finished_at": utc_now(),
             "error": redact_error(exc),
             "traceback": redact_error(traceback.format_exc()),
             "visited": len(artifacts.results),
@@ -110,16 +108,23 @@ def run_command(
         return 2
 
 
-def _connect(args: argparse.Namespace) -> tuple[str, dict[str, Any], str | None]:
+def _connect(
+    args: argparse.Namespace,
+    profile_uuid: str,
+) -> tuple[str, dict[str, Any], str | None]:
     if not should_connect_before_targets(args):
         return "", {}, None
-    ws_endpoint, connection_data = facebook_runner.get_cdp_endpoint()
-    endpoint = facebook_runner.rewrite_cdp_endpoint_host(
-        ws_endpoint,
-        args.octo_host,
+    session = acquire_command_session(
+        host=args.octo_host,
+        port=args.octo_port,
+        profile_uuid=profile_uuid,
+        headless=args.octo_headless,
     )
-    country = facebook_runner.normalize_country(connection_data.get("country"))
-    return endpoint, connection_data, country
+    return (
+        session.ws_endpoint,
+        session.connection.to_legacy_dict(),
+        session.connection.country,
+    )
 
 
 def _run_meta(
@@ -133,7 +138,7 @@ def _run_meta(
 ) -> dict[str, Any]:
     return {
         "mode": "calibration",
-        "started_at": facebook_runner.utc_now(),
+        "started_at": utc_now(),
         "run_dir": run_dir,
         "octo_profile_uuid": profile_uuid,
         "octo_host": args.octo_host,
@@ -172,7 +177,7 @@ def _completed_summary(
             if result.infrastructure_error
             else "completed"
         ),
-        "finished_at": facebook_runner.utc_now(),
+        "finished_at": utc_now(),
         "targets": target_count,
         "visited": len(result.results),
         "ok": result.ok,

@@ -1,14 +1,16 @@
-from .collector import collect_feed
-from .debug_recorder import DebugRecorder
-from .detector import BAD_DOMAINS, DETECT_JS
-from .feed_reader import SCROLL_JS, FeedReader
-from .passive_media import (
+from app.facebook.feed import (
+    BAD_DOMAINS,
+    DETECT_JS,
     PASSIVE_MEDIA_GUARD_INSTALL_JS,
     install_passive_media_guard,
     passive_media_guard_stats,
     pause_all_videos,
     prepare_passive_media_guard,
 )
+
+from .collector import collect_feed
+from .debug_recorder import DebugRecorder
+from .feed_reader import SCROLL_JS, FeedReader
 from .screenshot import (
     MEDIA_READY_JS,
     VIDEO_CREATIVE_JS,

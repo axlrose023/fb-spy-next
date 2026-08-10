@@ -7,9 +7,9 @@ from typing import Any
 from playwright.sync_api import Error as PlaywrightError
 
 from app.facebook.calibration import CalibrationTarget
+from app.facebook.collection import CollectedAd
 from app.facebook.enrichment import parse_landing, resolve_in_view
 from app.facebook.navigation import facebook_login_required
-from app.services import facebook_runner
 
 from ..evidence.policy import isolated_external_url
 from .isolation import host_is_public
@@ -160,7 +160,7 @@ def resolve_from_anonymous_post(
         raise RuntimeError(f"anonymous Facebook post not located: {located}")
 
     element_id = str(located["element_id"])
-    ad = facebook_runner.Ad(
+    ad = CollectedAd(
         advertiser=target.advertiser,
         ad_type=str(resolved.get("ad_type") or "link"),
         has_video=bool(resolved.get("has_video")),

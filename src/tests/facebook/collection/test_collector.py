@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 
 from app.facebook.collection.adapters.playwright import collect_feed
-from app.facebook.collection.adapters.playwright.detector import DETECT_JS
 from app.facebook.collection.adapters.playwright.feed_reader import SCROLL_JS
+from app.facebook.feed import DETECT_JS
 from app.facebook.navigation.adapters.playwright import FACEBOOK_LOGIN_PROBE_JS
 from app.services import facebook_runner
 

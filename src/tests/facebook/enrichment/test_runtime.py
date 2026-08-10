@@ -18,8 +18,8 @@ def test_no_allowed_candidates_never_configures_or_opens_profile(
     source.write_text('[{"relevance_gate":"deny"}]', encoding="utf-8")
     monkeypatch.setattr(
         runtime,
-        "_configure_profile",
-        lambda _args: pytest.fail("profile must stay untouched"),
+        "acquire_command_session",
+        lambda **_kwargs: pytest.fail("profile must stay untouched"),
     )
     args = SimpleNamespace(run_dir=tmp_path, source=None, output=None)
 

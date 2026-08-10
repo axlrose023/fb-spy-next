@@ -7,7 +7,7 @@ from typing import Any
 from playwright.sync_api import sync_playwright
 
 from app.facebook.navigation import ignore_proxy_certificate_errors
-from app.services import facebook_runner
+from app.facebook.timing import utc_now
 
 from ..adapters.persistence.artifacts import append_event
 from ..adapters.playwright import SavedPostTargetExecutor
@@ -75,7 +75,7 @@ def run_browser_session(
             budget=budget,
             options=browser_options(args),
             write_event=append_event,
-            utc_now=facebook_runner.utc_now,
+            utc_now=utc_now,
             ignore_certificate_errors=ignore_proxy_certificate_errors,
             funnel_session=funnel_session,
         )

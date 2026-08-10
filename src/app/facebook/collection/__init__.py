@@ -1,3 +1,5 @@
+from app.facebook.timing import utc_now
+
 from .artifacts import ArtifactPolicy, interest_safety_violations
 from .candidates import CandidateRegistry
 from .deduplication import (
@@ -6,7 +8,7 @@ from .deduplication import (
     normalize_fingerprint_text,
 )
 from .feed import ad_from_detection
-from .models import CandidateDecision, CollectedAd, utc_now
+from .models import CandidateDecision, CollectedAd
 from .service import CollectionService
 from .summary import ad_summary
 

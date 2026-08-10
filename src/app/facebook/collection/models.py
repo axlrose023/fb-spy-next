@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
+from app.facebook.timing import utc_now
+
 from .deduplication import coarse_key_for, dedup_key_for
-
-
-def utc_now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 @dataclass(slots=True)
@@ -39,10 +36,12 @@ class CollectedAd:
     captured_at: str = field(default_factory=utc_now)
 
     def dedup_key(self) -> str:
-        return dedup_key_for(self)
+        key: str = dedup_key_for(self)
+        return key
 
     def coarse_key(self) -> str:
-        return coarse_key_for(self)
+        key: str = coarse_key_for(self)
+        return key
 
 
 @dataclass(frozen=True, slots=True)

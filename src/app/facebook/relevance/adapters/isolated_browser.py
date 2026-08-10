@@ -6,7 +6,8 @@ from typing import Any
 
 from playwright.sync_api import sync_playwright
 
-from app.services import facebook_runner
+from app.facebook.adapters import acquire_command_session
+from app.facebook.timing import utc_now
 from app.settings import get_config
 
 from ..evidence.policy import resolution_candidate, summarize_isolated_resolutions
@@ -49,23 +50,21 @@ def run_isolated_browser(args: Any) -> int:
         print("[isolated resolver] no resolvable held cards", flush=True)
         return 0
 
-    _configure_octo(args)
     try:
         profile_uuid = args.octo_profile_uuid or get_config().facebook.octo_profile_uuid
-        ws_endpoint, connection_data = facebook_runner.get_cdp_endpoint()
-        ws_endpoint = facebook_runner.rewrite_cdp_endpoint_host(
-            ws_endpoint,
-            args.octo_host,
+        session = acquire_command_session(
+            host=args.octo_host,
+            port=args.octo_port,
+            profile_uuid=profile_uuid,
+            headless=args.octo_headless,
         )
         append_json_event(
             events_path,
             {
-                "at": facebook_runner.utc_now(),
+                "at": utc_now(),
                 "kind": "started",
                 "profile_uuid": profile_uuid,
-                "profile_country": facebook_runner.normalize_country(
-                    connection_data.get("country")
-                ),
+                "profile_country": session.connection.country,
                 "candidates": len(candidates),
             },
         )
@@ -76,14 +75,14 @@ def run_isolated_browser(args: Any) -> int:
             run_dir=run_dir,
             output_path=output_path,
             events_path=events_path,
-            ws_endpoint=ws_endpoint,
+            ws_endpoint=session.ws_endpoint,
         )
         write_json(output_path, rows)
         summary = _summary(rows, status="completed")
         write_json(summary_path, summary)
         append_json_event(
             events_path,
-            {"at": facebook_runner.utc_now(), "kind": "finished", **summary},
+            {"at": utc_now(), "kind": "finished", **summary},
         )
         if (
             summary["authenticated_profile_actions_started"]
@@ -136,14 +135,6 @@ def _prepare_candidates(
     return candidates
 
 
-def _configure_octo(args: Any) -> None:
-    config = get_config()
-    profile_uuid = args.octo_profile_uuid or config.facebook.octo_profile_uuid
-    facebook_runner.OCTO_API = f"http://{args.octo_host}:{args.octo_port}"
-    facebook_runner.OCTO_PROFILE_UUID = profile_uuid
-    facebook_runner.OCTO_HEADLESS = args.octo_headless
-
-
 def _resolve_candidates(
     args: Any,
     rows: list[dict[str, Any]],
@@ -183,7 +174,7 @@ def _resolve_candidates(
                 append_json_event(
                     events_path,
                     {
-                        "at": facebook_runner.utc_now(),
+                        "at": utc_now(),
                         "kind": "isolation_verified",
                         "row_index": row_index,
                         "source": source,
@@ -211,7 +202,7 @@ def _resolve_candidates(
                 append_json_event(
                     events_path,
                     {
-                        "at": facebook_runner.utc_now(),
+                        "at": utc_now(),
                         "kind": "candidate_finished",
                         "row_index": row_index,
                         **result,
@@ -223,8 +214,9 @@ def _resolve_candidates(
 
 
 def _summary(rows: list[dict[str, Any]], *, status: str) -> dict[str, Any]:
-    return summarize_isolated_resolutions(
+    summary: dict[str, Any] = summarize_isolated_resolutions(
         rows,
         status=status,
-        finished_at=facebook_runner.utc_now(),
+        finished_at=utc_now(),
     )
+    return summary

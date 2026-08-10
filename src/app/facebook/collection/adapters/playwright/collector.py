@@ -8,16 +8,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
+from app.facebook.feed import install_passive_media_guard, prepare_passive_media_guard
 from app.facebook.navigation import facebook_login_required, goto_with_retry
+from app.facebook.timing import utc_now
 
 from ...artifacts import ArtifactPolicy, write_ads
-from ...models import CollectedAd, utc_now
+from ...models import CollectedAd
 from ...service import CollectionService
 from ...stop import stop_requested as global_stop_requested
 from .candidate import process_candidate
 from .debug_recorder import DebugRecorder
 from .feed_reader import FeedReader
-from .passive_media import install_passive_media_guard, prepare_passive_media_guard
 from .reporting import finalize_collection
 from .scrolling import advance_feed
 from .state import CollectionOptions, CollectionRunState

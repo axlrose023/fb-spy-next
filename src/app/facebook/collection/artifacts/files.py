@@ -8,7 +8,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from ..models import CollectedAd, utc_now
+from app.facebook.timing import utc_now
+
+from ..models import CollectedAd
 
 COLLECTOR_METRIC_VERSION = 2
 

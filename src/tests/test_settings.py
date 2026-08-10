@@ -52,13 +52,13 @@ def test_root_settings_reexport_owning_models() -> None:
     assert GeminiConfig is OwnedGeminiConfig
 
 
-def test_default_config_contract_is_unchanged() -> None:
+def test_default_config_contract() -> None:
     payload = Config(_env_file=None).model_dump(mode="json", exclude={"paths"})
     payload["facebook"]["runner_python"] = "<python>"
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
     assert hashlib.sha256(encoded).hexdigest() == (
-        "d5449e32824d4818671d5d8106df2201476f64027de3cab61db7e7a96c3ddd91"
+        "aa3add1e571515b7b99216694b784f838ed70fe5f0cd6be2dc0ab79bf11cfabd"
     )
 
 

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 class FacebookConfig(BaseModel):
     data_dir: Path = Path("storage/facebook")
     runner_out_dir: Path = Path("storage/facebook/runs")
-    runner_module: str = "app.services.facebook_runner"
+    runner_module: str = "app.facebook.collection.commands"
     runner_python: str = sys.executable
     octo_host: str = "127.0.0.1"
     octo_port: int = 58888
