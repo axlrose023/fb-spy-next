@@ -29,13 +29,11 @@ from app.facebook.calibration import (
     CalibrationPassRequest,
     CalibrationPlan,
     CalibrationProcessEnvironment,
-    JsonCalibrationTargetPool,
     build_calibration_command,
     calibration_timeout_seconds,
     effective_target_goal,
-    load_saved_facebook_targets_from_ads_json,
+    persistent_target_pool,
     plan_calibration_intensity,
-    quarantined_facebook_post_urls,
 )
 from app.facebook.collection import interest_safety_violations
 from app.facebook.orchestration import (
@@ -121,7 +119,6 @@ from app.services.facebook.health import (
 )
 from app.settings import get_config
 
-_POOL_FILE_LOCK = threading.Lock()
 _PROCESS_REGISTRY = ProcessRegistry()
 _STOP_EVENT = threading.Event()
 ProfileConfig = Profile
@@ -717,7 +714,7 @@ def _count_calibration_targets(
     collect_dir: Path,
     root_dir: Path | None = None,
 ) -> int:
-    return _calibration_target_pool().count(profile, collect_dir, root_dir)
+    return persistent_target_pool().count(profile, collect_dir, root_dir)
 
 
 def _calibration_ads_paths(
@@ -725,7 +722,7 @@ def _calibration_ads_paths(
     collect_dir: Path,
     root_dir: Path | None = None,
 ) -> list[Path]:
-    return _calibration_target_pool().source_paths(profile, collect_dir, root_dir)
+    return persistent_target_pool().source_paths(profile, collect_dir, root_dir)
 
 
 def _update_calibration_pools(
@@ -733,15 +730,7 @@ def _update_calibration_pools(
     collect_dir: Path,
     root_dir: Path,
 ) -> None:
-    _calibration_target_pool().update(profile, collect_dir, root_dir)
-
-
-def _calibration_target_pool() -> JsonCalibrationTargetPool:
-    return JsonCalibrationTargetPool(
-        load_saved_facebook_targets_from_ads_json,
-        quarantined_facebook_post_urls,
-        lock=_POOL_FILE_LOCK,
-    )
+    persistent_target_pool().update(profile, collect_dir, root_dir)
 
 
 def _octo_local_get(host: str, port: int, path: str) -> dict | list:

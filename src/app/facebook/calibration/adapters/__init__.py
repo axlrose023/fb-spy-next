@@ -7,6 +7,7 @@ from .invocation_command import (
     build_calibration_command,
 )
 from .json_target_pool import JsonCalibrationTargetPool
+from .persistent_target_pool import persistent_target_pool
 
 _PERSISTENCE_EXPORTS = {
     "append_event",
@@ -24,6 +25,7 @@ __all__ = [
     "CalibrationProcessEnvironment",
     "JsonCalibrationTargetPool",
     "build_calibration_command",
+    "persistent_target_pool",
     *_PERSISTENCE_EXPORTS,
 ]
 

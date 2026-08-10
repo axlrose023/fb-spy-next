@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from app.facebook.calibration import JsonCalibrationTargetPool
+from app.facebook.calibration import JsonCalibrationTargetPool, persistent_target_pool
 from app.facebook.profiles import Profile
 
 pytestmark = pytest.mark.unit
@@ -223,3 +223,34 @@ def test_shared_lock_prevents_lost_geo_pool_updates(tmp_path: Path) -> None:
         "https://first.example",
         "https://second.example",
     }
+
+
+def test_persistent_pool_wires_saved_targets_and_quarantine(tmp_path: Path) -> None:
+    collect_dir = tmp_path / "profiles" / "spain" / "collect"
+    post_url = "https://www.facebook.com/100/posts/200"
+    write_ads(
+        collect_dir.parent / "calibration_pool.json",
+        [
+            {
+                "country": "Spain",
+                "facebook_post_url": post_url,
+                "relevance": {"result": "relevant"},
+            }
+        ],
+    )
+    health_path = collect_dir.parent / "calibration_target_health.json"
+    health_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "targets": {
+                    post_url: {"quarantined_until": "2099-01-01T00:00:00+00:00"}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    pool = persistent_target_pool()
+
+    assert pool is persistent_target_pool()
+    assert pool.count(Profile("profile", expected_country="Spain"), collect_dir) == 0

@@ -1,6 +1,6 @@
 # FB Spy: пошаговый план модульного рефакторинга
 
-Статус: `IN_PROGRESS` — этап 14G12 завершен
+Статус: `IN_PROGRESS` — этап 14G13 завершен
 
 Этот документ является рабочим контрактом рефакторинга. После начала работ
 статус каждого этапа обновляется здесь же. Одновременно выполняется только один
@@ -3749,6 +3749,38 @@ runtime и старый репозиторий не менялись. Rollback 1
 итоговые import/CLI gates. Production server, live Octo runtime и старый
 репозиторий не менялись. Rollback 14G12 выполняется revert одного отдельного
 коммита.
+
+#### 14G13. Persistent calibration target pool adapter
+
+Результат:
+
+- сборка process-wide calibration target pool вынесена в 19-строчный
+  `facebook.calibration.adapters.persistent_target_pool` рядом с concrete JSON
+  pool и persistence loaders;
+- один canonical pool instance связывает
+  `load_saved_facebook_targets_from_ads_json`, target-health quarantine и общий
+  lock для всех параллельных profile cycles; pool не хранит mutable selection
+  state, поэтому count/source/update semantics не изменились;
+- legacy facade больше не импортирует concrete target loaders, quarantine
+  reader и `JsonCalibrationTargetPool`, не создаёт новый wrapper на каждом
+  обращении и не владеет отдельным pool lock;
+- `_count_calibration_targets`, `_calibration_ads_paths` и
+  `_update_calibration_pools` сохранены как совместимые делегаты к public
+  calibration adapter; неиспользуемый `_calibration_target_pool` удалён;
+- direct test проверяет singleton identity и реальную связку relevant saved
+  Facebook target с `calibration_target_health.json` quarantine; существующие
+  concurrency, source precedence, geo pool и malformed artifact tests сохранены;
+- legacy orchestrator сокращен с 821 до 810 строк; focused regression: 68
+  тестов, полный regression: 892 теста;
+- wheel содержит новый adapter; Ruff, strict mypy, architecture/contracts,
+  stage-scoped pre-commit, frontend production build и gitleaks проходят;
+- frontend source/lock не менялись; `npm audit` сохраняет известные 6 findings
+  (3 moderate, 3 high).
+
+Этап 14G остается `IN_PROGRESS`: process command factory и финальная граница
+legacy facade переносятся следующими units, затем выполняются итоговые
+import/CLI gates. Production server, live Octo runtime и старый репозиторий не
+менялись. Rollback 14G13 выполняется revert одного отдельного коммита.
 
 Перед удалением:
 

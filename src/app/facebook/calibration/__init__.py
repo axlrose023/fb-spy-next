@@ -13,6 +13,7 @@ from .adapters import (
     CalibrationProcessEnvironment,
     JsonCalibrationTargetPool,
     build_calibration_command,
+    persistent_target_pool,
 )
 from .adapters.playwright import (
     click_like,
@@ -169,6 +170,7 @@ __all__ = [
     "offer_funnel_action_ok",
     "plan_calibration_intensity",
     "plan_engagement",
+    "persistent_target_pool",
     "post_comment",
     "public_offer_target",
     "quarantined_facebook_post_urls",
