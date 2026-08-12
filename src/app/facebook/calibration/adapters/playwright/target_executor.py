@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -21,6 +22,7 @@ from .navigation import (
 from .post_viewer import wait_for_saved_post
 from .target_engagement import FunnelSession, SavedPostEngager
 from .target_options import CalibrationBrowserOptions
+from .target_result import target_failure_reason
 
 EventWriter = Callable[[Path, dict[str, Any]], None]
 
@@ -133,8 +135,13 @@ class SavedPostTargetExecutor:
             if funnel_ok and engagement.get("view", {}).get("status") != "viewing":
                 self.budget["successful"] += 1
             if not result["ok"]:
-                result["error"] = (
-                    f"saved Facebook post view failed: {engagement.get('view')}"
+                result["error"] = target_failure_reason(
+                    engagement,
+                    post_viewed=post_viewed,
+                    funnel_required=(
+                        self.funnel_session is not None and self.options.visit_landing
+                    ),
+                    funnel_ok=funnel_ok,
                 )
             self._finish(result, started)
         except Exception as exc:
@@ -233,6 +240,7 @@ class SavedPostTargetExecutor:
                 path=str(screenshot),
                 timeout=8000,
             )
+            os.chmod(screenshot, 0o600)
             result["screenshot"] = str(screenshot.relative_to(self.run_dir))
         except Exception as exc:
             result["screenshot_error"] = redact_error(exc)

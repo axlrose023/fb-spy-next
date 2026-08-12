@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -576,6 +577,9 @@ def test_interaction_counts_report_funnel_quality_outcomes() -> None:
                     {
                         "action": "offer_funnel",
                         "status": "landing_viewed",
+                        "steps": [
+                            {"action": "landing_visit", "status": "visited"},
+                        ],
                     }
                 ],
             },
@@ -588,6 +592,7 @@ def test_interaction_counts_report_funnel_quality_outcomes() -> None:
     assert counts["funnel_submit_blocked"] == 1
     assert counts["funnel_stale_redirects"] == 1
     assert counts["funnel_landing_only"] == 1
+    assert counts["landing_visit"] == 1
     assert counts["funnel_unusable_offers"] == 1
     assert counts["direct_offer_fallback"] == 1
     assert counts["direct_offer_fallback_attempts"] == 1
@@ -877,6 +882,127 @@ def test_calibration_opens_saved_post_without_scanning_feed(tmp_path) -> None:
     assert result["relevant_ad_number"] == 5
     assert result["actions"] == [{"action": "comment", "status": "dry_run"}]
     assert context.page.requested_urls == ["https://m.facebook.com/100/posts/200"]
+
+
+def test_calibration_reports_incomplete_funnel_after_successful_post_view(
+    tmp_path,
+) -> None:
+    class LandingOnlyFunnel:
+        def run(self, _target, **_kwargs):
+            return {
+                "action": "offer_funnel",
+                "status": "landing_viewed",
+                "steps": [{"action": "landing_visit", "status": "visited"}],
+            }
+
+    context = DirectPostContext()
+    target = CalibrationTarget(
+        url="https://m.facebook.com/100/posts/200",
+        facebook_post_url="https://m.facebook.com/100/posts/200",
+        advertiser="Saved advertiser",
+        landing_clean="https://offer.example/path",
+    )
+    args = SimpleNamespace(
+        timeout_ms=1_000,
+        locate_timeout_ms=100,
+        wait_after_load=0.0,
+        no_screenshots=True,
+        view_seconds=0.0,
+        interaction_dry_run=False,
+        comment_template=[],
+        visit_landing=True,
+        landing_view_seconds=0.0,
+        landing_timeout_ms=1_000,
+    )
+    result = calibration_legacy.calibrate_saved_ad(
+        context,
+        target,
+        1,
+        1,
+        tmp_path,
+        tmp_path / "events.jsonl",
+        EngagementPolicy(
+            reaction_rate=0.0,
+            follow_rate=0.0,
+            max_reactions=0,
+            max_follows=0,
+            max_comments=0,
+            min_interactions=0,
+        ),
+        {
+            "reaction": 0,
+            "follow": 0,
+            "comment": 0,
+            "successful": 0,
+            "opened": 0,
+        },
+        args,
+        funnel_session=LandingOnlyFunnel(),
+    )
+
+    assert result["ok"] is False
+    assert result["view"]["status"] == "viewing"
+    assert result["error"] == "offer funnel incomplete: status=landing_viewed"
+
+
+def test_calibration_screenshot_is_private(tmp_path) -> None:
+    class ScreenshotLocator:
+        @property
+        def first(self):
+            return self
+
+        def screenshot(self, *, path, timeout):
+            assert timeout > 0
+            Path(path).write_bytes(b"png")
+
+    class ScreenshotPage(DirectPostPage):
+        def locator(self, _selector):
+            return ScreenshotLocator()
+
+    context = DirectPostContext()
+    context.page = ScreenshotPage()
+    target = CalibrationTarget(
+        url="https://m.facebook.com/100/posts/200",
+        facebook_post_url="https://m.facebook.com/100/posts/200",
+        advertiser="Saved advertiser",
+    )
+    args = SimpleNamespace(
+        timeout_ms=1_000,
+        locate_timeout_ms=100,
+        wait_after_load=0.0,
+        no_screenshots=False,
+        view_seconds=0.0,
+        interaction_dry_run=True,
+        comment_template=[],
+    )
+    result = calibration_legacy.calibrate_saved_ad(
+        context,
+        target,
+        1,
+        1,
+        tmp_path,
+        tmp_path / "events.jsonl",
+        EngagementPolicy(
+            reaction_rate=0.0,
+            follow_rate=0.0,
+            max_reactions=0,
+            max_follows=0,
+            max_comments=0,
+            min_interactions=0,
+        ),
+        {
+            "reaction": 0,
+            "follow": 0,
+            "comment": 0,
+            "successful": 0,
+            "opened": 0,
+        },
+        args,
+    )
+
+    screenshot = tmp_path / result["screenshot"]
+    assert screenshot.read_bytes() == b"png"
+    assert screenshot.stat().st_mode & 0o777 == 0o600
 
 
 def test_calibration_retries_transient_proxy_navigation_errors(tmp_path) -> None:

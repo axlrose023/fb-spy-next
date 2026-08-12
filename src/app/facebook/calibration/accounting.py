@@ -130,6 +130,12 @@ def _count_funnel_action(counts: dict[str, int], action: dict[str, Any]) -> None
     status = str(action.get("status") or "")
     form_status = str(action.get("form_status") or "")
     direct_offer = action.get("opening") == "direct_offer"
+    landing_visited = any(
+        step.get("action") == "landing_visit" and step.get("status") == "visited"
+        for step in action.get("steps", [])
+        if isinstance(step, dict)
+    )
+    counts["landing_visit"] += int(landing_visited)
     counts["direct_offer_fallback_attempts"] += int(direct_offer)
     counts["funnel_forms_detected"] += int(bool(action.get("form_detected")))
     counts["funnel_submit_attempted"] += int(bool(action.get("form_submitted")))

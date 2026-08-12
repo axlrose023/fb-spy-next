@@ -1,6 +1,6 @@
 # FB Spy refactor: release readiness
 
-Candidate: `b3420a443ddae567a9a9e12137f7616153a0d051`
+Candidate: latest verified commit on local `main`
 
 Status: `LOCAL_LIVE_PASS / PRODUCTION_HOLD`
 
@@ -10,9 +10,9 @@ state were not changed.
 
 ## Final automated gates
 
-- full Python regression: `888 passed`;
+- full Python regression: `892 passed`;
 - `ruff check src`: passed;
-- `mypy src/app src/cli`: passed for 438 source files;
+- `mypy src/app`: passed for 437 source files;
 - architecture, file-size, import-boundary, OpenAPI, CLI and settings contracts:
   passed;
 - focused collection, calibration, enrichment and orchestration regression:
@@ -57,6 +57,14 @@ state were not changed.
   did not start a third cycle and stopped both Octo profiles;
 - local run directories use mode `0700`; collection, relevance, enrichment,
   calibration, state and debug JSON/log artifacts use mode `0600`;
+- a saved Philippines target was located by creative metadata, viewed, liked
+  with a confirmed counter change from 13 to 14, and its Facebook CTA opened
+  the exact expected landing domain in the same Octo context;
+- that landing was viewed and scrolled without comments, follows or form
+  submission; the target correctly remained incomplete when the month-old
+  prelander no longer exposed a usable next CTA;
+- a second stale target failed closed when its Facebook post was unavailable
+  and the saved direct-offer fallback could no longer be reached;
 - no Octo profile or collector/orchestrator child process remained active after
   validation.
 
@@ -79,6 +87,11 @@ state were not changed.
    created world-readable.
 7. Remaining static typing failures and stale wheel namespace artifacts were
    removed without changing business behavior.
+8. Calibration accounting now reports a verified landing visit inside an offer
+   funnel separately from full funnel success, and failed targets identify an
+   incomplete funnel instead of incorrectly reporting a failed post view.
+9. Calibration screenshots now use private mode `0600`, matching the other
+   sensitive run artifacts.
 
 ## External blockers
 
@@ -87,9 +100,10 @@ state were not changed.
   Unit/integration classifier tests pass, but real
   `collect -> classify -> relevant enrichment -> import` validation requires a
   working key.
-- Saved calibration pools contain stale posts/offers. The code now rejects or
-  quarantines them safely, but a meaningful successful calibration smoke needs
-  a fresh confirmed-relevant post and live expected landing.
+- Saved calibration pools contain stale posts/offers. Post viewing, bounded
+  interaction, exact-domain CTA navigation and fail-closed fallback behavior
+  are live-verified, but a complete offer-funnel smoke still needs a fresh
+  confirmed-relevant post with a working downstream offer.
 - Production deployment and production Octo/state validation require separate
   authorization.
 - `npm audit --omit=dev` currently reports two moderate React Router findings
@@ -101,8 +115,8 @@ state were not changed.
 1. Provide a working Gemini key and validate one isolated classified run.
 2. Confirm active enrichment opens landing/media only for classified relevant
    ads and imports only the resulting relevant artifact.
-3. Validate one fresh relevant calibration target with configured interactions
-   and submission policy.
+3. Validate one fresh relevant calibration target through a working downstream
+   offer with the intended production submission policy.
 4. Back up production database and orchestration state.
 5. Deploy the exact candidate using `uv sync --frozen` and the existing secret
    store; do not copy local `.env` files.
