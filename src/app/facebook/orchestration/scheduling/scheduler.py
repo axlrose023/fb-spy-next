@@ -108,6 +108,12 @@ class ProfileScheduler:
                     now=now,
                     max_parallel=self._config.max_parallel,
                 )
+                if self._config.max_cycles > 0:
+                    remaining_slots = max(
+                        0,
+                        self._config.max_cycles - completed_cycles - len(running),
+                    )
+                    due_profile_ids = due_profile_ids[:remaining_slots]
                 for profile_uuid in due_profile_ids:
                     profile = profiles[profile_uuid]
                     running[profile_uuid] = executor.submit(

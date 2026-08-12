@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from app.facebook.collection import CollectedAd, ad_summary
+from app.facebook.collection.artifacts import write_json_atomic
 
 pytestmark = pytest.mark.unit
 
@@ -41,3 +45,12 @@ def test_summary_preserves_collector_metric_shape() -> None:
         "screenshot_ok": 1,
         "video_ads": 1,
     }
+
+
+def test_collector_json_artifacts_are_private(tmp_path: Path) -> None:
+    path = tmp_path / "ads.json"
+
+    write_json_atomic(path, [{"landing_full": "https://offer.example/?token=x"}])
+
+    assert json.loads(path.read_text(encoding="utf-8"))[0]["landing_full"]
+    assert path.stat().st_mode & 0o777 == 0o600

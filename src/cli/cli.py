@@ -1,8 +1,9 @@
 import json
 from configparser import ConfigParser
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 import anyio
@@ -12,11 +13,13 @@ from alembic.config import Config
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.accounts.auth.adapters.passwords import BcryptPasswordVerifier
 from app.accounts.users.adapters.persistence import UserRecord as User
 from app.ad_library.ads.adapters.persistence import FacebookAd
 from app.ad_library.ads.ingestion.language import language_from_raw_ad
 from app.ad_library.media import MEDIA_SPECS
 from app.ad_library.media.configuration import configured_storage
+from app.ad_library.media.contracts import AdMediaOwner
 from app.ad_library.media.paths.object_keys import S3_REFERENCE_PREFIX
 from app.database.engine import SessionFactory
 from app.database.uow import UnitOfWork
@@ -25,6 +28,7 @@ from app.facebook.relevance import configured_relevance_service
 from app.facebook.runs.adapters import FacebookAdsImporter
 from app.facebook.runs.adapters.persistence import FacebookRun
 from app.ioc import get_async_container
+from app.settings import Config as AppConfig
 from app.settings import get_config
 
 app = typer.Typer()
@@ -94,19 +98,18 @@ def downgrade(revision: str = "-1") -> None:
 
 @app.command("create_user")
 def create_user(
-    username: Annotated[str, typer.Option(prompt=True)] = None,
-    password: Annotated[str, typer.Option(prompt=True, hide_input=True)] = None,
+    username: Annotated[str | None, typer.Option(prompt=True)] = None,
+    password: Annotated[str | None, typer.Option(prompt=True, hide_input=True)] = None,
 ) -> None:
     """Create a new user."""
+    if username is None or password is None:
+        raise typer.BadParameter("username and password are required")
 
-    async def _create_user():
-        from passlib.context import CryptContext
-
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    async def _create_user() -> None:
         container = get_async_container()
         async with container() as request_container:
             uow = await request_container.get(UnitOfWork)
-            hashed_password = pwd_context.hash(password)
+            hashed_password = BcryptPasswordVerifier().hash(password)
             user = User(
                 username=username,
                 password=hashed_password,
@@ -233,13 +236,12 @@ def archive_facebook_landings(
                     f"[{index}/{len(rows)}] {ad.displayed_domain or ad.advertiser} -> {archive_path.name}"
                 )
                 result = await anyio.to_thread.run_sync(
-                    lambda landing_url=landing_full, target_path=archive_path: (
-                        archive_landing_http(
-                            landing_url,
-                            target_path,
-                            timeout_seconds=timeout_seconds,
-                            max_resources=max_resources,
-                        )
+                    partial(
+                        archive_landing_http,
+                        landing_full,
+                        archive_path,
+                        timeout_seconds=timeout_seconds,
+                        max_resources=max_resources,
                     )
                 )
                 if result.ok:
@@ -330,7 +332,7 @@ def sync_facebook_media(
                 if not ads:
                     break
                 uploaded_objects += await storage.upload_ads(
-                    ads,
+                    cast(list[AdMediaOwner], ads),
                     relevance_verified=True,
                 )
                 await session.commit()
@@ -449,7 +451,7 @@ async def _verified_relevant_run_ids(session: AsyncSession) -> set[UUID]:
     return verified
 
 
-def _resolve_run_dir(config, run: FacebookRun) -> Path:
+def _resolve_run_dir(config: AppConfig, run: FacebookRun) -> Path:
     candidates: list[Path] = []
     if run.runner_run_dir:
         raw = Path(run.runner_run_dir).expanduser()
@@ -460,7 +462,7 @@ def _resolve_run_dir(config, run: FacebookRun) -> Path:
     for candidate in candidates:
         if candidate.exists():
             return candidate.resolve()
-    fallback = config.facebook.data_dir / "manual_landing_archives" / str(run.id)
+    fallback = Path(config.facebook.data_dir) / "manual_landing_archives" / str(run.id)
     fallback.mkdir(parents=True, exist_ok=True)
     return fallback.resolve()
 

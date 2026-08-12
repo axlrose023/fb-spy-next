@@ -17,7 +17,7 @@ class FileLock:
 
     def __enter__(self) -> FileLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o644)
+        self.fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from dishka.integrations.taskiq import setup_dishka
 from taskiq import TaskiqScheduler
@@ -14,7 +15,7 @@ setup_logging(config.env)
 logging.getLogger("taskiq").setLevel(logging.INFO)
 logging.getLogger("redis").setLevel(logging.WARNING)
 
-_redis_connection_kwargs = {
+_redis_connection_kwargs: dict[str, Any] = {
     "socket_timeout": None,
     "socket_connect_timeout": 5,
     "health_check_interval": 30,

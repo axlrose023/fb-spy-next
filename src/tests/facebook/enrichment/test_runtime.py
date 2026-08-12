@@ -48,3 +48,6 @@ def test_finished_event_keeps_infrastructure_error(tmp_path: Path) -> None:
     event = json.loads(paths["events"].read_text(encoding="utf-8"))
     assert summary["error"] == "proxy failed"
     assert event["error"] == "proxy failed"
+    assert paths["output"].stat().st_mode & 0o777 == 0o600
+    assert paths["summary"].stat().st_mode & 0o777 == 0o600
+    assert paths["events"].stat().st_mode & 0o777 == 0o600

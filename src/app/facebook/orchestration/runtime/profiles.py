@@ -30,6 +30,7 @@ from app.facebook.profiles import (
 )
 
 from .context import RuntimeContext
+from .profile_teardown import stop_profile
 
 PublicPayloadLoader = Callable[[str, str], list[dict[str, Any]]]
 
@@ -172,17 +173,11 @@ def stop_octo_profile(
     settings = context.config.facebook
     host = args.octo_host or settings.octo_host
     port = args.octo_port or settings.octo_port
-    try:
-        sessions = OctoProfileSessionManager(local_octo_transport(host, port))
-        if not any(
-            active.octo_profile_uuid == profile.octo_profile_uuid
-            for active in sessions.active()
-        ):
-            return
-        sessions.stop(profile.octo_profile_uuid)
-        context.log(f"[{profile.display_name}] Octo profile stopped")
-    except Exception as exc:
-        context.log(f"[{profile.display_name}] Octo profile stop failed: {exc!r}")
+    stop_profile(
+        profile,
+        sessions=OctoProfileSessionManager(local_octo_transport(host, port)),
+        log=context.log,
+    )
 
 
 def public_profile_payloads(

@@ -39,6 +39,7 @@ def write_text_atomic(path: Path, payload: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(payload, encoding="utf-8")
+    os.chmod(temporary, 0o600)
     temporary.replace(path)
 
 

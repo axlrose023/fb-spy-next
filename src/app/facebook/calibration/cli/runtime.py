@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import traceback
 from collections.abc import Callable
@@ -32,6 +33,7 @@ def run_command(
 
     run_dir = resolve_run_dir(args)
     run_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(run_dir, 0o700)
     artifacts = CalibrationArtifacts(
         run_dir,
         target_health_path=args.target_health_json,

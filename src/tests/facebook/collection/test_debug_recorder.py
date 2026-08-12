@@ -70,6 +70,14 @@ def test_recorder_writes_bounded_events_artifacts_and_run_output(
     assert (tmp_path / "debug" / "ads" / "item.txt").read_text(
         encoding="utf-8"
     ) == "saved text"
+    assert (tmp_path / "debug").stat().st_mode & 0o777 == 0o700
+    for relative in (
+        "events.jsonl",
+        "run.log",
+        "ads/item.json",
+        "ads/item.txt",
+    ):
+        assert (tmp_path / "debug" / relative).stat().st_mode & 0o777 == 0o600
 
 
 class FakeTracing:

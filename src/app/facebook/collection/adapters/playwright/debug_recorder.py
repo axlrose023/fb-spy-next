@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -49,6 +50,7 @@ class DebugRecorder:
             return
         for name in ("ads", "errors", "resolve", "viewports"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
+        os.chmod(self.root, 0o700)
         self._events = (self.root / "events.jsonl").open(
             "a",
             encoding="utf-8",
@@ -59,6 +61,8 @@ class DebugRecorder:
             encoding="utf-8",
             buffering=1,
         )
+        os.chmod(self.root / "events.jsonl", 0o600)
+        os.chmod(self.root / "run.log", 0o600)
         self._stdout, self._stderr = sys.stdout, sys.stderr
         sys.stdout = _TeeStream(sys.stdout, self._run_log)
         sys.stderr = _TeeStream(sys.stderr, self._run_log)
@@ -200,6 +204,7 @@ class DebugRecorder:
                 json.dumps(payload, ensure_ascii=False, indent=2, default=str),
                 encoding="utf-8",
             )
+            os.chmod(path, 0o600)
         except Exception as exc:
             self.event("debug_json_failed", path=relative, error=repr(exc))
 
@@ -210,6 +215,7 @@ class DebugRecorder:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             path.write_text(value, encoding="utf-8")
+            os.chmod(path, 0o600)
         except Exception as exc:
             self.event("debug_text_failed", path=relative, error=repr(exc))
 

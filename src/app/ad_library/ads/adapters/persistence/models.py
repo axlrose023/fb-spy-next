@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import JSON, UUID, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, UUID, Boolean, DateTime, ForeignKey, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, DateTimeMixin, UUID7IDMixin
@@ -53,4 +53,4 @@ class FacebookAd(Base, UUID7IDMixin, DateTimeMixin):
     run: Mapped[Any] = relationship("FacebookRun", back_populates="ads")
 
 
-register_ad_indexes(FacebookAd.__table__)
+register_ad_indexes(cast(Table, FacebookAd.__table__))

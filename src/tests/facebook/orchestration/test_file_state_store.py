@@ -87,6 +87,8 @@ def test_record_preserves_unknown_fields_and_retains_latest_100(tmp_path: Path) 
     assert len(profile_state["calibrations"]) == 100
     assert profile_state["calibrations"][-1]["at"] == "latest-calibration"
     assert profile_state["updated_at"] == NOW
+    assert state_path.stat().st_mode & 0o777 == 0o600
+    assert state_path.with_suffix(".json.lock").stat().st_mode & 0o777 == 0o600
 
 
 def test_process_lock_prevents_lost_updates_between_store_instances(

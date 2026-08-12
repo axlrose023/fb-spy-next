@@ -144,7 +144,7 @@ _LOCATE_SAVED_POST_JS = r"""
   let strategy = null;
   for (const el of document.querySelectorAll("*")) {
     if (!containsPostId(el)) continue;
-    root = rootFor(el, false);
+    root = rootFor(el, expectedSignals.length > 0);
     if (root) {
       strategy = "post_id";
       break;
@@ -162,10 +162,10 @@ _LOCATE_SAVED_POST_JS = r"""
       }
     }
 
-    // Some mobile deep links fall back to the feed and Facebook replaces the
-    // landing metadata with placeholders. In that case use the advertiser only
-    // when it identifies exactly one post card on the freshly opened page.
-    if (!root && expectedAdvertiser) {
+    // Advertiser-only matching is safe only for legacy targets that have no
+    // saved creative metadata. Advertisers can reuse a post for an unrelated
+    // offer, so a unique name must not override conflicting saved evidence.
+    if (!root && expectedAdvertiser && !expectedSignals.length) {
       const advertiserRoots = [];
       const seenRoots = new Set();
       const advertiserSeeds = [

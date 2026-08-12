@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import signal
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -10,8 +12,9 @@ import pytest
 
 from app.facebook.orchestration.adapters import ProcessRegistry
 from app.facebook.orchestration.runtime import RuntimeContext, application, collection
+from app.facebook.orchestration.runtime import profiles as runtime_profiles
 from app.facebook.orchestration.runtime.profiles import merge_public_profiles
-from app.facebook.profiles import Profile
+from app.facebook.profiles import ActiveProfile, Profile, ProfileConnection
 from app.settings import Config, MediaStorageConfig
 
 pytestmark = pytest.mark.unit
@@ -135,6 +138,121 @@ def test_public_profile_merge_uses_injected_payload_source(tmp_path: Path) -> No
 
     assert added == 1
     assert "redacted-profile" in profiles_path.read_text(encoding="utf-8")
+
+
+def test_parallel_profile_teardown_serializes_octo_stop_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context, _registry, output = runtime_context()
+
+    class Sessions:
+        concurrent = 0
+        max_concurrent = 0
+        guard = threading.Lock()
+
+        def active(self) -> list[ActiveProfile]:
+            return [
+                ActiveProfile(
+                    octo_profile_uuid="one",
+                    label="One",
+                    headless=False,
+                    ws_endpoint="ws://one",
+                    connection=ProfileConnection(country="Spain"),
+                ),
+                ActiveProfile(
+                    octo_profile_uuid="two",
+                    label="Two",
+                    headless=False,
+                    ws_endpoint="ws://two",
+                    connection=ProfileConnection(country="Canada"),
+                ),
+            ]
+
+        def stop(self, _profile_uuid: str) -> None:
+            with self.guard:
+                self.concurrent += 1
+                self.max_concurrent = max(self.max_concurrent, self.concurrent)
+            time.sleep(0.02)
+            with self.guard:
+                self.concurrent -= 1
+
+    sessions = Sessions()
+    monkeypatch.setattr(
+        runtime_profiles,
+        "OctoProfileSessionManager",
+        lambda _transport: sessions,
+    )
+    monkeypatch.setattr(
+        runtime_profiles,
+        "local_octo_transport",
+        lambda *_args, **_kwargs: None,
+    )
+    args = SimpleNamespace(octo_host="127.0.0.1", octo_port=58888)
+    threads = [
+        threading.Thread(
+            target=runtime_profiles.stop_octo_profile,
+            args=(
+                Profile(octo_profile_uuid=profile_uuid, label=profile_uuid),
+                args,
+                context,
+            ),
+        )
+        for profile_uuid in ("one", "two")
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sessions.max_concurrent == 1
+    assert sum("Octo profile stopped" in message for message in output) == 2
+
+
+def test_octo_stop_transport_error_is_success_when_profile_is_inactive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context, _registry, output = runtime_context()
+
+    class Sessions:
+        active_calls = 0
+
+        def active(self) -> list[ActiveProfile]:
+            self.active_calls += 1
+            if self.active_calls == 1:
+                return [
+                    ActiveProfile(
+                        octo_profile_uuid="profile",
+                        label="Profile",
+                        headless=False,
+                        ws_endpoint="ws://profile",
+                        connection=ProfileConnection(country="Canada"),
+                    )
+                ]
+            return []
+
+        def stop(self, _profile_uuid: str) -> None:
+            raise OSError("connection closed")
+
+    sessions = Sessions()
+    monkeypatch.setattr(
+        runtime_profiles,
+        "OctoProfileSessionManager",
+        lambda _transport: sessions,
+    )
+    monkeypatch.setattr(
+        runtime_profiles,
+        "local_octo_transport",
+        lambda *_args, **_kwargs: None,
+    )
+
+    runtime_profiles.stop_octo_profile(
+        Profile(octo_profile_uuid="profile", label="Canada"),
+        SimpleNamespace(octo_host="127.0.0.1", octo_port=58888),
+        context,
+    )
+
+    assert output == ["[Canada] Octo profile stopped after transport error"]
 
 
 def test_runtime_cli_completes_integrated_profile_dry_run(

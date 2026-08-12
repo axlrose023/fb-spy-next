@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 import traceback
@@ -31,6 +32,7 @@ def run_command(args: argparse.Namespace) -> int:
     target_feed_url = feed_url(args)
     run_dir = run_directory(args)
     run_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(run_dir, 0o700)
     debug = DebugRecorder(run_dir, args.debug, clock=utc_now)
     runner_started_at = utc_now()
     runner_started_monotonic = time.monotonic()

@@ -12,6 +12,7 @@ __all__ = ["FacebookAdRecord", "configured_storage"]
 
 
 def __getattr__(name: str) -> Any:
+    value: Any
     if name == "configured_storage":
         from .media.configuration import configured_storage
 

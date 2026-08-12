@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -162,6 +163,7 @@ def prepare_run_dir(profile: Profile, root_dir: Path) -> Path:
         root_dir / "profiles" / profile.storage_name / f"calibration_{cycle_at}"
     )
     calibration_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(calibration_dir, 0o700)
     return calibration_dir
 
 

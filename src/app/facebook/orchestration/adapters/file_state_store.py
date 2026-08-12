@@ -58,7 +58,7 @@ class FileStateStore:
     def _process_lock(self) -> Iterator[None]:
         lock_path = self.path.with_suffix(self.path.suffix + ".lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
             yield
@@ -83,6 +83,7 @@ class FileStateStore:
         tmp.write_text(
             json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        os.chmod(tmp, 0o600)
         tmp.replace(self.path)
 
     def record_profile_run(

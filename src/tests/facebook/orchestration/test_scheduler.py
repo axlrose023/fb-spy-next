@@ -186,6 +186,38 @@ def test_cycle_failure_uses_infrastructure_retry_schedule() -> None:
     assert any("failed-p cycle failed" in message for message in logs)
 
 
+def test_max_cycles_reserves_running_slots_before_scheduling_another_cycle() -> None:
+    profiles = [
+        Profile(octo_profile_uuid="fast"),
+        Profile(octo_profile_uuid="slow"),
+    ]
+    started: list[str] = []
+
+    def run_cycle(profile: Profile) -> ProfileCycleSchedule:
+        started.append(profile.octo_profile_uuid)
+        if profile.octo_profile_uuid == "slow":
+            time.sleep(0.05)
+        return ProfileCycleSchedule(kind="normal", rest_seconds=0)
+
+    hooks = SchedulerHooks(
+        discover_profiles=lambda: None,
+        enabled_profiles=lambda: profiles,
+        run_profile_cycle=run_cycle,
+        remaining_profile_rest_seconds=lambda _uuid, _rest: 0,
+        log=lambda _message: None,
+        log_schedule=lambda _profile, _schedule: None,
+    )
+
+    result = scheduler(
+        active_config=config(max_cycles=2),
+        state=ScheduleState(),
+        hooks=hooks,
+    ).run_continuously()
+
+    assert result == 0
+    assert sorted(started) == ["fast", "slow"]
+
+
 def test_continuous_discovery_starts_new_profile_without_restarting() -> None:
     first = Profile(octo_profile_uuid="first")
     second = Profile(octo_profile_uuid="second")

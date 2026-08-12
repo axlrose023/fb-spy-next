@@ -111,6 +111,8 @@ def test_update_keeps_fresh_precedence_and_writes_profile_and_geo_pools(
     )
     assert profile_pool == [fresh]
     assert geo_pool == [fresh]
+    assert (collect_dir.parent / "calibration_pool.json").stat().st_mode & 0o777 == 0o600
+    assert (root / "calibration_pools" / "spain.json").stat().st_mode & 0o777 == 0o600
 
 
 def test_configured_source_prefers_relevant_variant_and_ignores_malformed_json(

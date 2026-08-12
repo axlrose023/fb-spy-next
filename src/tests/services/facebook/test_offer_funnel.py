@@ -20,6 +20,7 @@ from app.facebook.calibration import (
     redact_error,
     redact_url,
 )
+from app.facebook.calibration.adapters.playwright.post_viewer import locate_saved_post
 
 pytestmark = pytest.mark.integration
 
@@ -325,6 +326,42 @@ def test_same_domain_page_without_offer_signals_is_only_viewed(
         context.close()
 
 
+def test_saved_post_does_not_match_reused_post_with_conflicting_metadata(
+    chromium_browser,
+) -> None:
+    context = chromium_browser.new_context()
+    page = context.new_page()
+    page.set_content(
+        """
+        <article data-store="post_id:122251694486122450">
+          <a>Kyle Buchanan Sarah</a>
+          <div>AMAZON.CA</div>
+          <h2>{{product.name}}</h2>
+          <button aria-label="Like">Like</button>
+          <button aria-label="Comment">Comment</button>
+          <button>Learn more</button>
+        </article>
+        """
+    )
+    target = CalibrationTarget(
+        url="https://m.facebook.com/61553673501112/posts/122251694486122450",
+        facebook_post_url=(
+            "https://m.facebook.com/61553673501112/posts/122251694486122450"
+        ),
+        advertiser="Kyle Buchanan Sarah",
+        displayed_domain="moderninsightreport.com",
+        headline="Get Details",
+    )
+
+    try:
+        result = locate_saved_post(page, target)
+
+        assert result["status"] == "post_not_found"
+        assert result["advertiser_in_page"] is True
+    finally:
+        context.close()
+
+
 def test_mismatched_facebook_cta_uses_saved_direct_offer(
     chromium_browser,
     fixture_server,
@@ -334,7 +371,14 @@ def test_mismatched_facebook_cta_uses_saved_direct_offer(
     source_page = context.new_page()
     source_page.set_content("<main>Saved Facebook post</main>")
     wrong_page = context.new_page()
-    wrong_page.set_content("<main>Unrelated destination</main>")
+    wrong_page.set_content(
+        """
+        <main>
+          <h1>Unrelated destination</h1>
+          <form><input type="email"><button>Register now</button></form>
+        </main>
+        """
+    )
 
     monkeypatch.setattr(
         "app.facebook.calibration.funnel.adapters.playwright.landing.open_ad_landing",

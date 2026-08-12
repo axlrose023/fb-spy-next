@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from app.facebook.runs import collect_run_metrics
 
 from .. import (
@@ -35,6 +37,7 @@ def _run_locked_profile_cycle(
         request.root_dir / "profiles" / profile.storage_name / f"collect_{cycle_at}"
     )
     collect_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(collect_dir, 0o700)
     hooks.log(f"[{profile.display_name}] collect -> {collect_dir}")
 
     pipeline = hooks.run_collection(profile, collect_dir)

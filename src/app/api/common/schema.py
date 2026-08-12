@@ -22,17 +22,17 @@ class Pagination[T: BaseModel](BaseModel):
     page: int
     page_size: int
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_pages(self) -> int:
         return (self.total + self.page_size - 1) // self.page_size
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def has_next(self) -> bool:
         return self.page < self.total_pages
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def has_prev(self) -> bool:
         return self.page > 1

@@ -16,7 +16,7 @@ from ...security import (
     same_site,
 )
 from ...targets import offer_url
-from .browser import close_pages, goto_direct_offer, has_offer_signal, public_action
+from .browser import close_pages, goto_direct_offer, public_action
 
 
 @dataclass(slots=True)
@@ -46,7 +46,7 @@ def open_funnel_landing(
         click_result["opening"] = "facebook_cta"
         if landing_page is not None and click_result.get("status") == "visited":
             mismatch = click_result.get("expected_domain_match") is False
-            if not mismatch or has_offer_signal(landing_page):
+            if not mismatch:
                 return OpenedLanding(landing_page, opened_pages, click_result)
             click_result["status"] = "cta_domain_mismatch"
         close_pages(opened_pages)
